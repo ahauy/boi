@@ -1,8 +1,9 @@
 import React from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleProp, Text, View, ViewStyle, type ScrollViewInstance } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleProp, View, ViewStyle, type ScrollViewInstance } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, text as type } from '../theme';
+import Text from './AppText';
 import MysticBackground from './mystic/MysticBackground';
 import { Eyebrow, Subtitle, Title } from './ui';
 
@@ -115,7 +116,11 @@ export function ScreenHeader({ eyebrow, title, subtitle, right, onBack, compact 
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 }}>
         {onBack ? <BackButton onPress={onBack} /> : null}
-        <Text style={[type.headingMd, { color: colors.ink, flex: 1 }]} accessibilityRole="header" numberOfLines={1}>
+        <Text
+          style={[type.headingMd, { color: colors.ink, flex: 1 }]}
+          accessibilityRole="header"
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.2}>
           {title}
         </Text>
         {right}

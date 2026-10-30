@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { CameraView, useCameraPermissions, type CameraView as CameraViewHandle } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,6 +8,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Banner, Button } from '../components/ui';
+import Text from '../components/AppText';
 import HandGuide from '../components/mystic/HandGuide';
 import MysticBackground from '../components/mystic/MysticBackground';
 import PalmOracle from '../components/mystic/PalmOracle';
@@ -164,7 +165,7 @@ export default function CameraScreen() {
 
           <View style={{ alignItems: 'center', gap: 2, flex: 1 }}>
             <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 2.4 }]}>ẤN TƯỢNG THẤU THỊ</Text>
-            <Text style={[type.displaySm, { color: colors.ink }]} numberOfLines={1}>
+            <Text style={[type.displaySm, { color: colors.ink }]} numberOfLines={2}>
               Căn khung bàn tay
             </Text>
           </View>

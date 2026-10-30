@@ -1,7 +1,7 @@
 # PalmSight Mobile — UI/UX Review & Fix Log
 
 - **Ngày review:** 2026-10-30
-- **Cập nhật gần nhất:** 2026-10-30 — hoàn tất P0, P1, P2-11, P2-12 và P2-13; P2-14 để đợt riêng
+- **Cập nhật gần nhất:** 2026-10-30 — hoàn tất toàn bộ P0, P1 và P2-11 → P2-14
 - **Phạm vi:** toàn bộ `mobile/src` (20 screen/component: tabs, auth, onboarding, guest, camera, reading, wallet, referral, mystic components, theme, ui)
 - **Tiêu chí:** tính phù hợp ứng dụng mobile (touch target, thói quen native, readability) + UI (typography, spacing, màu, hierarchy) + UX (4 trạng thái loading/empty/error/populated, luồng, feedback)
 - **Trạng thái:** `⬜ chưa sửa` · `🔄 đang sửa` · `✅ đã sửa xong` · `⏸️ tạm hoãn (lý do ghi rõ)`
@@ -32,7 +32,7 @@
 | P2-11 | P2 | Tiền tố ASCII `[!] [+] [i]` trông như log trên mobile (14 chỗ) | nhiều file | ✅ |
 | P2-12 | P2 | Member 4-step wizard vs guest form dài — 2 paradigm cho 1 luồng | index vs guest | ✅ |
 | P2-13 | P2 | Animation nền vô hạn: pin/perf + không tôn trọng reduce-motion | MysticBackground, PalmOracle | ✅ |
-| P2-14 | P2 | Không hỗ trợ Dynamic Type (fontSize + lineHeight cố định) | `theme.ts` | ⏸️ làm đợt riêng |
+| P2-14 | P2 | Không hỗ trợ Dynamic Type (fontSize + lineHeight cố định) | `theme.ts` | ✅ |
 
 ## Chi tiết & phương án sửa
 
@@ -87,7 +87,7 @@
 - **Phương án:** tải ảnh annotated về cache (`expo-file-system` — cần cài thêm; `expo-sharing` đã có) rồi `Sharing.shareAsync`; nút chia sẻ ảnh trên hero image; giữ nút chia sẻ text; fallback về text nếu lỗi.
 - **Đã làm:** thêm `expo-file-system@~58.0.13`; nút share icon 44pt trên hero tải ảnh (AI/annotated hoặc ảnh gốc) vào `Paths.cache` bằng `File.downloadFileAsync` rồi `Sharing.shareAsync`. Nếu sharing không khả dụng hoặc tải lỗi → `Share.share` text, cuối cùng fallback clipboard. Nút "Chia sẻ" text ở footer giữ nguyên.
 
-### P2 — cần quyết định định hướng trước khi sửa
+### P2 — các mục cần quyết định (đã chốt)
 - **P2-11** giữ tiền tố ASCII chỉ trong Banner, bỏ ở caption rải rác — ảnh hưởng brand, cần chủ quyết.
   - **Đã làm:** chỉ còn `BANNER_PREFIX` dùng `[!] [+] [i]`. Đã bỏ ở Input/Checkbox error, camera error, account, referral, check-email steps, hint/giá ở màn xem bói, enter-referral, reading (kể cả văn bản chia sẻ) và guest-reading. `StatusPill` thay tiền tố bằng icon màu; action của Banner dùng nhãn gạch chân thay `>`.
 - **P2-12** thống nhất stepper member/guest — thay đổi luồng sản phẩm.
@@ -95,6 +95,9 @@
 - **P2-13** tắt animation khi user bật reduce-motion (`AccessibilityInfo.isReduceMotionEnabled`) — kỹ thuật rõ ràng, chờ duyệt vì đổi hành vi nền.
   - **Đã làm:** thêm hook `lib/motion.ts` (`useReduceMotion`). Khi bật reduce-motion: MysticBackground đứng yên (sao tĩnh), PalmOracle không xoay/float, beam HandGuide/LoadingOverlay ẩn, skeleton reading tĩnh, transition bước xem bói và slide onboarding hiện tức thì, scroll onboarding không animate.
 - **P2-14** Dynamic Type (`maxFontSizeMultiplier`) — rủi ro vỡ layout ở nhiều chỗ, nên làm riêng một đợt.
+  - **Đã làm:** thêm `MAX_FONT_SCALE = 1.3` (`theme.ts`) và wrapper `components/AppText.tsx` dùng cho toàn bộ text. Wrapper đặt `maxFontSizeMultiplier`, đồng thời nhân `lineHeight` theo hệ số co giãn thực tế (RN chỉ scale fontSize, không scale lineHeight). `TextInput` trong `Input` cũng được cap và scale lineHeight.
+  - Các cụm dễ vỡ đã xử lý riêng: tiêu đề camera cho phép 2 dòng; tiêu đề giữa `ReadingTopBar` truncate 1 dòng; mã giới thiệu và số dư ví dùng `adjustsFontSizeToFit` + trần thấp hơn (1.1/1.15); tên trường phái ở hàng lịch sử `flexShrink`; title header compact và pill credits cap 1.2; số thứ tự StepCard cap 1.15.
+  - Trần 1.3 là mức cân bằng giữa khả năng đọc và độ vỡ layout; có thể nâng sau khi test trên thiết bị thật.
 
 ## Ghi chú quá trình sửa
 
@@ -108,5 +111,6 @@
 - **Reduce motion:** hook mới `src/lib/motion.ts`; áp cho nền sao/orbit, PalmOracle, beam HandGuide/LoadingOverlay, skeleton reading, transition bước và slide onboarding.
 - **P2-11:** dọn tiền tố ASCII khỏi toàn bộ UI ngoài Banner; `StatusPill` dùng icon.
 - **P2-12:** guest dùng wizard 3 bước với `RitualStepper`/`StepCard` dùng chung; member giữ 4 bước.
-- **Kiểm chứng:** `npx tsc --noEmit` và `npx expo lint` đều pass. Chưa thử trực quan trên thiết bị — cần test Expo Go cho camera (torch/khung trên màn nhỏ), share sheet ảnh, Reduce Motion và luồng guest 3 bước.
-- **Chưa xử lý:** P2-14 (Dynamic Type) để đợt riêng.
+- **P2-14:** thêm `MAX_FONT_SCALE` + `AppText`; migrate toàn bộ `Text`/`TextInput` sang cơ chế co giãn có trần và scale lineHeight. Xử lý riêng các hàng dễ vỡ.
+- **Kiểm chứng:** `npx tsc --noEmit`, `npx expo lint` và `npx expo export --platform ios` đều pass. Chưa thử trực quan trên thiết bị — cần test Expo Go ở cỡ chữ lớn nhất cho camera, top bar reading, mã giới thiệu, số dư ví, lịch sử, guest wizard, share sheet ảnh và Reduce Motion.
+- **Giới hạn còn lại:** tap-to-focus camera (API expo-camera 58 không hỗ trợ); guest không có nút hủy màn chờ (cố ý, tránh mất kết quả bói thử).

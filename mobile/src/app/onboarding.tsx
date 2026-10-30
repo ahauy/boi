@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, FlatList, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { READING_SCHOOL_LIST } from '@palmsight/shared';
 
 import { Button } from '../components/ui';
+import Text from '../components/AppText';
 import HandGuide from '../components/mystic/HandGuide';
 import MysticBackground from '../components/mystic/MysticBackground';
 import MysticDivider from '../components/mystic/MysticDivider';

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, Text, View, type ScrollViewInstance } from 'react-native';
+import { Platform, Pressable, View, type ScrollViewInstance } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -9,6 +9,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { loginSchema } from '@palmsight/shared';
 
 import Screen, { ScreenHeader } from '../../components/Screen';
+import Text from '../../components/AppText';
 import { Banner, Button, Input, LinkFooter } from '../../components/ui';
 import { exchangeGoogleBrowserCode, resendVerification, startGoogleBrowserFlow } from '../../lib/authApi';
 import { ApiError } from '../../lib/api';

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { enterReferralSchema } from '@palmsight/shared';
 
 import Screen, { ScreenHeader } from '../components/Screen';
+import Text from '../components/AppText';
 import { Banner, Button, Input, TextLink } from '../components/ui';
 import { errorMessageOf, validateForm } from '../lib/forms';
 import { enterReferralCode } from '../lib/users';

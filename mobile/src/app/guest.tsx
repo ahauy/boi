@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Text, View, type ScrollViewInstance } from 'react-native';
+import { Image, View, type ScrollViewInstance } from 'react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -12,6 +12,7 @@ import {
 } from '@palmsight/shared';
 
 import Screen, { ScreenHeader } from '../components/Screen';
+import Text from '../components/AppText';
 import HandChoice from '../components/HandChoice';
 import HandGuide from '../components/mystic/HandGuide';
 import RitualStepper, { StepCard, type RitualStep } from '../components/RitualSteps';

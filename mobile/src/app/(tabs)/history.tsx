@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
@@ -7,6 +7,7 @@ import { ReadingStatus, READING_SCHOOLS, type ReadingListItemDto } from '@palmsi
 
 import HeaderCredits from '../../components/HeaderCredits';
 import Screen, { ScreenHeader } from '../../components/Screen';
+import Text from '../../components/AppText';
 import { Banner, Button, SectionLabel, StatusPill } from '../../components/ui';
 import PalmOracle from '../../components/mystic/PalmOracle';
 import { errorMessageOf } from '../../lib/forms';
@@ -174,10 +175,10 @@ function HistoryRow({ item }: { item: ReadingListItemDto }) {
 
         <View style={{ flex: 1, gap: 4 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
-            <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 1.4 }]}>
+            <Text numberOfLines={1} style={[type.eyebrow, { color: colors.gold, letterSpacing: 1.4, flexShrink: 1 }]}>
               {READING_SCHOOLS[item.school]?.name ?? item.school}
             </Text>
-            <Text style={[type.code, { color: colors.stone }]}>{formatDateTime(item.createdAt)}</Text>
+            <Text style={[type.code, { color: colors.stone, flexShrink: 0 }]}>{formatDateTime(item.createdAt)}</Text>
           </View>
 
           <Text style={[type.displaySm, { color: colors.ink }]} numberOfLines={1}>

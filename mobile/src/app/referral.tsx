@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Share, Text, View } from 'react-native';
+import { Share, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { ReferralStatus, type ReferralListItemDto } from '@palmsight/shared';
 
 import Screen, { ScreenHeader } from '../components/Screen';
+import Text from '../components/AppText';
 import { Banner, Button, Card } from '../components/ui';
 import MysticDivider from '../components/mystic/MysticDivider';
 import { errorMessageOf } from '../lib/forms';
@@ -51,7 +52,15 @@ export default function ReferralScreen() {
       <Card ornate glow style={{ gap: spacing.md }}>
         <Text style={[type.eyebrow, { color: colors.gold }]}>MÃ CỦA TÔI</Text>
         <View style={{ borderWidth: 1, borderColor: colors.goldStrong, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', backgroundColor: colors.surfaceSoft }}>
-          <Text accessibilityLabel={`Mã giới thiệu ${code}`} style={[type.displayXl, { color: colors.gold, letterSpacing: 4 }]}>{code}</Text>
+          <Text
+            accessibilityLabel={`Mã giới thiệu ${code}`}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+            maxFontSizeMultiplier={1.1}
+            style={[type.displayXl, { color: colors.gold, letterSpacing: 4 }]}>
+            {code}
+          </Text>
         </View>
         <MysticDivider compact symbol="✦ ☽ ☾" />
 

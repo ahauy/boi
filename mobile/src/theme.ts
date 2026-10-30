@@ -82,6 +82,9 @@ export const font = {
   monoMedium: 'JetBrainsMono_500Medium',
 } as const;
 
+// Trần co giãn chữ theo Dynamic Type: đủ rõ cho người tăng cỡ chữ nhưng không phá các hàng/cụm UI.
+export const MAX_FONT_SCALE = 1.3;
+
 export const text: Record<string, TextStyle> = {
   displayXl: { fontFamily: font.displayStrong, fontSize: 36, lineHeight: 40, letterSpacing: -0.4 },
   displayLg: { fontFamily: font.displayStrong, fontSize: 30, lineHeight: 34, letterSpacing: -0.2 },

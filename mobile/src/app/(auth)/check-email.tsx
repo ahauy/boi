@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import Screen, { ScreenHeader } from '../../components/Screen';
+import Text from '../../components/AppText';
 import { Banner, Button, Card, TextLink } from '../../components/ui';
 import { resendVerification } from '../../lib/authApi';
 import { errorMessageOf } from '../../lib/forms';

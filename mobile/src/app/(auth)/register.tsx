@@ -1,10 +1,11 @@
 import React, { useRef, useState } from 'react';
-import { Text, View, type ScrollViewInstance } from 'react-native';
+import { View, type ScrollViewInstance } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { registerFormSchema } from '@palmsight/shared';
 
 import Screen, { ScreenHeader } from '../../components/Screen';
+import Text from '../../components/AppText';
 import { Banner, Button, Checkbox, Input, LinkFooter, TextLink } from '../../components/ui';
 import { register } from '../../lib/authApi';
 import { errorMessageOf, validateForm } from '../../lib/forms';

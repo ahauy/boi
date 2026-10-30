@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import { Image } from 'expo-image';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
@@ -12,6 +12,7 @@ import {
 } from '@palmsight/shared';
 
 import Screen, { ScreenHeader } from '../../components/Screen';
+import Text from '../../components/AppText';
 import { Banner, Button, Card, Chip, TextLink } from '../../components/ui';
 import { formatDateTime, handLabel } from '../../lib/format';
 import { fetchGuestPreview } from '../../lib/readings';

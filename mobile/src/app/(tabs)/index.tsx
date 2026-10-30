@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Image, Pressable, Text, View, type ScrollViewInstance } from 'react-native';
+import { Animated, Easing, Image, Pressable, View, type ScrollViewInstance } from 'react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -16,6 +16,7 @@ import HeaderCredits from '../../components/HeaderCredits';
 import HandChoice from '../../components/HandChoice';
 import RitualStepper, { StepCard } from '../../components/RitualSteps';
 import Screen, { ScreenHeader } from '../../components/Screen';
+import Text from '../../components/AppText';
 import { Banner, Button, Checkbox, Chip, LoadingOverlay, RadioCard, SectionLabel } from '../../components/ui';
 import HandGuide from '../../components/mystic/HandGuide';
 import MysticDivider from '../../components/mystic/MysticDivider';

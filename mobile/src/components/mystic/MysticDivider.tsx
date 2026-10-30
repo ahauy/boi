@@ -1,7 +1,8 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, font, spacing } from '../../theme';
+import Text from '../AppText';
 
 interface MysticDividerProps {
   symbol?: string;

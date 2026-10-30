@@ -1,6 +1,7 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
+import Text from './AppText';
 import { useAuth } from '../state/auth';
 import { colors, font, radius, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
@@ -34,7 +35,7 @@ export default function HeaderCredits() {
         opacity: pressed ? 0.82 : 1,
       })}>
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold }} />
-      <Text style={[type.code, { color: colors.goldLight, letterSpacing: 1.1, fontFamily: font.monoMedium }]}>
+      <Text maxFontSizeMultiplier={1.2} style={[type.code, { color: colors.goldLight, letterSpacing: 1.1, fontFamily: font.monoMedium }]}>
         {`${user.creditBalance} ${creditWord}`}
       </Text>
     </Pressable>

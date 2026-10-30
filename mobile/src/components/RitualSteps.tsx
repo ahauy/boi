@@ -1,6 +1,7 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { colors, font, radius, spacing, text as type } from '../theme';
+import Text from './AppText';
 import { Card } from './ui';
 import MysticDivider from './mystic/MysticDivider';
 
@@ -15,7 +16,7 @@ export function StepCard({ step, total, children }: { step: RitualStep; total: n
   return (
     <Card ornate style={{ gap: spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-        <Text style={{ fontFamily: font.displayStrong, fontSize: 44, lineHeight: 46, color: colors.gold, opacity: 0.92 }}>
+        <Text maxFontSizeMultiplier={1.15} style={{ fontFamily: font.displayStrong, fontSize: 44, lineHeight: 46, color: colors.gold, opacity: 0.92 }}>
           {`0${step.index}`}
         </Text>
         <View style={{ flex: 1, gap: 2 }}>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Easing, Pressable, Share, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Easing, Pressable, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
@@ -19,6 +19,7 @@ import {
 } from '@palmsight/shared';
 
 import Screen from '../../components/Screen';
+import Text from '../../components/AppText';
 import { Banner, Button, Card, Chip, SectionLabel } from '../../components/ui';
 import MysticDivider from '../../components/mystic/MysticDivider';
 import PalmOracle from '../../components/mystic/PalmOracle';
@@ -184,7 +185,11 @@ function ReadingTopBar({ onBack, onShare }: { onBack: () => void; onShare: () =>
       <Pressable accessibilityRole="button" accessibilityLabel="Quay lại" onPress={onBack} hitSlop={10} style={{ minHeight: 44, justifyContent: 'center' }}>
         <Text style={[type.bodyStrong, { color: colors.goldLight }]}>‹ Quay lại</Text>
       </Pressable>
-      <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 2 }]}>LUẬN GIẢI CHI TIẾT</Text>
+      <Text
+        numberOfLines={1}
+        style={[type.eyebrow, { color: colors.gold, letterSpacing: 2, flex: 1, textAlign: 'center', marginHorizontal: spacing.sm }]}>
+        LUẬN GIẢI CHI TIẾT
+      </Text>
       <Pressable accessibilityRole="button" accessibilityLabel="Chia sẻ kết quả" onPress={onShare} hitSlop={10} style={{ minHeight: 44, justifyContent: 'center' }}>
         <Text style={[type.bodyStrong, { color: colors.gold }]}>Chia sẻ</Text>
       </Pressable>

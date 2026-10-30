@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
@@ -7,6 +7,7 @@ import { AuthProvider, changePasswordSchema } from '@palmsight/shared';
 
 import HeaderCredits from '../../components/HeaderCredits';
 import Screen, { ScreenHeader } from '../../components/Screen';
+import Text from '../../components/AppText';
 import { Banner, Button, Card, Input, TextLink } from '../../components/ui';
 import { ApiError } from '../../lib/api';
 import { errorMessageOf, validateForm } from '../../lib/forms';

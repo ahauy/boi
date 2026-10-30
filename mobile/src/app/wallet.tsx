@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { CreditTransactionType, type CreditTransactionDto } from '@palmsight/shared';
 
 import Screen, { ScreenHeader } from '../components/Screen';
+import Text from '../components/AppText';
 import { Banner, Button, Card, SectionLabel } from '../components/ui';
 import MysticDivider from '../components/mystic/MysticDivider';
 import { errorMessageOf } from '../lib/forms';
@@ -69,7 +70,12 @@ export default function WalletScreen() {
       <Card ornate glow style={{ gap: spacing.md, paddingVertical: spacing.xl }}>
         <Text style={[type.eyebrow, { color: colors.gold }]}>SỐ DƯ HIỆN TẠI</Text>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm }}>
-          <Text style={{ fontFamily: font.displayStrong, fontSize: 58, lineHeight: 60, color: colors.gold }}>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+            maxFontSizeMultiplier={1.15}
+            style={{ fontFamily: font.displayStrong, fontSize: 58, lineHeight: 60, color: colors.gold }}>
             {user?.creditBalance ?? 0}
           </Text>
           <Text style={[type.captionStrong, { color: colors.goldLight, paddingBottom: 8, letterSpacing: 1.4 }]}>CREDITS</Text>

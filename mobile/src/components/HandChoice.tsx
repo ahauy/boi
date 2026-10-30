@@ -1,10 +1,11 @@
 import React from 'react';
-import { Pressable, Text } from 'react-native';
+import { Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { HandOrientation } from '@palmsight/shared';
 
 import { PALM_OUTLINE_PATH } from './mystic/palmGeometry';
+import Text from './AppText';
 import { colors, radius, spacing, text as type } from '../theme';
 import { handLabel } from '../lib/format';
 

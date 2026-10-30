@@ -7,21 +7,22 @@ import {
   Pressable,
   ScrollView,
   StyleProp,
-  Text,
   TextInput,
   TextStyle,
   View,
   ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ReadingStatus } from '@palmsight/shared';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, font, gradients, radius, shadow, spacing, text as type } from '../theme';
+import { colors, font, gradients, radius, shadow, spacing, text as type, MAX_FONT_SCALE } from '../theme';
 import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { useReduceMotion } from '../lib/motion';
+import Text from './AppText';
 import MysticBackground from './mystic/MysticBackground';
 import PalmOracle from './mystic/PalmOracle';
 import TarotCorners from './mystic/TarotCorners';
@@ -166,6 +167,8 @@ export function Input({
 }: InputProps) {
   const [revealed, setRevealed] = React.useState(false);
   const [focused, setFocused] = React.useState(false);
+  const { fontScale } = useWindowDimensions();
+  const inputScale = fontScale > 1 ? Math.min(fontScale, MAX_FONT_SCALE) : 1;
 
   return (
     <View style={{ gap: spacing.xs }}>
@@ -184,6 +187,7 @@ export function Input({
           maxLength={maxLength}
           multiline={multiline}
           editable={editable}
+          maxFontSizeMultiplier={MAX_FONT_SCALE}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onSubmitEditing={onSubmitEditing}
@@ -203,7 +207,7 @@ export function Input({
               color: colors.ink,
               fontFamily: font.body,
               fontSize: 15,
-              lineHeight: 22,
+              lineHeight: 22 * inputScale,
               textAlignVertical: multiline ? 'top' : 'center',
             },
           ]}>
