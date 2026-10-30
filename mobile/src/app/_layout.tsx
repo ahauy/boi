@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, router, Stack, ThemeProvider, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
@@ -9,13 +9,14 @@ import { BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBo
 import { JetBrainsMono_400Regular, JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 
 import { AuthProvider, useAuth } from '../state/auth';
+import { OnboardingProvider, useOnboarding } from '../state/onboarding';
 import { CaptureProvider } from '../state/capture';
+import { SessionErrorScreen, SessionLoadingScreen } from '../components/SessionGate';
 import { colors } from '../theme';
 
 SplashScreen.preventAutoHideAsync();
 
-// Khi mở app ở URL "/" (route tabs bị chặn nếu chưa đăng nhập), router lùi về anchor này
-// thay vì rơi vào nhóm (auth) — đảm bảo người chưa đăng nhập luôn thấy onboarding trước
+// App mở ở "/" (route tabs). Khi onboarding còn bắt buộc, route này bị chặn và router lùi về anchor.
 export const unstable_settings = { anchor: 'onboarding' };
 
 // Web chỉ có giao diện tối (index.html hard-code class="dark") nên app khoá theo tối:
@@ -34,26 +35,35 @@ const palmTheme = {
 
 function Gate({ appReady }: { appReady: boolean }) {
   const { status } = useAuth();
+  const { status: onboarding } = useOnboarding();
+  const pathname = usePathname();
 
   useEffect(() => {
-    if (appReady && status !== 'loading') void SplashScreen.hideAsync();
-  }, [appReady, status]);
+    if (!appReady) return;
+    if (status === 'error' || (status === 'ready' && onboarding !== 'loading')) {
+      void SplashScreen.hideAsync();
+    }
+  }, [appReady, status, onboarding]);
 
-  if (!appReady || status === 'loading') return null;
+  // Hoàn tất onboarding: đợi guard mở tabs rồi mới điều hướng, tránh replace vào route còn bị chặn
+  useEffect(() => {
+    if (status === 'ready' && onboarding === 'done' && pathname === '/onboarding') {
+      router.replace('/');
+    }
+  }, [status, onboarding, pathname]);
 
-  const signedOut = status === 'signedOut';
+  if (!appReady) return null;
+  if (status === 'error') return <SessionErrorScreen />;
+  if (status === 'loading' || onboarding === 'loading') return <SessionLoadingScreen />;
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
-      {/* Chưa đăng nhập: onboarding slides luôn hiện (bó thử guest / đăng nhập / đăng ký) */}
-      <Stack.Protected guard={signedOut}>
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="guest" />
-        <Stack.Screen name="guest-reading/[token]" />
+      {/* Lần đầu mở app và chưa có bài bói: đi hết onboarding mới vào được Xem bói */}
+      <Stack.Protected guard={onboarding === 'pending'}>
+        <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
       </Stack.Protected>
 
-      <Stack.Protected guard={status === 'signedIn'}>
+      <Stack.Protected guard={onboarding === 'done'}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="reading/[id]" />
         <Stack.Screen name="wallet" />
@@ -61,7 +71,7 @@ function Gate({ appReady }: { appReady: boolean }) {
         <Stack.Screen name="enter-referral" />
       </Stack.Protected>
 
-      {/* Modal camera phục vụ cả luồng thành viên lẫn luồng guest */}
+      {/* Modal camera phục vụ luồng Xem bói */}
       <Stack.Screen name="camera" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
     </Stack>
   );
@@ -85,10 +95,12 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <CaptureProvider>
         <AuthProvider>
-          <ThemeProvider value={palmTheme}>
-            <StatusBar style="light" />
-            <Gate appReady={fontsLoaded || Boolean(fontError)} />
-          </ThemeProvider>
+          <OnboardingProvider>
+            <ThemeProvider value={palmTheme}>
+              <StatusBar style="light" />
+              <Gate appReady={fontsLoaded || Boolean(fontError)} />
+            </ThemeProvider>
+          </OnboardingProvider>
         </AuthProvider>
       </CaptureProvider>
     </SafeAreaProvider>

@@ -1,5 +1,9 @@
 # Log phiên: Sửa mobile — Guest trial + Google/FB login + Onboarding mới
 
+> **CẬP NHẬT MỚI NHẤT (2026-10-30, mục G): mobile đã bỏ hoàn toàn đăng ký/đăng nhập.**
+> App dùng phiên khách tự động theo thiết bị; các mục 1–7 bên dưới chỉ còn giá trị lịch sử.
+> Đọc mục G trước khi làm tiếp.
+
 > File handoff viết ngày 2026-10-30 do sắp hết quota. Phiên sau đọc file này trước khi làm tiếp.
 > Repo: `/Users/vutuanhau/Dev/Palm`, nhánh `main`. Tất cả path dưới đây tương đối với root repo.
 
@@ -227,4 +231,51 @@ Lưu ý:
 - Chưa có share card dạng ảnh (hiện dùng `Share.share` text); nếu muốn WOW hơn có thể thêm `react-native-view-shot` + layout share card.
 - Có thể nối legend 3 đường với scroll tới section tương ứng (hiện chỉ hiển thị thông tin).
 - Các màn guest-reading vẫn dùng layout card cũ (đã nhận theme mới) — có thể nâng cấp theo pattern result nếu cần.
+
+## G. Bỏ đăng ký/đăng nhập — phiên khách tự động (2026-10-30)
+
+### Mô hình mới
+
+- Mobile **không còn màn đăng ký/đăng nhập**, không còn `(auth)`, `guest.tsx`, `guest-reading/[token].tsx`.
+- Mỗi thiết bị là một **tài khoản khách ẩn danh**:
+  - `mobile/src/lib/deviceId.ts` (native: SecureStore; web: `deviceId.web.ts` + localStorage) sinh UUID và giữ cố định.
+  - App gọi `POST /auth/device` với `deviceId`; backend tạo user `isAnonymous: true`, `email: null`, tặng **3 credits** (SIGNUP_BONUS), trả JWT + refreshToken như login thường.
+  - Gọi lại cùng `deviceId` mở lại đúng tài khoản, không tạo mới.
+- Toàn bộ luồng bói thành viên cũ dùng nguyên: tab Xem bói, credits, Lịch sử, Ví, referral. Không còn kết quả bị cắt như guest cũ.
+- Tab thứ 3 đổi tên **Hồ sơ**: hiển thị Khách, credits, ví/giới thiệu, cảnh báo dữ liệu gắn với thiết bị, link xoá dữ liệu.
+- Onboarding:
+  - Chỉ hiện khi **chưa hoàn thành onboarding và chưa có bài bói nào** (`state/onboarding.tsx` kiểm tra `palmsight.onboardingCompleted` + gọi `fetchReadings` một lần).
+  - **Không còn nút Bỏ qua**; CTA cuối slide 4 là **Bắt đầu xem bói**, sau đó gate tự điều hướng vào tabs.
+  - Copy mới: 3 lượt miễn phí, không cần tài khoản.
+
+### Backend
+
+- `POST /auth/device` — `DeviceSessionRequestDto { deviceId }`, validate bằng `deviceSessionSchema` (16–128 ký tự `[A-Za-z0-9_-]`).
+- `User` thêm `isAnonymous`, `deviceIdHash`, `signupIpHash`; index unique partial trên `deviceIdHash`.
+- `GET /me` trả thêm `isAnonymous`.
+- Chống farm credit: tối đa `ANONYMOUS_SIGNUP_DAILY_CAP` (mặc định 20) tài khoản khách/IP/24h → lỗi `DEVICE_SESSION_LIMIT_REACHED` (429). Cùng `deviceId` không bị tính thêm. Đừng hạ quá thấp vì CGNAT mạng di động dùng chung IP; test dùng mốc 3.
+- Test mới: `backend/test/auth-device.spec.ts` (5 test, gồm chặn thiết bị có tài khoản đã xoá) — tổng bộ test backend 247 test pass.
+- **Cần chạy `pnpm --filter backend db:sync-indexes`** trên môi trường thật để tạo index `deviceIdHash` (dev thường autoIndex).
+
+### Mobile files
+
+- Mới: `lib/deviceId.ts`, `lib/deviceId.web.ts`, `state/onboarding.tsx`, `components/SessionGate.tsx`.
+- Sửa: `state/auth.tsx` (tự tạo phiên khách, retry khi mất mạng), `app/_layout.tsx` (gate onboarding), `app/onboarding.tsx` (bỏ Bỏ qua, CTA mới), `(tabs)/account.tsx` (Hồ sơ), `(tabs)/index.tsx` + `camera.tsx` + `state/capture.tsx` (bỏ target guest), `lib/readings.ts` (bỏ API guest), `lib/preferences.ts` (cờ onboarding).
+- Đã xoá: `app/(auth)/*`, `app/guest.tsx`, `app/guest-reading/*`, `lib/fingerprint.ts`; `lib/authApi.ts` chỉ còn `createDeviceSession`.
+- `app.json`: đặt `plugins: [["expo-router", { "asyncRoutes": false }]]` — sau khi xoá nhiều route, async-route lazy chunk cũ có thể gây lỗi `fetchThenEvalJs`/`eval(body)` ở client đang mở; tắt asyncRoutes nạp tất cả route vào entry bundle (app nhỏ, 11 route) và tránh hẳn lỗi chunk chết. Đổi config này phải restart Metro.
+- `mobile/.env.example` chỉ còn API URL + WEB URL (OAuth mobile không còn dùng).
+
+### Đã kiểm tra
+
+- `pnpm --filter backend typecheck`, `pnpm --filter backend test` (40 file / 247 test), `pnpm --filter frontend typecheck`.
+- `mobile: tsc --noEmit` + `expo lint` sạch; `expo export --platform web` bundle thành công.
+- Chạy thật Expo web + backend + Mongo replica set: onboarding 4 slide không có Bỏ qua → Bắt đầu xem bói → tabs; Hồ sơ hiện Khách/3 credits; reload giữ phiên không hiện lại onboarding; tắt backend hiện màn "Chưa kết nối được" và Thử lại khôi phục đúng phiên.
+
+### Chưa làm / việc tiếp theo
+
+- **Chưa test trên Expo Go máy thật** (camera, submit bài bói thật cần AI key + backend Atlas).
+- Chưa có **liên kết tài khoản** để giữ dữ liệu khi đổi máy; hiện dữ liệu gắn với thiết bị. Nếu làm: thêm endpoint link Google/Apple + merge readings/credits từ user ẩn danh sang tài khoản thật.
+- Chưa có thanh toán/IAP; credit hiện đến từ 3 lượt tặng + referral.
+- Guest API cũ (`/readings/guest`) vẫn giữ cho web, mobile không dùng.
+- Tài khoản thật cũ vẫn mở được nếu refresh token còn hạn; hết hạn thì app tự tạo tài khoản khách mới (không còn đường đăng nhập lại).
 

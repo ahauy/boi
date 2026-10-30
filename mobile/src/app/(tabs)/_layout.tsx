@@ -24,7 +24,7 @@ export default function TabsLayout() {
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="account">
-        <NativeTabs.Trigger.Label>Tài khoản</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Hồ sơ</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="person.crop.circle" md="account_circle" />
       </NativeTabs.Trigger>
     </NativeTabs>

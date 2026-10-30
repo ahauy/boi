@@ -96,6 +96,7 @@ export async function createTestApp(
             REFERRAL_REWARD_CREDITS: 2,
             REFEREE_REWARD_CREDITS: 1,
             REFERRAL_DAILY_CAP: 10,
+            ANONYMOUS_SIGNUP_DAILY_CAP: 3,
             PUBLIC_BASE_URL: "http://localhost:5173",
             GOOGLE_CLIENT_ID:
               "test-google-client-id.apps.googleusercontent.com",

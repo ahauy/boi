@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, FlatList, ScrollView, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { READING_SCHOOL_LIST } from '@palmsight/shared';
 
@@ -15,6 +14,7 @@ import { colors, font, radius, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { useReduceMotion } from '../lib/motion';
+import { useOnboarding } from '../state/onboarding';
 
 type SlideKind = 'hero' | 'ritual' | 'schools' | 'credits';
 
@@ -51,9 +51,9 @@ const SLIDES: Slide[] = [
   {
     kind: 'credits',
     tag: 'Linh Thạch Năng Lượng',
-    title: 'Credits không hết hạn.',
-    highlight: 'Mỗi quẻ, một lần mở.',
-    body: 'Sẵn sàng lắng nghe thông điệp từ những đường chỉ tay của bạn?',
+    title: 'Ba lượt mở đầu.',
+    highlight: 'Không cần tài khoản.',
+    body: 'PalmSight tặng bạn 3 lượt xem bói miễn phí ngay khi bắt đầu. Không đăng ký, không mật khẩu.',
   },
 ];
 
@@ -72,10 +72,18 @@ const RITUAL_STEPS = [
 export default function OnboardingScreen() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { complete } = useOnboarding();
   const listRef = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
+  const [finishing, setFinishing] = useState(false);
   const reduceMotion = useReduceMotion();
   const last = index === SLIDES.length - 1;
+
+  async function begin() {
+    if (finishing) return;
+    setFinishing(true);
+    await complete();
+  }
 
   function goTo(next: number) {
     const clamped = Math.max(0, Math.min(SLIDES.length - 1, next));
@@ -100,15 +108,6 @@ export default function OnboardingScreen() {
           <Text style={{ fontFamily: font.display, fontSize: 24, letterSpacing: 1.5, color: colors.goldLight }}>PALMSIGHT</Text>
           <Text style={[type.eyebrow, { color: colors.stone, letterSpacing: 2.6 }]}>HUYỀN CƠ CHỈ TAY</Text>
         </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Bỏ qua, đến đăng nhập"
-          onPress={() => router.push('/login')}
-          hitSlop={12}
-          style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.sm }}>
-          <Text style={[type.captionStrong, { color: colors.gold }]}>Bỏ qua</Text>
-        </Pressable>
       </View>
 
       <FlatList
@@ -168,11 +167,10 @@ export default function OnboardingScreen() {
 
         {last ? (
           <View style={{ gap: spacing.sm }}>
-            <Button label="Bói thử miễn phí (khách)" onPress={() => router.push('/guest')} />
-            <View style={{ flexDirection: 'row', gap: spacing.md }}>
-              <Button label="Đăng ký" variant="outline" style={{ flex: 1 }} onPress={() => router.push('/register')} />
-              <Button label="Đăng nhập" variant="ghost" style={{ flex: 1 }} onPress={() => router.push('/login')} />
-            </View>
+            <Button label="Bắt đầu xem bói" onPress={begin} loading={finishing} />
+            <Text style={[type.caption, { color: colors.stone, textAlign: 'center' }]}>
+              3 lượt miễn phí, không cần đăng ký.
+            </Text>
           </View>
         ) : (
           <View style={{ gap: spacing.sm }}>
@@ -285,7 +283,7 @@ function HeroSlide({ slide, width }: { slide: Slide; width: number }) {
           alignItems: 'center',
         }}>
         <Text style={[type.code, { color: colors.stone, letterSpacing: 1.3, textAlign: 'center' }]}>
-          3 CỔ PHÁI · &lt;60 GIÂY · 100% ẨN DANH
+          3 CỔ PHÁI · &lt;60 GIÂY · KHÔNG CẦN TÀI KHOẢN
         </Text>
       </View>
     </>
@@ -432,7 +430,7 @@ function CreditsSlide({ slide }: { slide: Slide }) {
 
       <View style={{ gap: spacing.sm }}>
         {[
-          '3 credits sau khi xác thực email',
+          '3 lượt xem bói miễn phí ngay khi bắt đầu',
           '+2 credits mỗi khi có người nhập mã giới thiệu của bạn',
           '1 lần xem = 1 credit, dù chọn bao nhiêu mục',
         ].map((item) => (

@@ -27,6 +27,7 @@ Tóm tắt các request `POST`/`PUT`:
 | `POST /auth/verify-email` | — | — | — | `rt` (nếu có) | JSON `{ token, claimToken? }` |
 | `POST /auth/resend-verification` | — | — | — | — | JSON `{ email }` |
 | `POST /auth/login` | — | — | `X-Client: native` (app mobile) | `rt` (nếu có) | JSON `{ login, password }` |
+| `POST /auth/device` | — | — | `X-Client: native` (app mobile) | `rt` (nếu có) | JSON `{ deviceId }` |
 | `POST /auth/forgot-password` | — | — | — | — | JSON `{ email }` |
 | `POST /auth/reset-password` | — | — | — | — | JSON `{ token, newPassword }` |
 | `POST /auth/google` | — | — | — | `rt` (nếu có) | JSON `{ code }` hoặc `{ idToken }` |
@@ -46,7 +47,7 @@ Tóm tắt các request `POST`/`PUT`:
 | `Content-Type` | request | Request có body | `application/json`, hoặc `multipart/form-data; boundary=...`. Với multipart, để trình duyệt tự đặt, **không** tự ghi tay (sẽ thiếu `boundary`) |
 | `Idempotency-Key` | request | `POST /readings`, `POST /readings/guest` | UUID v4 do client sinh (`crypto.randomUUID()`), 36 ký tự |
 | `Origin` | request | `/auth/refresh`, `/auth/logout` | Trình duyệt tự gửi; phải khớp `PUBLIC_BASE_URL`. App native **không** gửi header này (xem mục Xác thực) |
-| `X-Client` | request | App mobile (Expo) gửi trên **mọi** request | `native`. Đánh dấu client không dùng cookie; `/auth/login` mới trả `refreshToken` trong body cho client này |
+| `X-Client` | request | App mobile (Expo) gửi trên **mọi** request | `native`. Đánh dấu client không dùng cookie; `/auth/login` và `/auth/device` trả `refreshToken` trong body cho client này |
 | `X-Refresh-Token` | request | `/auth/refresh`, `/auth/logout` khi không dùng cookie | Refresh token thô, do app mobile lưu trong SecureStore |
 | `ngrok-skip-browser-warning` | request | Chỉ khi dev qua ngrok | `true` |
 | `X-Request-Id` | response | Mọi response | ID để tra log; trùng `details.requestId` của lỗi 500 |
@@ -58,7 +59,7 @@ Tóm tắt các request `POST`/`PUT`:
 
 - **Access token**: JWT HS256, sống 15 phút, chứa `sub` (user ID) và `sid` (session ID). Server trả trong body (`accessToken`, `expiresIn`). Client giữ trong bộ nhớ, không lưu `localStorage`, và gửi qua header `Authorization`.
 - **Refresh token**: cookie `rt` với thuộc tính `HttpOnly; Secure; SameSite=Lax; Path=/api/v1/auth; Max-Age=2592000` (30 ngày). Xoay vòng mỗi lần refresh. Vì `Path=/api/v1/auth`, cookie chỉ được gửi tới các endpoint `/auth/*`.
-- Khi mở app hoặc tải lại trang: gọi `POST /auth/refresh`. Nếu `200` thì đã đăng nhập; nếu `401` thì chuyển tới `/login`.
+- Khi mở app hoặc tải lại trang: gọi `POST /auth/refresh`. Nếu `200` thì đã đăng nhập; nếu `401` thì web chuyển tới `/login`, còn app mobile tự gọi `POST /auth/device` để mở phiên khách (mobile không có màn đăng nhập).
 - Gặp `401 TOKEN_EXPIRED`: gọi `/auth/refresh` rồi gửi lại request ban đầu **một lần**. Gặp `401 UNAUTHENTICATED`: chuyển tới `/login`.
 - **Auth guard kiểm tra user ở mỗi request**, không chỉ kiểm tra chữ ký JWT:
   1. Xác minh chữ ký và hạn của access token.
@@ -170,6 +171,7 @@ Với `VALIDATION_ERROR`, `details.fields` liệt kê từng trường lỗi. `f
 | POST | `/auth/verify-email` | — | body JSON | Xác minh email: tạo tài khoản, claim bài bói thử (nếu có `claimToken`) và đăng nhập |
 | POST | `/auth/resend-verification` | — | body JSON | Gửi lại email xác minh |
 | POST | `/auth/login` | — | body JSON | Đăng nhập bằng email hoặc username + mật khẩu |
+| POST | `/auth/device` | — | body JSON | App mobile đổi `deviceId` đã lưu trong SecureStore lấy phiên khách ẩn danh (tạo mới kèm 3 credits nếu chưa có) |
 | POST | `/auth/forgot-password` | — | body JSON | Gửi email đặt lại mật khẩu |
 | POST | `/auth/reset-password` | — | body JSON | Đặt mật khẩu mới bằng token trong email |
 | POST | `/auth/google` | — | body JSON | Đăng nhập bằng Google ID token |
@@ -193,7 +195,7 @@ Danh sách trường phái và các mục bói không có endpoint riêng: web �
 
 ### Response đăng nhập (dùng chung)
 
-`POST /auth/verify-email`, `/auth/login`, `/auth/google`, `/auth/facebook` thành công đều trả cùng một dạng:
+`POST /auth/verify-email`, `/auth/login`, `/auth/device`, `/auth/google`, `/auth/facebook` thành công đều trả cùng một dạng:
 
 ```json
 {
@@ -338,6 +340,32 @@ Content-Type: application/json
 
 Lỗi: `VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `EMAIL_NOT_VERIFIED`, `RATE_LIMITED`.
 
+### POST /auth/device
+
+Mobile không có đăng ký/đăng nhập: mỗi thiết bị tự đổi `deviceId` (UUID lưu trong SecureStore) lấy phiên khách.
+
+| Vị trí | Trường | Kiểu | Bắt buộc | Ràng buộc |
+| --- | --- | --- | --- | --- |
+| body | `deviceId` | string | có | 16–128 ký tự `[A-Za-z0-9_-]` |
+
+```http
+POST /api/v1/auth/device
+Content-Type: application/json
+X-Client: native
+
+{ "deviceId": "9f1c4a1e-5f60-4d2b-9c1a-1f2e3d4c5b6a" }
+```
+
+| Tình huống | Kết quả |
+| --- | --- |
+| Thiết bị mới | `200`, [Response đăng nhập](#response-đăng-nhập-dùng-chung), `isNewUser = true`; tạo user `isAnonymous: true`, tặng 3 credits, lưu `deviceIdHash` + `signupIpHash` |
+| Thiết bị đã có tài khoản khách | `200`, `isNewUser = false`, mở phiên mới cho đúng user đó |
+| Tài khoản của thiết bị đã bị xoá (`deletedAt`) | `403 DEVICE_SESSION_BLOCKED` |
+| Vượt `ANONYMOUS_SIGNUP_DAILY_CAP` tài khoản khách/IP/24h | `429 DEVICE_SESSION_LIMIT_REACHED` |
+| `deviceId` sai định dạng | `400 VALIDATION_ERROR` |
+
+`deviceId` chỉ lưu dạng HMAC-SHA256 (`deviceIdHash`), không lưu bản rõ. App gọi lại cùng `deviceId` sẽ mở lại đúng tài khoản; cài lại app trên Android tạo `deviceId` mới nên là tài khoản khách mới.
+
 ### POST /auth/forgot-password
 
 | Vị trí | Trường | Kiểu | Bắt buộc |
@@ -447,6 +475,7 @@ Không cần đăng nhập. Trả `200 { "status": "ok", "db": "ok" }`, hoặc `
   "referralLink": "https://<domain>/r/K7QX4MZP",
   "hasPassword": true,
   "providers": ["GOOGLE"],
+  "isAnonymous": false,
   "referral": {
     "canEnterCode": true,
     "enteredCode": null
@@ -460,7 +489,8 @@ Không cần đăng nhập. Trả `200 { "status": "ok", "db": "ok" }`, hoặc `
 | `email` | `null` nếu user chỉ đăng nhập Facebook và Facebook không trả email |
 | `hasPassword` | `true` khi đăng nhập được bằng email/username + mật khẩu. `/account` dựa vào trường này để hiện "Đổi mật khẩu" hay "Đặt mật khẩu" |
 | `providers` | Google/Facebook đã liên kết: `GOOGLE`, `FACEBOOK`; mảng rỗng nếu chỉ dùng mật khẩu |
-| `id` | Hiện ở `/account` dưới tên "ID tài khoản". Người dùng gửi kèm ID này khi yêu cầu xoá tài khoản |
+| `isAnonymous` | `true` với tài khoản khách do app mobile tạo qua `/auth/device`: không email, không mật khẩu, `providers` rỗng |
+| `id` | Hiện ở `/account` (web) và tab Hồ sơ (mobile) dưới tên "Mã/ID tài khoản". Người dùng gửi kèm ID này khi yêu cầu xoá tài khoản |
 | `referral.canEnterCode` | `true` khi user chưa từng nhập mã **và** không bị `referralBlocked` |
 | `referral.enteredCode` | Mã đã nhập, hoặc `null` |
 

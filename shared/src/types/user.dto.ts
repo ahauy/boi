@@ -25,6 +25,8 @@ export interface UserDto {
   referralLink: string;
   hasPassword: boolean;
   providers: AuthProvider[];
+  /** Tài khoản tạo tự động theo thiết bị, không có email hay mật khẩu */
+  isAnonymous: boolean;
   referral: UserReferralInfoDto;
 }
 

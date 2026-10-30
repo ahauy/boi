@@ -87,6 +87,17 @@ export class User {
   @Prop({ type: Boolean, required: true, default: false })
   referralBlocked: boolean;
 
+  // Khách dùng app không có email/mật khẩu: tài khoản gắn với một thiết bị duy nhất
+  @Prop({ type: Boolean, required: true, default: false })
+  isAnonymous: boolean;
+
+  @Prop({ type: String, default: null, trim: true })
+  deviceIdHash?: string | null;
+
+  // Hash IP lúc tạo tài khoản ẩn danh — dùng để chặn tạo hàng loạt
+  @Prop({ type: String, default: null, trim: true })
+  signupIpHash?: string | null;
+
   createdAt: Date;
   updatedAt: Date;
 
@@ -106,6 +117,18 @@ UserSchema.index(
   { 'identities.provider': 1, 'identities.providerUserId': 1 },
   { unique: true, sparse: true },
 );
+
+// Một thiết bị chỉ ứng với một tài khoản ẩn danh; tài khoản thường không có field này
+UserSchema.index(
+  { deviceIdHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { deviceIdHash: { $type: 'string' } },
+  },
+);
+
+// Đếm số tài khoản khách tạo từ một IP trong 24h
+UserSchema.index({ isAnonymous: 1, signupIpHash: 1, createdAt: -1 });
 
 // - { email: 1 } unique, partialFilterExpression: { email: { $type: "string" } }
 UserSchema.index(

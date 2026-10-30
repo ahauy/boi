@@ -19,6 +19,7 @@ import {
   RegisterResponseDto,
   ResendVerificationRequestDto,
   LoginRequestDto,
+  DeviceSessionRequestDto,
   AuthResponseDto,
   RefreshTokenResponseDto,
   CreditTransactionType,
@@ -150,6 +151,106 @@ export class AuthService {
       code: "INVALID_CREDENTIALS",
       message: "Thông tin đăng nhập không chính xác.",
     });
+  }
+
+  /**
+   * Mobile không có đăng ký/đăng nhập: mỗi thiết bị nhận một tài khoản ẩn danh gắn với
+   * deviceId trong SecureStore. Gọi lại cùng deviceId sẽ mở lại đúng tài khoản đó.
+   */
+  async createDeviceSession(
+    dto: DeviceSessionRequestDto,
+    clientIp?: string
+  ): Promise<{ authResponse: AuthResponseDto; rawRefreshToken: string }> {
+    const deviceIdHash = this.hashDeviceId(dto.deviceId.trim());
+    const existing = await this.userModel.findOne({ deviceIdHash });
+    if (existing) {
+      if (!existing.deletedAt) return this.createAuthSession(existing, false);
+      // Tài khoản đã bị xoá theo yêu cầu: không tự tạo tài khoản mới trên cùng thiết bị
+      throw new HttpException(
+        {
+          code: "DEVICE_SESSION_BLOCKED",
+          message:
+            "Tài khoản trên thiết bị này đã được xoá. Vui lòng liên hệ hỗ trợ nếu cần mở lại.",
+        },
+        HttpStatus.FORBIDDEN
+      );
+    }
+
+    const signupIpHash = this.hashIp(clientIp || "127.0.0.1");
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // CGNAT của mạng di động khiến nhiều người dùng chung một IP, nên mốc phải đủ rộng
+    const dailyCap = Number(
+      this.configService.get("ANONYMOUS_SIGNUP_DAILY_CAP", 20)
+    );
+    const createdFromIp = await this.userModel.countDocuments({
+      isAnonymous: true,
+      signupIpHash,
+      createdAt: { $gte: since },
+    });
+    if (createdFromIp >= dailyCap) {
+      throw new HttpException(
+        {
+          code: "DEVICE_SESSION_LIMIT_REACHED",
+          message:
+            "Đã đạt giới hạn tạo tài khoản khách từ mạng này. Vui lòng thử lại sau.",
+        },
+        HttpStatus.TOO_MANY_REQUESTS
+      );
+    }
+
+    const session = await this.connection.startSession();
+    let newUser: UserDocument | null = null;
+    try {
+      session.startTransaction();
+      newUser = await this.createUserWithBonus(
+        {
+          displayName: "Khách",
+          isAnonymous: true,
+          deviceIdHash,
+          signupIpHash,
+        },
+        false,
+        session
+      );
+      await session.commitTransaction();
+    } catch (error: any) {
+      await session.abortTransaction();
+      // Hai lần mở app cùng lúc trên cùng thiết bị: một bên đã tạo xong trước
+      if (error?.code === 11000) {
+        const raced = await this.userModel.findOne({ deviceIdHash });
+        if (raced && !raced.deletedAt) return this.createAuthSession(raced, false);
+        if (raced) {
+          throw new HttpException(
+            {
+              code: "DEVICE_SESSION_BLOCKED",
+              message:
+                "Tài khoản trên thiết bị này đã được xoá. Vui lòng liên hệ hỗ trợ nếu cần mở lại.",
+            },
+            HttpStatus.FORBIDDEN
+          );
+        }
+      }
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+
+    return this.createAuthSession(newUser!, true);
+  }
+
+  private hashDeviceId(value: string): string {
+    const secret = this.configService.get<string>(
+      "IDENTITY_HASH_SECRET",
+      "palmsight-identity-secret"
+    );
+    return crypto
+      .createHmac("sha256", secret)
+      .update(`device:${value}`)
+      .digest("hex");
+  }
+
+  private hashIp(value: string): string {
+    return crypto.createHash("sha256").update(value).digest("hex");
   }
 
   async hashPassword(password: string): Promise<string> {

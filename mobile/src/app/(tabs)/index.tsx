@@ -53,10 +53,7 @@ const POLL_TIMEOUT_MS = 90_000;
 
 export default function ScanScreen() {
   const { user, refreshUser } = useAuth();
-  const { target, photo, submitPhoto, clearPhoto, setTarget } = useCapture();
-
-  // Ảnh trong context có thể còn của luồng guest — chỉ dùng khi nó dành cho màn này
-  const memberPhoto = target === 'scan' ? photo : null;
+  const { photo, submitPhoto, clearPhoto } = useCapture();
 
   const scrollRef = useRef<ScrollViewInstance>(null);
   const cancelRef = useRef(false);
@@ -148,11 +145,11 @@ export default function ScanScreen() {
       allowsEditing: false,
     });
     if (result.canceled || result.assets.length === 0) return;
-    submitPhoto({ uri: result.assets[0].uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' }, 'scan');
+    submitPhoto({ uri: result.assets[0].uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
   }
 
   async function submit() {
-    if (!memberPhoto) return;
+    if (!photo) return;
     cancelRef.current = false;
     setElapsed(0);
     setBusy(true);
@@ -164,7 +161,7 @@ export default function ScanScreen() {
         hand,
         topics,
         aiConsent,
-        image: memberPhoto,
+        image: photo,
         idempotencyKey: newIdempotencyKey(),
       });
 
@@ -209,12 +206,12 @@ export default function ScanScreen() {
   }
 
   const canContinue = step !== 2 || selected.length > 0;
-  const submitDisabled = !memberPhoto || creditBalance <= 0 || !aiConsent;
+  const submitDisabled = !photo || creditBalance <= 0 || !aiConsent;
   const disabledReason =
     step === 2 && selected.length === 0
       ? 'Chọn ít nhất 1 mục để tiếp tục.'
       : step === 4
-        ? !memberPhoto
+        ? !photo
           ? 'Chụp hoặc chọn ảnh lòng bàn tay để tiếp tục.'
           : !aiConsent
             ? 'Bạn cần đồng ý gửi ảnh cho AI phân tích.'
@@ -353,7 +350,7 @@ export default function ScanScreen() {
               <View style={{ gap: spacing.md }}>
                 <Chip label={`${schoolConfig.name} · ${handLabel(hand)} · ${topicsLabel(topics, school)}`} style={{ alignSelf: 'flex-start' }} />
 
-                {memberPhoto ? (
+                {photo ? (
                   <View
                     style={{
                       borderRadius: radius['2xl'],
@@ -363,7 +360,7 @@ export default function ScanScreen() {
                       backgroundColor: colors.obsidian,
                     }}>
                     <Image
-                      source={{ uri: memberPhoto.uri }}
+                      source={{ uri: photo.uri }}
                       style={{ width: '100%', height: 260, backgroundColor: colors.obsidian }}
                       resizeMode="contain"
                       accessibilityLabel="Ảnh lòng bàn tay đã chọn"
@@ -404,7 +401,6 @@ export default function ScanScreen() {
                     variant="outline"
                     style={{ flex: 1 }}
                     onPress={() => {
-                      setTarget('scan');
                       router.push('/camera');
                     }}
                   />
@@ -441,7 +437,7 @@ export default function ScanScreen() {
         title="Thiên Cơ Luận Giải"
         message="PalmSight đang đọc từng đường chỉ tay và viết bài luận giải riêng cho bạn."
         progress={Math.min(elapsed / PROGRESS_SECONDS, 1)}
-        photoUri={memberPhoto?.uri}
+        photoUri={photo?.uri}
         onCancel={cancelWait}
         cancelLabel="Hủy chờ kết quả">
         <Text style={[type.caption, { color: colors.stone, textAlign: 'center' }]}>

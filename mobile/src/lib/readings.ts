@@ -1,6 +1,4 @@
 import type {
-  CreateGuestReadingResponseDto,
-  GuestReadingPreviewDto,
   HandOrientation,
   ReadingDto,
   ReadingListResponseDto,
@@ -58,35 +56,4 @@ export function fetchReading(id: string): Promise<ReadingDto> {
 
 export function deleteReading(id: string): Promise<void> {
   return del<void>(`/readings/${encodeURIComponent(id)}`);
-}
-
-export interface CreateGuestReadingParams {
-  school: ReadingSchool;
-  hand: HandOrientation;
-  aiConsent: boolean;
-  image: ImagePart;
-  fingerprint: string;
-  idempotencyKey: string;
-}
-
-export type CreateGuestReadingResult = CreateGuestReadingResponseDto;
-
-export function createGuestReading({ school, hand, aiConsent, image, fingerprint, idempotencyKey }: CreateGuestReadingParams): Promise<CreateGuestReadingResult> {
-  const form = new FormData();
-  form.append('school', school);
-  form.append('hand', hand);
-  form.append('aiConsent', String(aiConsent));
-  // Guest trên mobile bói toàn bộ mục (giống bấm "Bói toàn bộ" trên web) nên không gửi topics
-  form.append('image', image as unknown as Blob);
-  form.append('fingerprint', fingerprint);
-
-  return upload<CreateGuestReadingResult>('/readings/guest', form, {
-    headers: { 'Idempotency-Key': idempotencyKey },
-    timeoutMs: CREATE_TIMEOUT_MS,
-    auth: false,
-  });
-}
-
-export function fetchGuestPreview(token: string): Promise<GuestReadingPreviewDto> {
-  return get<GuestReadingPreviewDto>(`/readings/guest/${encodeURIComponent(token)}`, { auth: false });
 }

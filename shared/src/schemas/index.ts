@@ -179,6 +179,16 @@ export const loginSchema = yup.object({
     .max(128, "Mật khẩu tối đa 128 ký tự"),
 });
 
+export const deviceSessionSchema = yup.object({
+  deviceId: yup
+    .string()
+    .trim()
+    .required("Thiếu mã thiết bị")
+    .min(16, "Mã thiết bị quá ngắn")
+    .max(128, "Mã thiết bị quá dài")
+    .matches(/^[A-Za-z0-9_-]+$/, "Mã thiết bị không hợp lệ"),
+});
+
 export const googleAuthSchema = yup
   .object({
     idToken: yup.string().trim().max(4096, "Mã đăng nhập Google không hợp lệ"),

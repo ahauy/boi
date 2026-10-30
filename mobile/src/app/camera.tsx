@@ -21,7 +21,7 @@ const HINTS = ['ĐỦ SÁNG', 'XÒE NGÓN', 'HƯỚNG CAMERA'] as const;
 
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
-  const { target, submitPhoto } = useCapture();
+  const { submitPhoto } = useCapture();
   const cameraRef = useRef<CameraViewHandle>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [ready, setReady] = useState(false);
@@ -52,7 +52,7 @@ export default function CameraScreen() {
         setError('Không chụp được ảnh. Hãy thử lại.');
         return;
       }
-      submitPhoto({ uri: shot.uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' }, target);
+      submitPhoto({ uri: shot.uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
       setTimeout(() => router.back(), 120);
     } catch {
       // Android throw khi preview chưa sẵn sàng
@@ -72,7 +72,7 @@ export default function CameraScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsEditing: false });
     if (result.canceled || result.assets.length === 0) return;
-    submitPhoto({ uri: result.assets[0].uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' }, target);
+    submitPhoto({ uri: result.assets[0].uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
     router.back();
   }
 

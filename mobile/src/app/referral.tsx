@@ -76,7 +76,7 @@ export default function ReferralScreen() {
 
       <Card style={{ gap: spacing.sm }}>
         <Text style={[type.headingSm, { color: colors.ink }]}>Cách nhận credits</Text>
-        <Text style={[type.caption, { color: colors.success }]}>Mỗi người đăng ký bằng mã của bạn, bạn nhận +2 credits</Text>
+        <Text style={[type.caption, { color: colors.success }]}>Mỗi người nhập mã của bạn, bạn nhận +2 credits</Text>
         <Text style={[type.caption, { color: colors.success }]}>Tối đa 10 lượt thưởng mỗi ngày</Text>
         <Text style={[type.caption, { color: colors.success }]}>Người được bạn mời nhận +1 credit khi nhập mã của bạn</Text>
       </Card>

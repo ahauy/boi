@@ -1,25 +1,59 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { AuthResponseDto, UserDto } from '@palmsight/shared';
+import type { UserDto } from '@palmsight/shared';
 import * as api from '../lib/api';
 import * as authApi from '../lib/authApi';
+import { getDeviceId } from '../lib/deviceId';
 import { fetchMe } from '../lib/users';
 
-type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
+type AuthStatus = 'loading' | 'ready' | 'error';
 
 interface AuthContextValue {
   status: AuthStatus;
   user: UserDto | null;
-  /**true khi không gọi được backend lúc mở app (server nguội, mất mạng) — phân biệt với hết đăng nhập*/
-  unreachable: boolean;
-  signIn(login: string, password: string): Promise<void>;
-  signInWithGoogle(idToken: string, claimToken?: string): Promise<void>;
-  signInWithFacebook(accessToken: string, claimToken?: string): Promise<void>;
-  /** Dùng cho device flow: backend đã xác thực xong và trả phiên hoàn chỉnh */
-  completeSignIn(response: AuthResponseDto): Promise<void>;
-  signOut(): Promise<void>;
+  /** Lỗi mạng/máy chủ khi mở app — màn hình gốc hiện nút thử lại */
+  error: string | null;
+  retry(): Promise<void>;
   refreshUser(): Promise<void>;
   /** API trả creditBalance trong mọi response, dùng nó để cập nhật header ngay */
   setCreditBalance(balance: number): void;
+}
+
+type SessionResult = { user: UserDto } | { error: string };
+
+let inflightSession: Promise<SessionResult> | null = null;
+
+// Mở phiên: token cũ còn dùng được thì giữ, không thì đổi mã thiết bị lấy tài khoản khách
+async function resolveSession(): Promise<SessionResult> {
+  if (inflightSession) return inflightSession;
+
+  inflightSession = (async (): Promise<SessionResult> => {
+    try {
+      const hasSession = await api.loadStoredTokens();
+      if (hasSession) {
+        try {
+          return { user: await fetchMe() };
+        } catch (cause) {
+          // Token hỏng đã được api.ts xoá; mất mạng thì báo lỗi để người dùng thử lại
+          if (!(cause instanceof api.ApiError) || cause.status !== 401) throw cause;
+        }
+      }
+
+      const response = await authApi.createDeviceSession(await getDeviceId());
+      await api.applySession(response.accessToken, response.refreshToken ?? null);
+      return { user: await fetchMe() };
+    } catch (cause) {
+      return {
+        error:
+          cause instanceof api.ApiError
+            ? cause.message
+            : 'Không thể kết nối đến PalmSight. Vui lòng thử lại.',
+      };
+    }
+  })().finally(() => {
+    inflightSession = null;
+  });
+
+  return inflightSession;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -27,7 +61,19 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<UserDto | null>(null);
-  const [unreachable, setUnreachable] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const applyResult = useCallback((result: SessionResult) => {
+    if ('user' in result) {
+      setUser(result.user);
+      setError(null);
+      setStatus('ready');
+      return;
+    }
+    setUser(null);
+    setError(result.error);
+    setStatus('error');
+  }, []);
 
   const refreshUser = useCallback(async () => {
     setUser(await fetchMe());
@@ -35,96 +81,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-
-    // restore: token cũ trong SecureStore có thể đã hết hạn — request() sẽ tự refresh rồi thử lại
     void (async () => {
-      const hasSession = await api.loadStoredTokens();
-      if (!hasSession) {
-        if (!cancelled) setStatus('signedOut');
-        return;
-      }
-      try {
-        const me = await fetchMe();
-        if (cancelled) return;
-        setUser(me);
-        setStatus('signedIn');
-      } catch (error) {
-        if (cancelled) return;
-        // 401 đã được api.ts xử lý (endSession); còn lại là lỗi mạng/server nguội
-        setUnreachable(error instanceof api.ApiError && error.status === 0);
-        setStatus('signedOut');
-      }
+      const result = await resolveSession();
+      if (!cancelled) applyResult(result);
     })();
-
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyResult]);
 
-  useEffect(() => api.onSessionExpired(() => {
-    setUser(null);
-    setStatus('signedOut');
-  }), []);
+  const retry = useCallback(async () => {
+    setStatus('loading');
+    setError(null);
+    applyResult(await resolveSession());
+  }, [applyResult]);
 
-  // Login email và social login đều đi qua cùng một bước "lập phiên" sau khi backend xác thực xong
-  async function establishSession(response: AuthResponseDto): Promise<void> {
-    await api.applySession(response.accessToken, response.refreshToken ?? null);
-    setUser(await fetchMe());
-    setUnreachable(false);
-    setStatus('signedIn');
-  }
-
-  const signIn = useCallback(async (login: string, password: string) => {
-    await establishSession(await authApi.login({ login, password }));
-  }, []);
-
-  const signInWithGoogle = useCallback(async (idToken: string, claimToken?: string) => {
-    await establishSession(await authApi.loginWithGoogle(idToken, claimToken));
-  }, []);
-
-  const signInWithFacebook = useCallback(async (accessToken: string, claimToken?: string) => {
-    await establishSession(await authApi.loginWithFacebook(accessToken, claimToken));
-  }, []);
-
-  const completeSignIn = useCallback(async (response: AuthResponseDto) => {
-    await establishSession(response);
-  }, []);
-
-  const signOut = useCallback(async () => {
-    await api.signOut();
-    setUser(null);
-    setStatus('signedOut');
-  }, []);
+  // Refresh token hết hiệu lực (đổi máy, xoá dữ liệu server): tự mở phiên khách mới
+  useEffect(
+    () =>
+      api.onSessionExpired(() => {
+        setUser(null);
+        setStatus('loading');
+        void resolveSession().then(applyResult);
+      }),
+    [applyResult]
+  );
 
   const setCreditBalance = useCallback((balance: number) => {
     setUser((current) => (current ? { ...current, creditBalance: balance } : current));
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({
-      status,
-      user,
-      unreachable,
-      signIn,
-      signInWithGoogle,
-      signInWithFacebook,
-      completeSignIn,
-      signOut,
-      refreshUser,
-      setCreditBalance,
-    }),
-    [
-      status,
-      user,
-      unreachable,
-      signIn,
-      signInWithGoogle,
-      signInWithFacebook,
-      completeSignIn,
-      signOut,
-      refreshUser,
-      setCreditBalance,
-    ]
+    () => ({ status, user, error, retry, refreshUser, setCreditBalance }),
+    [status, user, error, retry, refreshUser, setCreditBalance]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

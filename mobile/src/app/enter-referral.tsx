@@ -67,7 +67,7 @@ export default function EnterReferralScreen() {
       {success ? <Banner variant="success" title={success} /> : null}
       {failure ? <Banner variant="error" title={failure} /> : null}
 
-      <Text style={[type.caption, { color: colors.stone }]}>Bạn có thể nhập mã sau trong mục Tài khoản.</Text>
+      <Text style={[type.caption, { color: colors.stone }]}>Bạn có thể nhập mã sau trong mục Hồ sơ.</Text>
     </Screen>
   );
 }

@@ -28,6 +28,11 @@ export interface LoginRequestDto {
   password: string;
 }
 
+/** Phiên khách ẩn danh: mobile gửi mã thiết bị đã lưu trong SecureStore để lấy lại đúng tài khoản */
+export interface DeviceSessionRequestDto {
+  deviceId: string;
+}
+
 export interface ForgotPasswordRequestDto {
   email: string;
 }

@@ -20,9 +20,11 @@ import {
   VerifyEmailRequestDto,
   ResendVerificationRequestDto,
   LoginRequestDto,
+  DeviceSessionRequestDto,
   AuthResponseDto,
   registerSchema,
   loginSchema,
+  deviceSessionSchema,
   GoogleAuthRequestDto,
   googleAuthSchema,
   GoogleBrowserStartRequestDto,
@@ -144,6 +146,33 @@ export class AuthController {
       currentRefreshToken,
       clientIp
     );
+
+    this.setRefreshCookie(res, rawRefreshToken);
+    return this.withNativeRefreshToken(authResponse, rawRefreshToken, req);
+  }
+
+  // App mobile không có màn đăng nhập: thiết bị tự đổi mã định danh lấy phiên khách.
+  // Không gắn AuthRateLimitGuard: mạng di động dùng CGNAT, nhiều người thật có thể chung IP;
+  // chống lạm dụng nằm ở ANONYMOUS_SIGNUP_DAILY_CAP trong service.
+  @Post("device")
+  @HttpCode(HttpStatus.OK)
+  async deviceSession(
+    @Body() body: DeviceSessionRequestDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<AuthResponseDto> {
+    const validated = await deviceSessionSchema.validate(body, {
+      abortEarly: false,
+    });
+    const rawIp =
+      (req.headers["x-forwarded-for"] as string) ||
+      req.ip ||
+      req.socket?.remoteAddress ||
+      "127.0.0.1";
+    const clientIp = rawIp.split(",")[0].trim();
+
+    const { authResponse, rawRefreshToken } =
+      await this.authService.createDeviceSession(validated, clientIp);
 
     this.setRefreshCookie(res, rawRefreshToken);
     return this.withNativeRefreshToken(authResponse, rawRefreshToken, req);

@@ -28,6 +28,7 @@ export class UsersService {
       referralLink: `${baseUrl}/r/${user.referralCode}`,
       hasPassword: Boolean(user.passwordHash),
       providers: (user.identities ?? []).map((identity) => identity.provider),
+      isAnonymous: Boolean(user.isAnonymous),
       referral: {
         canEnterCode: !enteredReferral && !user.referralBlocked,
         enteredCode: enteredReferral?.codeUsed ?? null,

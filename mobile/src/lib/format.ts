@@ -39,7 +39,7 @@ export function topicLabels(topics: string[] | null | undefined, school: Reading
 export function transactionLabel(type: CreditTransactionType, note?: string): string {
   switch (type) {
     case CreditTransactionType.SIGNUP_BONUS:
-      return 'Quà đăng ký';
+      return 'Quà chào mừng';
     case CreditTransactionType.REFERRAL_BONUS:
       return 'Thưởng giới thiệu';
     case CreditTransactionType.REFEREE_BONUS:

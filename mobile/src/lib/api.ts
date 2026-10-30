@@ -39,7 +39,7 @@ interface RequestOptions {
 
 let accessToken: string | null = null;
 let pendingRefresh: Promise<string | null> | null = null;
-// Tăng mỗi lần đăng xuất để một refresh đang chạy không đăng nhập lại được nữa
+// Tăng mỗi lần kết thúc phiên để một refresh đang chạy không khôi phục lại phiên cũ
 let sessionEpoch = 0;
 const expiredListeners = new Set<() => void>();
 
@@ -228,22 +228,4 @@ export function upload<T>(
   options?: Omit<RequestOptions, 'method' | 'form' | 'body'>
 ) {
   return request<T>(path, { ...options, method: 'POST', form });
-}
-
-/**
- * Đăng xuất: gửi để backend thu hồi refresh token, nhưng phiên trên máy phải xoá được kể cả khi
- * mạng lỗi — người dùng đã bấm "Đăng xuất".
- */
-export async function signOut(): Promise<void> {
-  const refreshToken = await tokenStore.getRefreshToken();
-  try {
-    await post('/auth/logout', undefined, {
-      headers: refreshToken ? { 'x-refresh-token': refreshToken } : undefined,
-      auth: false,
-      timeoutMs: REFRESH_TIMEOUT_MS,
-    });
-  } catch {
-    // Bỏ qua lỗi mạng: vẫn xoá phiên cục bộ bên dưới
-  }
-  endSession();
 }
