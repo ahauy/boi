@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+.next/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# Expo local state (mobile has its own .gitignore too)
+.expo/
+
+# Env — chỉ commit .env.example
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Local data
+docker-data/
+*.sqlite
+uploads/
+frontend/public/models/*.onnx
+frontend/public/models/*.task
+frontend/public/onnx/
+frontend/public/mediapipe/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# --- Universal Agents Workflow (Local-Only Mode) ---
+.agents/
+.specify/
+adr/
+CONTEXT.md
+GEMINI.md
+CLAUDE.md
+AGENTS.md
+.cursorrules
+.windsurfrules
+.claude/
+.codex/
+.kilo/
+
+.github/*
+!.github/workflows/
+!.github/workflows/*
+!.github/ISSUE_TEMPLATE/
+!.github/pull_request_template.md
+
+.docs/architecture/
+
+.impeccable/

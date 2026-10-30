@@ -1,0 +1,94 @@
+services:
+  - type: web
+    name: palmsight-backend
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: pnpm install && pnpm --filter @palmsight/shared build && pnpm --filter backend build
+    startCommand: pnpm --filter backend db:sync-indexes && pnpm --filter backend start:prod
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: 10000
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_ACCESS_TTL_SECONDS
+        value: 900
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: 30
+      - key: EMAIL_VERIFY_TTL_HOURS
+        value: 24
+      - key: PASSWORD_RESET_TTL_MINUTES
+        value: 60
+      - key: IDENTITY_HASH_SECRET
+        sync: false
+      - key: SUPPORT_EMAIL
+        value: palmsight.app@gmail.com
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: FACEBOOK_APP_ID
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 465
+      - key: SMTP_SECURE
+        value: true
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        value: "PalmSight <no-reply@palmsight.app>"
+      - key: AI_PROVIDER
+        value: gemini
+      - key: AI_MODEL
+        value: gemini-3.8-flash
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AI_FALLBACK_PROVIDER
+        value: groq
+      - key: AI_FALLBACK_MODEL
+        value: qwen/qwen3.8-27b
+      - key: AI_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: GROQ_API_KEY
+        sync: false
+      - key: AI_TIMEOUT_MS
+        value: 40000
+      - key: AI_MAX_TOKENS
+        value: 2000
+      - key: AI_TEMPERATURE
+        value: 0.7
+      - key: SIGNUP_BONUS_CREDITS
+        value: 3
+      - key: REFERRAL_REWARD_CREDITS
+        value: 2
+      - key: REFEREE_REWARD_CREDITS
+        value: 1
+      - key: READING_COST_CREDITS
+        value: 1
+      - key: REFERRAL_DAILY_CAP
+        value: 10
+      - key: IMAGE_MAX_BYTES
+        value: 8388608
+      - key: IMAGE_MAX_DIMENSION
+        value: 1280
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: palmsight/readings

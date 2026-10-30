@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PalmSight - Chính sách riêng tư</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #fdfcfc;
+      color: #201d1d;
+      font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+      font-size: 16px;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .container { width: 100%; max-width: 960px; margin: 0 auto; padding: 0 16px; }
+    .header { height: 56px; border-bottom: 1px solid rgba(15, 0, 0, 0.12); display: flex; align-items: center; }
+    .header a { font-weight: 700; text-decoration: none; color: #201d1d; }
+    .main { flex: 1; padding: 48px 0 64px 0; }
+    .content { max-width: 640px; }
+    h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+    .meta { font-size: 14px; color: #646262; margin-bottom: 32px; }
+    .lead { font-size: 16px; color: #424245; margin-bottom: 40px; }
+    .section { margin-bottom: 40px; }
+    .section-title { font-size: 16px; font-weight: 700; border-bottom: 1px solid rgba(15, 0, 0, 0.12); padding-bottom: 8px; margin-bottom: 16px; }
+    .row { padding: 10px 0; border-bottom: 1px solid rgba(15, 0, 0, 0.12); display: flex; gap: 10px; font-size: 15px; color: #424245; }
+    .row:last-child { border-bottom: none; }
+    .marker { font-weight: 700; color: #201d1d; }
+    footer { border-top: 1px solid rgba(15, 0, 0, 0.12); padding: 24px 0; font-size: 14px; color: #646262; margin-top: auto; }
+    .footer-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .footer-links a { color: #646262; text-decoration: underline; margin-right: 16px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <a href="/">PALMSIGHT</a>
+    </div>
+  </header>
+  <main class="main">
+    <div class="container">
+      <div class="content">
+        <h1>Chính sách riêng tư</h1>
+        <div class="meta">Cập nhật: 15/10/2026</div>
+        <p class="lead">PalmSight cam kết bảo vệ dữ liệu cá nhân của người dùng một cách minh bạch, an toàn và có trách nhiệm.</p>
+
+        <div class="section">
+          <div class="section-title">Chính sách không lưu trữ ảnh lòng bàn tay</div>
+          <p>Máy chủ PalmSight <strong>hoàn toàn không lưu trữ ảnh lòng bàn tay</strong> (ADR-0010). Ảnh tải lên được xóa toàn bộ siêu dữ liệu EXIF (bao gồm thông tin vị trí GPS), chỉ xử lý tạm thời trên RAM để gửi tới AI và xóa ngay sau đó.</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Dữ liệu thu thập</div>
+          <div class="row"><span class="marker">[+]</span><span>Thông tin tài khoản: Email, username, tên hiển thị.</span></div>
+          <div class="row"><span class="marker">[+]</span><span>Kết quả luận giải dạng văn bản (được mã hoá).</span></div>
+          <div class="row"><span class="marker">[+]</span><span>Lịch sử số dư credits.</span></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Chia sẻ thông tin với bên thứ ba</div>
+          <p>PalmSight không bán dữ liệu cho bất kỳ đơn vị quảng cáo nào. Dữ liệu chỉ gửi qua API tới dịch vụ AI để luận giải.</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Lưu trữ mã băm định danh đã xoá (ADR-0009)</div>
+          <p>Sau khi xoá tài khoản theo yêu cầu, toàn bộ dữ liệu cá nhân bị xoá vĩnh viễn trong 30 ngày. Chúng tôi chỉ giữ lại một mã băm HMAC-SHA256 một chiều của email/ID đăng nhập để ngăn chặn việc nhận lại khuyến mãi đăng ký nhiều lần.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <div class="container footer-inner">
+      <div>Kết quả mang tính giải trí, không thay thế tư vấn chuyên môn.</div>
+      <div class="footer-links">
+        <a href="/privacy">Chính sách riêng tư</a>
+        <a href="/terms">Điều khoản</a>
+        <a href="/data-deletion">Xoá dữ liệu</a>
+      </div>
+      <div>© PALMSIGHT</div>
+    </div>
+  </footer>
+</body>
+</html>

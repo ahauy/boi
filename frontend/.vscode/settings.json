@@ -1,0 +1,20 @@
+{
+    "editor.formatOnSave": true,
+    "eslint.enable": true,
+    "files.eol": "\n",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    },
+    "i18n-ally.localesPaths": [
+      "src/i18n"
+    ],
+    "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(git checkout *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
+    ]
+  }
+  }
+  

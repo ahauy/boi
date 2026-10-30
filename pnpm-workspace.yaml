@@ -1,0 +1,9 @@
+packages:
+  - 'frontend'
+  - 'backend'
+  - 'shared'
+  - 'mobile'
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
