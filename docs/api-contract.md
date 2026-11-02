@@ -147,6 +147,11 @@ Với `VALIDATION_ERROR`, `details.fields` liệt kê từng trường lỗi. `f
 | `REFERRAL_CYCLE` | 422 | Nhập mã của người do mình giới thiệu |
 | `RATE_LIMITED` | 429 | Vượt giới hạn; có header `Retry-After` |
 | `IP_TRIAL_LIMIT_EXCEEDED` | 429 | Địa chỉ IP đã phát sinh 5 lượt bói thử thành công trong vòng 24 giờ |
+| `REWARDED_ADS_DISABLED` | 404 | `REWARDED_ADS_ENABLED` đang tắt; app phải ẩn lời đề nghị, không cho xin `nonce` |
+| `REWARDED_AD_CAP_REACHED` | 429 | Đã dùng hết `REWARDED_AD_DAILY_CAP` lượt xem thưởng trong 24 giờ trượt |
+| `REWARDED_AD_CLAIM_NOT_FOUND` | 404 | `nonce` không do server cấp, hoặc đã hết hạn |
+| `AD_SSV_SIGNATURE_INVALID` | 400 | Callback của AdMob thiếu `signature`/`key_id`, hoặc chữ ký không khớp nội dung |
+| `AD_SSV_REWARD_MISMATCH` | 400 | Chữ ký hợp lệ nhưng `reward_item` không phải `palmsight-credit` |
 | `AI_UNAVAILABLE` | 503 | Nhà cung cấp AI lỗi, hết quota hoặc timeout; credit đã được hoàn |
 | `INTERNAL_ERROR` | 500 | Lỗi không xác định; có `details.requestId` |
 
@@ -161,6 +166,8 @@ Với `VALIDATION_ERROR`, `details.fields` liệt kê từng trường lỗi. `f
 | `POST /me/referral` | 5 request/giờ/user |
 | `POST /readings` | 5 request/phút/user, kể cả request trả lại kết quả cũ |
 | `POST /readings/guest` | Giới hạn trượt 5 lượt bói thử thành công/IP/24 giờ (`IP_TRIAL_LIMIT_EXCEEDED`); 1 lượt bói thử/thiết bị (`GUEST_TRIAL_LIMIT_REACHED`) |
+| `POST /ads/rewarded/intent` | 5 request/phút/user |
+| `GET /ads/rewarded/verify` | **Không** đếm theo IP, có chủ đích: callback của nhiều user khác nhau cùng đi ra từ một dải IP egress của Google, nên chặn theo IP sẽ làm mất lượt thưởng của user thật. Chữ ký ECDSA đã tự chứng minh nguồn gửi |
 | Còn lại | 60 request/phút |
 
 ## Endpoints
@@ -190,6 +197,10 @@ Với `VALIDATION_ERROR`, `details.fields` liệt kê từng trường lỗi. `f
 | DELETE | `/readings/{id}` | Bearer | path | Xoá ảnh trên Cloudinary, xoá kết quả, ẩn khỏi lịch sử |
 | POST | `/readings/guest` | — | header + body multipart | Bói thử 1 lần cho khách vãng lai (không cần đăng nhập), lưu ảnh lên Cloudinary, xem trước 50% kết quả |
 | GET | `/readings/guest/{token}` | — | path | Xem lại bản xem trước 50% bằng claimToken trong thời hạn 7 ngày |
+| GET | `/ads/rewarded/availability` | Bearer | — | còn bao nhiêu lượt xem quảng cáo trong 24 giờ, cờ ads có bật không |
+| POST | `/ads/rewarded/intent` | Bearer | body JSON | Xin `nonce` một lần cho một lượt xem quảng cáo thưởng |
+| GET | `/ads/rewarded/status` | Bearer | query `nonce` | App polling hỏi callback của Google đã về chưa |
+| GET | `/ads/rewarded/verify` | — | query do Google ký | Google gọi trực tiếp khi user xem xong; endpoint này xác minh chữ ký rồi cộng credit |
 
 Danh sách trường phái và các mục bói không có endpoint riêng: web đọc từ `@palmsight/shared` (`READING_SCHOOLS`, `LIFE_ASPECTS`).
 
@@ -789,3 +800,68 @@ Cho phép khách vãng lai xem lại bản xem trước 50% (bao gồm cả ản
 - **Response**: `200 OK` trả về `GuestReadingPreviewDto`.
 - **Lỗi**:
   - `404 NOT_FOUND`: Token không tồn tại, sai định dạng UUID v4, đã bị TTL index dọn dẹp sau 7 ngày, hoặc đã được tài khoản khác claim.
+
+### GET /ads/rewarded/availability
+
+Cần Bearer. Cho app biết có nên hiện lời đề nghị "xem quảng cáo nhận credit" hay không.
+
+```json
+{ "enabled": true, "creditsPerAd": 1, "dailyCap": 3, "remainingToday": 2 }
+```
+
+`enabled` lấy từ `REWARDED_ADS_ENABLED`. `remainingToday` đếm trong cửa sổ **24 giờ trượt** tính từ
+`rewarded_ad_claims.createdAt`, nên hết hạn là hồi dần, không reset theo nửa đêm.
+
+Lỗi: `UNAUTHENTICATED`.
+
+### POST /ads/rewarded/intent
+
+Cần Bearer. xin một `nonce` dùng một lần cho một lượt xem.
+
+| Vị trí | Trường | Kiểu | Bắt buộc | Ràng buộc |
+| --- | --- | --- | --- | --- |
+| body | `placement` | string | có | `wallet` \| `out_of_credits` |
+
+```json
+{ "nonce": "3f1c…", "creditsPerAd": 1, "remainingToday": 1, "expiresAt": "2026-11-03T02:00:00.000Z", "status": "ISSUED" }
+```
+
+App đưa `nonce` vào `serverSideVerificationOptions.userId` của AdMob. Server là bên duy nhất giữ map
+`nonce → userId`, nên client không thể nhận credit cho tài khoản khác.
+
+Giới hạn: 5 request/phút/user. Trần 24 giờ kiểm tra **ở bước này**, để user không tốn một lượt xem
+rồi mới bị từ chối.
+
+Lỗi: `VALIDATION_ERROR`, `UNAUTHENTICATED`, `REWARDED_ADS_DISABLED`, `REWARDED_AD_CAP_REACHED`.
+
+### GET /ads/rewarded/status
+
+Cần Bearer. Query `nonce`. App gọi lặp lại (khuyến nghị 1,5 giây/lần, tối đa 20 giây) để báo kết quả
+cho user, vì callback của Google là bất đồng bộ.
+
+```json
+{ "status": "REDEEMED", "creditsEarned": 1, "creditBalance": 4, "remainingToday": 2 }
+```
+
+`status: "ISSUED"` nghĩa là Google chưa xác minh xong — **không** có nghĩa là mất thưởng. Endpoint
+này không cấp credit.
+
+Lỗi: `VALIDATION_ERROR`, `UNAUTHENTICATED`, `REWARDED_AD_CLAIM_NOT_FOUND`.
+
+### GET /ads/rewarded/verify
+
+**Không cần đăng nhập — do máy chủ Google gọi, không phải app.** Địa chỉ này điền vào AdMob UI
+(placeholder `{transaction_id}` trở lên). Server:
+
+1. Xác minh chữ ký ECDSA P-256/SHA-256 trên đúng query string, bỏ `signature` và `key_id`, sắp xếp
+   theo tên tham số, giá trị đã giải mã. Khoá public tải theo `key_id` từ
+   `https://gstatic.com/admob/reward/verifier-keys.json`, cache 6 giờ (Google xoay khoá).
+2. Khớp `reward_item === "palmsight-credit"` và `reward_amount >= 1`.
+3. `findOneAndUpdate` với điều kiện `status = ISSUED` và `expiresAt > now`, rồi ghi
+   `CreditTransaction(type: REWARDED_AD)` — cùng một MongoDB transaction.
+
+Response: `200` rỗng khi đã xử lý xong, kể cả khi đây là callback lặp lại của một `nonce` đã cấp
+(không cộng thêm credit). Trả `200` cho case lặp lại là có chủ đích, để Google ngừng retry.
+
+Lỗi: `AD_SSV_SIGNATURE_INVALID`, `AD_SSV_REWARD_MISMATCH`, `REWARDED_AD_CLAIM_NOT_FOUND` (nonce lạ
+hoặc đã hết hạn — trường hợp này không cộng credit).

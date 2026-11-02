@@ -57,7 +57,15 @@ describe("US-AI-001: POST /api/v1/readings - AI Vision Palm Reading & Credit Man
 
   beforeAll(async () => {
     testApp = await createTestApp({
-      googleVerifier: { verify: async () => googleProfile },
+      googleVerifier: {
+        // sub và email đều dẫn từ idToken: backend gộp tài khoản theo email đã xác minh, nên chỉ
+        // đổi sub thôi thì vẫn ra đúng một user dùng chung
+        verify: async (idToken: string): Promise<GoogleProfile> => ({
+          ...googleProfile,
+          sub: `google-sub-${idToken}`,
+          email: `readings.${idToken}@example.com`,
+        }),
+      },
     });
     aiService = testApp.app.get(AiService);
 
@@ -239,6 +247,15 @@ describe("US-AI-001: POST /api/v1/readings - AI Vision Palm Reading & Credit Man
       new Error("All AI providers unavailable")
     );
 
+    // POST /readings giới hạn 5 request/phút/user (api-contract.md); user của các test trên đã dùng
+    // hết 5 slot trong phút này, nên test cần một tài khoản riêng để đo đúng luồng hoàn credit.
+    const session = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken: "ai-failure-user" }),
+    });
+    const { accessToken: secondToken } = (await session.json()) as any;
+
     const res = await sendReadingRequest(
       {
         school: ReadingSchool.WESTERN,
@@ -246,13 +263,34 @@ describe("US-AI-001: POST /api/v1/readings - AI Vision Palm Reading & Credit Man
         aiConsent: "true",
       },
       testImageBuffer,
-      idempotencyKey
+      idempotencyKey,
+      secondToken
     );
 
     expect(res.status).toBe(503);
     const body = (await res.json()) as any;
     expect(body.error.code).toBe("AI_UNAVAILABLE");
     expect(body.error.details.refunded).toBe(true);
-    expect(body.error.details.creditBalance).toBe(2); // balance remains 2
+    // Tài khoản mới có 3 credit: tiêu 1 còn 2, hoàn lại thành 3
+    expect(body.error.details.creditBalance).toBe(3);
+  });
+
+  it("returns 429 RATE_LIMITED on the sixth POST /readings within a minute for one user", async () => {
+    // api-contract.md: "5 request/phút/user, kể cả request trả lại kết quả cũ". Bốn test ở trên đã
+    // dùng đủ 5 slot của tài khoản gốc, nên request này phải bị chặn trước khi chạm tới credit.
+    const res = await sendReadingRequest(
+      {
+        school: ReadingSchool.WESTERN,
+        hand: HandOrientation.LEFT,
+        aiConsent: "true",
+      },
+      testImageBuffer,
+      "44444444-5555-6666-8888-222222222222"
+    );
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    const body = (await res.json()) as any;
+    expect(body.error.code).toBe("RATE_LIMITED");
   });
 });

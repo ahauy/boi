@@ -12,6 +12,7 @@ import { UsersModule } from "../src/users/users.module";
 import { CreditsModule } from "../src/credits/credits.module";
 import { HealthModule } from "../src/health/health.module";
 import { ReadingsModule } from "../src/readings/readings.module";
+import { AdsModule } from "../src/ads/ads.module";
 import { MailService } from "../src/mail/mail.service";
 import { GoogleAuthVerifier } from "../src/auth/google-auth.verifier";
 import { FacebookAuthVerifier } from "../src/auth/facebook-auth.verifier";
@@ -41,6 +42,9 @@ export interface TestAppOptions {
   googleVerifier?: Pick<GoogleAuthVerifier, "verify"> &
     Partial<Pick<GoogleAuthVerifier, "verifyCode">>;
   facebookVerifier?: Pick<FacebookAuthVerifier, "verify">;
+  /** Nơi test phục bộ khoá công khai giả để chạy thật logic xác minh chữ ký SSV. */
+  adSsvKeysUrl?: string;
+  rewardedAdsEnabled?: boolean;
 }
 
 export async function createTestApp(
@@ -102,6 +106,9 @@ export async function createTestApp(
               "test-google-client-id.apps.googleusercontent.com",
             FACEBOOK_APP_ID: "test-facebook-app-id",
             FACEBOOK_APP_SECRET: "test-facebook-app-secret",
+            REWARDED_ADS_ENABLED: options.rewardedAdsEnabled ? "true" : "false",
+            REWARDED_AD_DAILY_CAP: 3,
+            AD_SSV_KEYS_URL: options.adSsvKeysUrl ?? "http://127.0.0.1:1/no-keys",
             NODE_ENV: "test",
           }),
         ],
@@ -118,6 +125,7 @@ export async function createTestApp(
       AuthModule,
       UsersModule,
       ReadingsModule,
+      AdsModule,
     ],
   })
     .overrideProvider(MailService)
@@ -156,6 +164,7 @@ export async function createTestApp(
     "deleted_identities",
     "readings",
     "guest_trials",
+    "rewarded_ad_claims",
   ];
   for (const col of collectionNames) {
     try {

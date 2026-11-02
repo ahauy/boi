@@ -42,11 +42,15 @@ async function resolveSession(): Promise<SessionResult> {
       await api.applySession(response.accessToken, response.refreshToken ?? null);
       return { user: await fetchMe() };
     } catch (cause) {
+      // ApiError nghĩa là đã chạm tới máy chủ (status != 0) hoặc không nối được (status == 0);
+      // message của nó đã đúng hoàn cảnh. Ngoài ApiError thì đây là lỗi của chính app — báo kiểu
+      // "không thể kết nối" sẽ đẩy người dùng đi kiểm tra Wi-Fi trong khi Wi-Fi không có lỗi.
+      if (cause instanceof api.ApiError) {
+        return { error: cause.message };
+      }
+      console.warn('[session] lỗi không mong đợi khi mở phiên:', cause);
       return {
-        error:
-          cause instanceof api.ApiError
-            ? cause.message
-            : 'Không thể kết nối đến PalmSight. Vui lòng thử lại.',
+        error: 'Không mở được phiên trên thiết bị này. Vui lòng thử lại hoặc cài đặt lại app.',
       };
     }
   })().finally(() => {

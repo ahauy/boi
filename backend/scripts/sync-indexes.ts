@@ -11,6 +11,7 @@ import {
   CreditTransactionSchema,
   DeletedIdentitySchema,
   GuestTrialSchema,
+  RewardedAdClaimSchema,
 } from '../src/schemas';
 
 // Load .env file if available
@@ -48,6 +49,7 @@ export const SYNC_TARGETS: SyncTarget[] = [
   { name: 'CreditTransaction', schema: CreditTransactionSchema },
   { name: 'DeletedIdentity', schema: DeletedIdentitySchema },
   { name: 'GuestTrial', schema: GuestTrialSchema },
+  { name: 'RewardedAdClaim', schema: RewardedAdClaimSchema },
 ];
 
 export async function syncGuestTrialIndexes(connection: Connection): Promise<void> {

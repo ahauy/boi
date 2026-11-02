@@ -17,6 +17,8 @@ const getTransactionTypeName = (tx: CreditTransactionDto): string => {
       return "Xem bói";
     case CreditTransactionType.READING_REFUND:
       return "Hoàn credit";
+    case CreditTransactionType.REWARDED_AD:
+      return "Xem quảng cáo";
     case CreditTransactionType.ADMIN_ADJUST:
       return tx.note ? `Điều chỉnh (${tx.note})` : "Điều chỉnh hệ thống";
     default:

@@ -26,6 +26,7 @@ export interface RecordCreditTransactionDto {
   balanceAfter: number;
   readingId?: Types.ObjectId;
   referralId?: Types.ObjectId;
+  adClaimId?: Types.ObjectId;
   note?: string;
 }
 
@@ -51,6 +52,7 @@ export class CreditLedgerService {
           balanceAfter: dto.balanceAfter,
           readingId: dto.readingId,
           referralId: dto.referralId,
+          adClaimId: dto.adClaimId,
           note: dto.note,
         },
       ],
@@ -159,6 +161,42 @@ export class CreditLedgerService {
         type: CreditTransactionType.READING_REFUND,
         balanceAfter: user!.creditBalance,
         readingId,
+      },
+      session
+    );
+  }
+
+  /**
+   * Credit chỉ được cộng khi callback xác minh quảng cáo của Google đã khớp chữ ký và nonce
+   * còn hiệu lực. `credits` lấy từ claim chứ không lấy từ cấu hình hiện tại: người dùng bấm nút
+   * theo mức thưởng nào thì nhận đúng mức đó, kể cả khi admin vừa đổi cấu hình giữa chừng.
+   */
+  async grantRewardedAd(
+    userId: Types.ObjectId,
+    claimId: Types.ObjectId,
+    credits: number,
+    session: ClientSession
+  ): Promise<CreditTransactionDocument> {
+    const res = await this.userModel.updateOne(
+      { _id: userId, deletedAt: null },
+      { $inc: { creditBalance: credits } },
+      { session }
+    );
+    if (res.matchedCount !== 1) {
+      throw new NotFoundException({
+        code: "USER_NOT_FOUND",
+        message: "Người dùng không tồn tại.",
+      });
+    }
+
+    const user = await this.userModel.findById(userId).session(session).lean();
+    return this.recordWithSession(
+      {
+        userId,
+        amount: credits,
+        type: CreditTransactionType.REWARDED_AD,
+        balanceAfter: user!.creditBalance,
+        adClaimId: claimId,
       },
       session
     );

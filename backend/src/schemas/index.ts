@@ -7,3 +7,4 @@ export * from './reading.schema';
 export * from './credit-transaction.schema';
 export * from './deleted-identity.schema';
 export * from './guest-trial.schema';
+export * from './rewarded-ad-claim.schema';

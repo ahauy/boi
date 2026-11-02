@@ -19,6 +19,7 @@ import { ReadingsController } from "./readings.controller";
 import { ReadingsGuestController } from "./readings.guest.controller";
 import { GuestTrialGuard } from "./guards/guest-trial.guard";
 import { GuestTrialRateLimitGuard } from "./guards/guest-trial-rate-limit.guard";
+import { UserRateLimitGuard } from "../auth/guards/user-rate-limit.guard";
 
 const guestUploadMiddleware = multer({
   storage: multer.memoryStorage(),
@@ -46,6 +47,7 @@ const guestUploadMiddleware = multer({
     ReadingsService,
     GuestTrialGuard,
     GuestTrialRateLimitGuard,
+    UserRateLimitGuard,
   ],
   exports: [ReadingsService, ImageProcessorService, CloudinaryService],
 })

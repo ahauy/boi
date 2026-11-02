@@ -27,7 +27,19 @@ export enum CreditTransactionType {
   REFEREE_BONUS = "REFEREE_BONUS",
   READING_SPEND = "READING_SPEND",
   READING_REFUND = "READING_REFUND",
+  REWARDED_AD = "REWARDED_AD",
   ADMIN_ADJUST = "ADMIN_ADJUST",
+}
+
+export enum RewardedAdClaimStatus {
+  ISSUED = "ISSUED",
+  REDEEMED = "REDEEMED",
+}
+
+/** Nơi app hiện lời đề nghị xem quảng cáo; ghi vào claim để đo chỗ nào hiệu quả. */
+export enum RewardedAdPlacement {
+  WALLET = "wallet",
+  OUT_OF_CREDITS = "out_of_credits",
 }
 
 export enum ImageQuality {

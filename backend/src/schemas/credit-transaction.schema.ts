@@ -53,6 +53,15 @@ export class CreditTransaction {
   })
   referralId?: Types.ObjectId;
 
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'RewardedAdClaim',
+    required: false,
+    default: undefined,
+    set: (v: unknown) => (v === null ? undefined : v),
+  })
+  adClaimId?: Types.ObjectId;
+
   @Prop({ type: String, required: false, trim: true, default: undefined })
   note?: string;
 
@@ -83,4 +92,10 @@ CreditTransactionSchema.index(
 CreditTransactionSchema.index(
   { referralId: 1, type: 1 },
   { unique: true, partialFilterExpression: { referralId: { $exists: true } } },
+);
+
+// Một lượt xem quảng cáo chỉ được cấp credit một lần, kể cả khi callback của Google được gửi lại
+CreditTransactionSchema.index(
+  { adClaimId: 1, type: 1 },
+  { unique: true, partialFilterExpression: { adClaimId: { $exists: true } } },
 );

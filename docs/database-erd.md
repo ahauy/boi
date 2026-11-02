@@ -16,9 +16,11 @@ erDiagram
     users ||--o{ readings : "1 : N (userId null khi bói thử)"
     users ||--o{ guest_trials : "claimedByUserId 1 : 0..N"
     users ||--o{ credit_transactions : "1 : N"
+    users ||--o{ rewarded_ad_claims : "1 : N"
     readings ||--o| guest_trials : "1 : 0..1"
     readings ||--o{ credit_transactions : "1 : 0..2"
     referrals ||--o| credit_transactions : "1 : 0..1"
+    rewarded_ad_claims ||--o| credit_transactions : "1 : 0..1"
 
     users {
         ObjectId _id PK
@@ -110,6 +112,19 @@ erDiagram
         int balanceAfter
         ObjectId readingId FK
         ObjectId referralId FK
+        ObjectId adClaimId FK
+    }
+    rewarded_ad_claims {
+        ObjectId _id PK
+        ObjectId userId FK
+        string nonce UK
+        string type "ISSUED | REDEEMED"
+        int rewardCredits
+        string transactionId UK "null"
+        string placement
+        Date expiresAt
+        Date redeemedAt "null"
+        Date createdAt
     }
     deleted_identities {
         ObjectId _id PK
@@ -300,10 +315,11 @@ Index:
 | `_id` | ObjectId | | ObjectId tăng dần theo thời gian, dùng làm cursor phân trang |
 | `userId` | ObjectId | bắt buộc, ref `users` | |
 | `amount` | int | bắt buộc, khác 0 | Dương = cộng, âm = trừ |
-| `type` | `SIGNUP_BONUS` \| `REFERRAL_BONUS` \| `REFEREE_BONUS` \| `READING_SPEND` \| `READING_REFUND` \| `ADMIN_ADJUST` | bắt buộc | |
+| `type` | `SIGNUP_BONUS` \| `REFERRAL_BONUS` \| `REFEREE_BONUS` \| `READING_SPEND` \| `READING_REFUND` \| `REWARDED_AD` \| `ADMIN_ADJUST` | bắt buộc | |
 | `balanceAfter` | int | bắt buộc | Số dư sau giao dịch |
 | `readingId` | ObjectId | ref `readings` | Chỉ có với `READING_*` |
 | `referralId` | ObjectId | ref `referrals` | Chỉ có với `REFERRAL_BONUS` (của chủ mã) và `REFEREE_BONUS` (của người nhập) |
+| `adClaimId` | ObjectId | ref `rewarded_ad_claims` | Chỉ có với `REWARDED_AD` |
 | `note` | string | | Bắt buộc với `ADMIN_ADJUST` |
 | `createdAt` | Date | | |
 
@@ -314,6 +330,33 @@ Index:
 - `{ userId: 1, type: 1 }` unique, `partialFilterExpression: { type: "SIGNUP_BONUS" }`: mỗi user chỉ nhận bonus đăng ký một lần.
 - `{ readingId: 1, type: 1 }` unique, `partialFilterExpression: { readingId: { $exists: true } }`: mỗi reading tối đa 1 lần trừ, 1 lần hoàn.
 - `{ referralId: 1, type: 1 }` unique, `partialFilterExpression: { referralId: { $exists: true } }`: mỗi referral tối đa 1 lần thưởng chủ mã và 1 lần thưởng người nhập.
+- `{ adClaimId: 1, type: 1 }` unique, `partialFilterExpression: { adClaimId: { $exists: true } }`: một lượt xem quảng cáo chỉ được cấp credit một lần.
+
+### rewarded_ad_claims
+
+Cầu nối giữ **phần thưởng** khỏi **lời khai của client**: app xin `nonce` trước khi cho xem quảng cáo,
+Google sau đó gọi thẳng vào server xác nhận bằng chữ ký. Xem [business-rules.md](business-rules.md#quảng-cáo-thưởng-rewarded-ads).
+
+| Field | Kiểu | Ràng buộc | Ghi chú |
+| --- | --- | --- | --- |
+| `_id` | ObjectId | | |
+| `userId` | ObjectId | bắt buộc, ref `users` | |
+| `nonce` | string | bắt buộc, unique | 32 ký tự hex, do server sinh; app đưa vào `serverSideVerificationOptions.userId` |
+| `status` | `ISSUED` \| `REDEEMED` | bắt buộc, mặc định `ISSUED` | |
+| `rewardCredits` | int | bắt buộc | Chụp lại mức thưởng tại lúc xin, để đổi cấu hình giữa chừng không đổi phần đã hứa |
+| `transactionId` | string | unique, sparse | `admob_transaction_id`; có là đã cấp rồi |
+| `placement` | string | | `wallet` \| `out_of_credits` |
+| `expiresAt` | Date | bắt buộc | Quá hạn là nonce vô giá trị |
+| `redeemedAt` | Date | | |
+| `createdAt` | Date | | Mốc đếm trần 24 giờ |
+
+Index:
+- `{ nonce: 1 }` unique.
+- `{ transactionId: 1 }` unique, sparse — chống phát lại callback của Google.
+- `{ userId: 1, createdAt: -1 }` — đếm lượt đã dùng trong cửa sổ 24 giờ.
+
+Note: claim hết hạn **vẫn** tính vào trần 24 giờ, vì `countDocuments` lọc theo `createdAt` chứ không
+lọc theo `status`. Đó là lựa chọn có chủ đích: nếu không tính, một client có thể spam intent vô hạn.
 
 ### deleted_identities
 

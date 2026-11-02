@@ -34,7 +34,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY shared/package.json ./shared/
 COPY backend/package.json ./backend/
 
-RUN pnpm install --prod --frozen-lockfile
+# --ignore-scripts: prepare script builds @palmsight/shared with tsup (devDependency),
+# which is not installed in this prod-only stage; dist is copied from the builder stage.
+RUN pnpm install --prod --frozen-lockfile --ignore-scripts
 
 # Stage 3: Production Runtime
 FROM node:22-alpine AS runner
@@ -50,6 +52,8 @@ RUN addgroup -S -g 1001 nodejs && adduser -S -u 1001 nestjs -G nodejs
 # Copy runtime node_modules and built assets
 COPY --from=prod-deps --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=prod-deps --chown=nestjs:nodejs /app/backend/node_modules ./backend/node_modules
+# @palmsight/shared keeps runtime deps (yup) external in dist
+COPY --from=prod-deps --chown=nestjs:nodejs /app/shared/node_modules ./shared/node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/shared/package.json ./shared/package.json
 COPY --from=builder --chown=nestjs:nodejs /app/shared/dist ./shared/dist
 COPY --from=builder --chown=nestjs:nodejs /app/backend/package.json ./backend/package.json

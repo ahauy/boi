@@ -146,11 +146,23 @@ export const CREDIT_AMOUNTS = {
   REFEREE_REWARD: 1,
   READING_COST: 1,
   REFERRAL_DAILY_CAP: 10,
+  REWARDED_AD_REWARD: 1,
+  REWARDED_AD_DAILY_CAP: 3,
   SIGNUP_BONUS_CREDITS: 3,
   REFERRAL_REWARD_CREDITS: 2,
   REFEREE_REWARD_CREDITS: 1,
   READING_COST_CREDITS: 1,
+  REWARDED_AD_REWARD_CREDITS: 1,
 } as const;
+
+/** Một lượt xem quảng cáo đổi credit chỉ có hiệu lực trong khoảng này; quá hạn là claim hết giá trị. */
+export const REWARDED_AD_INTENT_TTL_MS = 10 * 60 * 1000;
+
+/** Cửa sổ đếm trần lượt xem quảng cáo: 24 giờ trượt, không phải theo ngày lịch. */
+export const REWARDED_AD_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Giá trị gửi cho AdMob ở `reward_item`; callback phải khớp mới được cấp credit. */
+export const REWARDED_AD_REWARD_ITEM = "palmsight-credit";
 
 export const REFERRAL_CODE_REGEX = /^[A-HJKMNP-Z2-9]{8}$/;
 export const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;

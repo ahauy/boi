@@ -19,6 +19,10 @@ import { Response } from "express";
 import { PaginationQueryDto } from "@palmsight/shared";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
+import {
+  UserRateLimit,
+  UserRateLimitGuard,
+} from "../auth/guards/user-rate-limit.guard";
 import { ReadingsService } from "./readings.service";
 
 type UploadedReadingFiles =
@@ -51,6 +55,10 @@ export class ReadingsController {
   constructor(private readonly readingsService: ReadingsService) {}
 
   @Post()
+  // api-contract.md đã ghi "5 request/phút/user" cho route này từ đầu nhưng chưa từng được cài;
+  // đây là chỗ chặn chi phí AI phát sinh từ một tài khoản bắn request.
+  @UseGuards(UserRateLimitGuard)
+  @UserRateLimit({ limit: 5, windowMs: 60 * 1000 })
   @UseInterceptors(
     FileFieldsInterceptor(
       [

@@ -11,6 +11,7 @@ Mọi thay đổi credits đều ghi một document vào sổ cái `credit_trans
 | `REFEREE_BONUS` | Mình nhập mã giới thiệu hợp lệ của người khác | +1 | Người nhập mã (referee) | Cộng ngay khi nhập mã; một lần/tài khoản. **Không** bị ảnh hưởng bởi trần của chủ mã |
 | `READING_SPEND` | Bắt đầu một lần xem bói | −1 | Người xem | `creditBalance >= 1` |
 | `READING_REFUND` | AI lỗi, timeout hoặc trả sai định dạng; ảnh không phải lòng bàn tay (người dùng không mất credit) | +1 | Người xem | Tối đa 1 lần cho mỗi reading |
+| `REWARDED_AD` | Người dùng xem trọn một rewarded ad và Google xác minh bằng callback có chữ ký | +1 | Người xem | Tối đa `REWARDED_AD_DAILY_CAP` lượt/24 giờ/tài khoản |
 | `ADMIN_ADJUST` | Dev cộng/trừ tay bằng script (không có trang admin) | ±n | Bất kỳ | Bắt buộc có `note` |
 
 **Hằng số cấu hình** (đọc từ env, không hard-code):
@@ -22,6 +23,41 @@ Mọi thay đổi credits đều ghi một document vào sổ cái `credit_trans
 | `REFEREE_REWARD_CREDITS` | 1 |
 | `READING_COST_CREDITS` | 1 |
 | `REFERRAL_DAILY_CAP` | 10 |
+| `REWARDED_ADS_ENABLED` | `false` |
+| `REWARDED_AD_REWARD_CREDITS` | 1 |
+| `REWARDED_AD_DAILY_CAP` | 3 |
+| `REWARDED_AD_INTENT_TTL_MS` | 600000 |
+
+## Quảng cáo thưởng (rewarded ads)
+
+Credit chỉ là phần thưởng khi người dùng **chủ động** xem quảng cáo, nên luồng phải chịu được hai
+điều: client nói dối "đã xem xong", và Google gửi callback trùng lặp. Thiết kế theo đó.
+
+| # | Bước | Nội dung |
+| --- | --- | --- |
+| 1 | `POST /ads/rewarded/intent` (cần đăng nhập) | Server cấp `nonce` một lần, snapshot mức thưởng, kiểm tra trần 24 giờ **ngay tại đây**. App đưa nonce vào `serverSideVerificationOptions.userId` của AdMob |
+| 2 | User xem quảng cáo | App không cộng credit ở bước này, dù SDK báo `onUserEarnedReward` |
+| 3 | Google gọi `GET /ads/rewarded/verify` | Server xác minh chữ ký ECDSA P-256/SHA-256 trên chính query string (bỏ `signature` và `key_id`, sắp xếp theo tên tham số, giá trị đã giải mã), khoá public tải từ `gstatic.com/admob/reward/verifier-keys.json` theo `key_id` |
+| 4 | Cộng credit | `findOneAndUpdate` với điều kiện `status = ISSUED` và `expiresAt > now`, rồi ghi `CreditTransaction` — tất cả trong một MongoDB transaction |
+| 5 | `GET /ads/rewarded/status` | App polling kết quả này tới 20 giây để báo cho user; hết thời gian thì hẹn "đang chờ xác nhận" |
+
+**Vì sao bắt buộc xác minh phía server**: nếu app tự báo hoàn thành thì chỉ cần một request giả là
+nhận credit miễn phí, mà mỗi credit lại là một lần gọi AI tốn tiền thật. Vì chữ ký do Google tạo,
+client không thể tự ký lại.
+
+**Chống phát lại**: `nonce` unique, `transaction_id` unique, và index unique
+`{ adClaimId: 1, type: 1 }` trên `credit_transactions`. Callback lặp lại của Google trả `200` nhưng
+không cộng thêm.
+
+**Quy tắc trần 24 giờ**: đếm theo `createdAt` của claim trong 24 giờ trượt (không phải ngày lịch),
+tính cả claim đã dùng lẫn claim đã hết hạn. Claim hết hạn vẫn chiếm suất vì người dùng đã được phát
+cho một lượt xem.
+
+**Fail closed**: thiếu chữ ký, sai chữ ký, `key_id` lạ không tải được khoá, `reward_item` không phải
+`palmsight-credit` — mọi trường hợp đều **không** cộng credit.
+
+`REWARDED_ADS_ENABLED=false` (mặc định) làm `/ads/rewarded/availability` trả `enabled: false`, app
+ẩn toàn bộ lời đề nghị, và `POST /ads/rewarded/intent` trả 404. Bật/tắt không cần bản build mới.
 
 **Quy tắc khác**
 

@@ -1,13 +1,13 @@
 import type { ApiErrorResponse, RefreshTokenResponseDto } from '@palmsight/shared';
-import { Platform } from 'react-native';
 import * as tokenStore from './tokenStore';
 
 // Backend NestJS chạy port 4000 với global prefix /api/v1. Trên máy thật phải là IP LAN hoặc ngrok.
-const RAW_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
-// Android emulator không thấy localhost của máy dev; đổi sang 10.0.2.2 khi chạy local.
-const DEV_BASE_URL =
-  Platform.OS === 'android' ? RAW_BASE_URL.replace(/\/\/(localhost|127\.0\.0\.1)(?=[:/])/, '//10.0.2.2') : RAW_BASE_URL;
-export const API_BASE_URL = DEV_BASE_URL.replace(/\/+$/, '');
+//
+// Không đổi localhost → 10.0.2.2 cho Android emulator như cách làm cũ: trên máy ảo hiện dùng,
+// OkHttp của app không nối được 10.0.2.2 (kể cả khi TCP thô tới được), nên mọi request chết ngay
+// với NETWORK_ERROR. Thay vào đó emulator truy qua host qua `adb reverse tcp:4000 tcp:4000`, giữ
+// nguyên localhost như cấu hình. Xem mobile-2/README.md.
+export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1').replace(/\/+$/, '');
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const REFRESH_TIMEOUT_MS = 15_000;

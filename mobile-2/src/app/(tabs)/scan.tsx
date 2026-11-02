@@ -5,13 +5,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { ReadingStatus } from '@palmsight/shared';
+import { ReadingStatus, RewardedAdPlacement } from '@palmsight/shared';
 
 import Screen from '../../components/Screen';
 import HeaderCredits from '../../components/HeaderCredits';
 import Text from '../../components/AppText';
 import CosmicHand from '../../components/CosmicHand';
 import ReadingSetupSheet from '../../components/ReadingSetupSheet';
+import RewardedOffer from '../../components/RewardedOffer';
 import { Banner, Button, Checkbox, LoadingOverlay, SectionLabel } from '../../components/ui';
 import { ApiError } from '../../lib/api';
 import { errorMessageOf } from '../../lib/forms';
@@ -216,15 +217,18 @@ export default function ScanStudioScreen() {
           </View>
         }>
         {creditBalance <= 0 ? (
-          <Banner
-            variant="warning"
-            title="Hết credits"
-            lines={user?.referral.canEnterCode ? ['Mời bạn bè nhận 2 credits. Có mã của bạn bè? Nhập để nhận 1 credit.'] : ['Mời bạn bè nhập mã của bạn để nhận 2 credits.']}
-            action={{
-              label: user?.referral.canEnterCode ? 'Nhập mã giới thiệu' : 'Trang giới thiệu',
-              onPress: () => router.push(user?.referral.canEnterCode ? '/enter-referral' : '/referral'),
-            }}
-          />
+          <View style={{ gap: spacing.sm }}>
+            <Banner
+              variant="warning"
+              title="Hết credits"
+              lines={user?.referral.canEnterCode ? ['Mời bạn bè nhận 2 credits. Có mã của bạn bè? Nhập để nhận 1 credit.'] : ['Mời bạn bè nhập mã của bạn để nhận 2 credits.']}
+              action={{
+                label: user?.referral.canEnterCode ? 'Nhập mã giới thiệu' : 'Trang giới thiệu',
+                onPress: () => router.push(user?.referral.canEnterCode ? '/enter-referral' : '/referral'),
+              }}
+            />
+            <RewardedOffer placement={RewardedAdPlacement.OUT_OF_CREDITS} variant="inline" />
+          </View>
         ) : null}
 
         <View style={{ gap: spacing.sm }}>

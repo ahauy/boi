@@ -3,11 +3,12 @@ import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { CreditTransactionType, type CreditTransactionDto } from '@palmsight/shared';
+import { CreditTransactionType, RewardedAdPlacement, type CreditTransactionDto } from '@palmsight/shared';
 
 import Screen, { ScreenHeader } from '../components/Screen';
 import Text from '../components/AppText';
 import CosmicHand from '../components/CosmicHand';
+import RewardedOffer from '../components/RewardedOffer';
 import { Banner, Button, Card, SectionLabel } from '../components/ui';
 import { errorMessageOf } from '../lib/forms';
 import { formatDateTime, transactionLabel } from '../lib/format';
@@ -109,6 +110,8 @@ export default function WalletScreen() {
                 </View>
               </LinearGradient>
             </View>
+
+            <RewardedOffer placement={RewardedAdPlacement.WALLET} />
 
             {failure && !failureMore && items.length > 0 ? (
               <Banner variant="error" title={failure} action={{ label: 'Thử lại', onPress: () => void loadFirst() }} />

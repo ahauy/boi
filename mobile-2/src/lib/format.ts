@@ -48,6 +48,8 @@ export function transactionLabel(type: CreditTransactionType, note?: string): st
       return 'Xem bói';
     case CreditTransactionType.READING_REFUND:
       return 'Hoàn credit';
+    case CreditTransactionType.REWARDED_AD:
+      return 'Xem quảng cáo';
     case CreditTransactionType.ADMIN_ADJUST:
       return note ? `Điều chỉnh (${note})` : 'Điều chỉnh hệ thống';
   }

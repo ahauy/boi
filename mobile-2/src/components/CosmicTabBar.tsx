@@ -18,7 +18,7 @@ const TAB_META: Record<TabName, { label: string; icon: keyof typeof MaterialComm
   profile: { label: 'Hồ sơ', icon: 'account-circle-outline' },
 };
 
-// 4 ô flex:1 bằng nhau nên khoảng cách giữa các tab đều nhau; riêng Quét là nút tròn nâng cao.
+// 4 ô flex:1 bằng nhau nên khoảng cách giữa các tab đều nhau; Quét không còn là nút tròn nâng cao.
 const TAB_ORDER: TabName[] = ['index', 'scan', 'history', 'profile'];
 
 export default function CosmicTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
@@ -44,13 +44,12 @@ export default function CosmicTabBar({ state, emitter, navigateToTab }: BottomTa
     if (!route) return null;
     const meta = TAB_META[name];
     const focused = state.routes[state.index]?.name === name;
-    const isScan = name === 'scan';
 
     return (
       <Pressable
         key={name}
         accessibilityRole="tab"
-        accessibilityLabel={isScan ? 'Quét bàn tay' : meta.label}
+        accessibilityLabel={meta.label}
         accessibilityState={{ selected: focused }}
         aria-selected={focused}
         android_ripple={{ color: 'rgba(231,199,119,0.12)', borderless: true }}
@@ -63,29 +62,7 @@ export default function CosmicTabBar({ state, emitter, navigateToTab }: BottomTa
           gap: 3,
           opacity: pressed ? 0.72 : 1,
         })}>
-        {isScan ? (
-          <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
-            <LinearGradient
-              colors={focused ? ['#fff4d0', '#e7c777', '#b88f3f'] : ['#2a3763', '#141e3e']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                width: 58,
-                height: 58,
-                borderRadius: 29,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: 1,
-                borderColor: focused ? 'rgba(255,247,221,0.7)' : colors.hairlineStrong,
-                transform: [{ translateY: -16 }],
-                ...(focused ? shadow.gold : shadow.card),
-              }}>
-              <MaterialCommunityIcons accessible={false} name="line-scan" size={26} color={focused ? colors.onGold : colors.goldLight} />
-            </LinearGradient>
-          </View>
-        ) : (
-          <MaterialCommunityIcons accessible={false} name={meta.icon} size={23} color={focused ? colors.goldLight : colors.stone} />
-        )}
+        <MaterialCommunityIcons accessible={false} name={meta.icon} size={23} color={focused ? colors.goldLight : colors.stone} />
 
         <Text
           style={[type.captionStrong, { color: focused ? colors.goldLight : colors.stone, fontSize: 11 }]}
