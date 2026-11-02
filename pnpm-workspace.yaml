@@ -3,6 +3,7 @@ packages:
   - 'backend'
   - 'shared'
   - 'mobile'
+  - 'mobile-2'
 
 onlyBuiltDependencies:
   - esbuild
