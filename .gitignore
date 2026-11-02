@@ -23,6 +23,8 @@ coverage/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+# Nhat ky quyet dinh duoc phai commit, khong phai log chay cua cong cu
+!rewarded-ads-roadmap.log
 
 # Local data
 docker-data/

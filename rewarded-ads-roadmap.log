@@ -1,0 +1,146 @@
+# PalmSight · Rewarded ads & kết nối emulator — nhật ký quyết định
+# Cập nhật: 2026-11-03
+# File này KHÔNG chứa secret. Chỉ tham chiếu TÊN biến môi trường.
+# Repo là công khai: không dán chuỗi kết nối Atlas, API key, token vào đây.
+
+====================================================================
+1. TRẠNG THÁI CODE
+====================================================================
+Commit efa8ed0 (đã push lên main) gồm 39 file:
+
+  ĐÃ LÀM — phía backend (đã kiểm chứng bằng test)
+  - credit_transactions thêm type REWARDED_AD + cột adClaimId
+    + index unique {adClaimId, type}: một lượt xem chỉ cấp credit một lần.
+  - Collection mới rewarded_ad_claims: nonce một lần, status ISSUED/REDEEMED,
+    expiresAt, transactionId unique sparse.
+  - Endpoint /api/v1/ads/rewarded/*:
+      GET  availability   (Bearer)  còn bao nhiêu lượt trong 24h
+      POST intent         (Bearer)  xin nonce, kiểm tra trần 24h TẠI ĐÂY
+      GET  status         (Bearer)  app polling kết quả
+      GET  verify         (public)  Google gọi, xác minh chữ ký rồi cấp credit
+  - Xác minh SSV: ECDSA P-256/SHA-256, ký trên CHÍNH query string
+    (bỏ signature và key_id, sắp xếp theo tên tham số, giá trị đã giải mã),
+    khoá public tải theo key_id từ gstatic.com/admob/reward/verifier-keys.json,
+    cache 6h. Không thêm dependency — Node crypto đủ.
+  - Fail closed: thiếu/sai chữ ký, key_id lạ, reward_item != palmsight-credit
+    => KHÔNG cấp credit.
+  - POST /readings áp 5 request/phút/user theo docs/api-contract.md:162
+    (trước đó contract ghi nhưng chưa từng cài). Dùng lại UserRateLimitGuard,
+    không thêm @nestjs/throttler để tránh hai cơ chế rate limit.
+  - Cờ REWARDED_ADS_ENABLED mặc định false: availability trả enabled=false,
+    intent trả 404, app ẩn toàn bộ CTA. Tắt/bật không cần bản build mới.
+
+  ĐÃ LÀM — phía mobile-2
+  - src/lib/ads.ts: seam playRewardedAd + cờ env, KHÔNG import tĩnh SDK ads
+    => Expo Go và bản web không nhiễm.
+  - src/lib/rewardedAds.ts: intent -> chơi ad -> polling status tối đa 20s.
+  - src/components/RewardedOffer.tsx: CTA trong wallet.tsx và ở điểm
+    "Hết credits" của (tabs)/scan.tsx.
+  - Tab Quét thành tab thường, đồng nhất với Trang chủ/Lịch sử/Hồ sơ.
+
+  CHƯA LÀM (có chủ đích)
+  - Chưa cài react-native-google-mobile-ads, chưa đăng ký player.
+    Lý do: cần AdMob App ID thật, và chữ ký hàm RewardedAd.createForId
+    thay đổi theo phiên bản SDK — mình từ chối viết code gọi SDK dựa trên đoán.
+    Mẫu 15 dòng nằm ở mobile-2/README.md, mục "Bật quảng cáo".
+  - Chưa làm interstitial (phương án C), chưa làm banner (đã loại vì xung đột
+    nút Quét nổi và rủi ro accidental click).
+
+====================================================================
+2. BẰNG CHỨNG ĐÃ KIỂM CHỨNG
+====================================================================
+  backend  257/257 pass (41 file), gồm 9 test rewarded-ads.spec.ts:
+    ký thật bằng khoá EC tự sinh -> được cấp credit;
+    Google retry callback -> không cộng lần hai;
+    chữ ký sai -> 400; reward_item lạ -> 400; nonce lạ -> 404;
+    intent hết hạn -> 200 nhưng không cộng; intent thứ 4 -> 429.
+  frontend 232/232 pass. typecheck: backend, shared, mobile, mobile-2.
+  lint mobile-2 sạch.
+  Smoke test trên server đang chạy: availability/intent/verify/unauth trả
+  đúng 200/404/400/401; POST /readings chặn đúng từ request thứ 6.
+
+  HẠN CHẾ PHẢI ĐỌC TRƯỚC KHI TIN
+  - Bộ test ký bằng khoá GIẢ rồi tự xác minh bằng THUẬT TOÁN CỦA CHÍNH MÌNH.
+    Nó chứng minh verifier nhất quán và không âm thầm từ chối mọi thứ,
+    CHỨA KHÔNG chứng minh chuỗi ký của ta trùng từng byte với cách Google dựng.
+    => Callback SSV đầu tiên từ traffic thật phải được đối chiếu ở staging.
+  - CTA quảng cáo chưa từng hiển thị trên màn hình thật (cần player đã đăng ký).
+  - Kinh tế chưa đo trên traffic thật.
+
+====================================================================
+3. KINH TẾ — ĐỪNG HÌ VỌNG SAI
+====================================================================
+  eCPM rewarded ở traffic VN/SEA thường ~$2-8/1000 lượt (0,2-0,8 cent/lượt).
+  Một lần bói Gemini/Groq ~2000 tokens tốn cỡ $0,005-0,01.
+  => 1 lượt xem ~ HOÀ VỐN 1 credit. Đây là công cụ giữ chân và tăng số lần bói,
+     không phải nguồn lợi nhuận. Tiền thật nằm ở interstitial và gói mua sau này.
+  Mỗi credit tặng thêm = một lần gọi AI tốn tiền thật, nên trần 24h đặt thấp (3).
+
+====================================================================
+4. NÚT THẮT CŨNG LÀ BƯỚC TIẾP THEO: BACKEND CÔNG KHAI
+====================================================================
+  Google KHÔNG gọi được localhost. Quảng cáo chỉ trả credit khi
+  https://<api-host>/api/v1/ads/rewarded/verify tới được từ ngoài.
+
+  Ba việc chặn đường:
+  a) render.yaml CHƯA có REWARDED_ADS_ENABLED => deploy ra sẽ luôn enabled=false,
+     app ẩn CTA vĩnh viễn dù đã tích hợp SDK xong.
+  b) HAI hostname đang xung đột, AdMob chỉ khai được MỘT callback URL:
+       render.yaml + vercel.json  -> palmsight-backend.onrender.com
+       mobile/.env (app cũ)       -> boi-qvgy.onrender.com
+     Nếu hai service khác nhau (hoặc một bản stale), client gọi chỗ này,
+     Google gọi chỗ kia => credit không bao giờ vào. PHẢI CHỐT MỘT URL.
+  c) Render free tier ngủ sau ~15 phút. Callback đến bất đồng bộ vài giây sau
+     khi user xem xong => user mất lượt thưởng đó. Google có retry nhưng
+     không nên trông cậy. Đây là lý do thật để cân nhắc gói trả phí.
+
+  Bối cảnh cũ: service Render từng chạy bản stale, /auth/device trả 404 dù route
+  đã có trên main. startCommand có chạy db:sync-indexes => index của
+  rewarded_ad_claims tự được tạo khi deploy.
+
+====================================================================
+5. LỘ TRÌNH CÒN LẠI (ai làm gì)
+====================================================================
+  0. Chốt nền tảng: Google Play trước; iOS để sau (cần máy Mac + quyền ATT).   [bạn]
+  1. Deploy backend mang code ads mới + bật REWARDED_ADS_ENABLED.      [mình sửa, bạn deploy]
+  2. AdMob: tạo app lấy App ID + rewarded unit, bật SSV dán callback URL.          [chỉ bạn]
+  3. Dev build + cài SDK, verify bằng unit test của Google (không cần chờ duyệt).  [cả hai]
+  4. app-ads.txt, Privacy Policy nói rõ ad SDK, Play Ads disclosure + Data Safety,
+     khai KHÔNG hướng trẻ em, ATT cho iOS.               [mình tạo file, bạn khai]
+  5. Publish lên Play -> AdMob duyệt serving -> bật cờ -> đo eCPM thật.            [bạn]
+
+  Ghi chú bước 5: nếu app chưa lên Play thì đó là quy trình riêng — tài khoản
+  Play Console $25, và một số loại app yêu cầu 12 tester liên tục 14 ngày.
+
+  Việc rẻ làm ngay: (1) và tạo frontend/public/app-ads.txt
+  (hiện THƯ MỤC public CHƯA có file này; privacy.html và terms.html đã có).
+
+====================================================================
+6. GHI CHÚ VẬN HÀNH TRÊN MÁY DEV NÀY
+====================================================================
+  - Android emulator: AVD Medium_Phone_API_37.0, adb ở ~/Android/Sdk/platform-tools.
+  - 10.0.2.2 DÙNG KHÔNG ĐƯỢC cho HTTP của app (OkHttp fail dù TCP thô thông).
+    Thay bằng adb reverse, và nó MẤT khi restart emulator:
+      adb reverse tcp:4000 tcp:4000
+      adb reverse tcp:8082 tcp:8082
+    mobile-2/.env giữ http://localhost:4000/api/v1. src/lib/api.ts đã bỏ rewrite
+    localhost -> 10.0.2.2 vì chính nó đẩy app vào con đường hỏng.
+  - mobile-2 chạy Expo Go được; SDK ads thì KHÔNG -> cần development build.
+    Máy đã có: ~/Android/Sdk (build-tools 36.0.0, licenses), JDK 25 trong
+    ~/Android/android-studio/jbr, đĩa còn 159G. Chưa có: cmdline-tools,
+    JAVA_HOME/ANDROID_HOME chưa export. Rủi ro: Gradle của RN 0.88 có thể chưa
+    hỗ trợ JDK 25 -> có thể phải cài JDK 17/21. expo-dev-client CHƯA có trong deps.
+  - Backend local đọc backend/.env -> MONGODB_URI trỏ Atlas, KHÔNG phải mongo
+    docker ở 27019. Đổi IP LAN làm app hỏng -> đã thoát nhờ adb reverse.
+  - app.tsx/auth.tsx: lỗi ngoài ApiError giờ báo "Không mở được phiên trên thiết
+    bị này" + console.warn nguyên nhân, không còn đổ hết cho "không thể kết nối".
+  - git: origin đã chuyển sang SSH (git@github.com:ahauy/boi.git); HTTPS push fail
+    vì credential.helper store không có mục cho github.com.
+
+====================================================================
+7. TÀI LIỆU CHI TIẾT
+====================================================================
+  docs/business-rules.md      mục "Quảng cáo thưởng (rewarded ads)"
+  docs/api-contract.md        4 endpoint mới + rate limit + mã lỗi mới
+  docs/database-erd.md        rewarded_ad_claims + adClaimId
+  mobile-2/README.md          mục "Quảng cáo thưởng": cài đặt, compliance checklist
