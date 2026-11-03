@@ -5,8 +5,6 @@
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "pnpm -r --parallel --if-present run dev",
-    "start": "pnpm --filter mobile start",
-    "start:web": "pnpm --filter mobile exec expo start --web",
     "start:mobile2": "pnpm --filter mobile-2 start",
     "start:mobile2:web": "pnpm --filter mobile-2 web",
     "typecheck:mobile2": "pnpm --filter mobile-2 typecheck",
@@ -15,12 +13,8 @@
     "test": "pnpm -r --if-present run test",
     "typecheck": "pnpm -r --if-present run typecheck",
     "dev:frontend": "pnpm --filter frontend dev",
-    "dev:mobile": "pnpm --filter mobile start",
-    "typecheck:mobile": "pnpm --filter mobile typecheck",
     "test:frontend": "pnpm --filter frontend test",
     "typecheck:frontend": "pnpm --filter frontend typecheck",
-    "stitch:sync": "node scripts/sync-stitch-screens.mjs",
-    "push": "bash scripts/modular-push.sh",
     "prepare": "pnpm --filter @palmsight/shared build"
   },
   "pnpm": {
@@ -28,8 +22,5 @@
       "@swc/core",
       "esbuild"
     ]
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.64.1"
   }
 }
