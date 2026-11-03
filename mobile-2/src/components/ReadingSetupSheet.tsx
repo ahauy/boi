@@ -40,8 +40,11 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
   const reduceMotion = useReduceMotion();
   const [step, setStep] = useState(0);
   // Yoga không tự tính chiều cao cho `flex: 1` khi cha chỉ có maxHeight, nên sheet phải có height rõ ràng.
-  const sheetHeight = Math.round(height * 0.9);
-  const translateY = useAnimatedValue(sheetHeight);
+  const sheetMax = Math.round(height * 0.9);
+  // Bước 1 tràn ngập chip nên cần gần hết màn hình; hai bước còn lại ít nội dung hơn nhiều.
+  const sheetHeight = step === 1 ? sheetMax : Math.round(height * 0.7);
+  // Dịch chuyển dùng sheetMax (không đổi theo step) để đổi bước không phát lại animation mở sheet.
+  const translateY = useAnimatedValue(sheetMax);
   const backdrop = useAnimatedValue(0);
 
   useEffect(() => {
@@ -51,13 +54,13 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
       backdrop.setValue(1);
       return;
     }
-    translateY.setValue(sheetHeight);
+    translateY.setValue(sheetMax);
     backdrop.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, damping: 24, stiffness: 220, mass: 0.9, useNativeDriver: true }),
       Animated.timing(backdrop, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
     ]).start();
-  }, [backdrop, reduceMotion, sheetHeight, translateY, visible]);
+  }, [backdrop, reduceMotion, sheetMax, translateY, visible]);
 
   function close() {
     if (reduceMotion) {
@@ -66,7 +69,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
       return;
     }
     Animated.parallel([
-      Animated.timing(translateY, { toValue: sheetHeight, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: sheetMax, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
       Animated.timing(backdrop, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }),
     ]).start(() => {
       setStep(0);
