@@ -39,7 +39,9 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
   const draft = useReadingDraft();
   const reduceMotion = useReduceMotion();
   const [step, setStep] = useState(0);
-  const translateY = useAnimatedValue(700);
+  // Yoga không tự tính chiều cao cho `flex: 1` khi cha chỉ có maxHeight, nên sheet phải có height rõ ràng.
+  const sheetHeight = Math.round(height * 0.9);
+  const translateY = useAnimatedValue(sheetHeight);
   const backdrop = useAnimatedValue(0);
 
   useEffect(() => {
@@ -49,13 +51,13 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
       backdrop.setValue(1);
       return;
     }
-    translateY.setValue(Math.min(700, height * 0.9));
+    translateY.setValue(sheetHeight);
     backdrop.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, damping: 24, stiffness: 220, mass: 0.9, useNativeDriver: true }),
       Animated.timing(backdrop, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
     ]).start();
-  }, [backdrop, height, reduceMotion, translateY, visible]);
+  }, [backdrop, reduceMotion, sheetHeight, translateY, visible]);
 
   function close() {
     if (reduceMotion) {
@@ -64,7 +66,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
       return;
     }
     Animated.parallel([
-      Animated.timing(translateY, { toValue: Math.min(700, height * 0.9), duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: sheetHeight, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
       Animated.timing(backdrop, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }),
     ]).start(() => {
       setStep(0);
@@ -84,7 +86,6 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
 
   const canContinue = step !== 1 || draft.selected.length > 0;
   const summary = `${draft.schoolConfig.name} · ${handLabel(draft.hand)} · ${draft.selected.length}/${draft.allTopics.length} mục`;
-
   return (
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={close} onShow={() => setStep(0)} accessibilityViewIsModal>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
@@ -94,7 +95,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
 
         <Animated.View
           style={{
-            maxHeight: height * 0.9,
+            height: sheetHeight,
             borderTopLeftRadius: 32,
             borderTopRightRadius: 32,
             borderWidth: 1,
@@ -147,7 +148,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
             </View>
 
             <ScrollView
-              style={{ flexGrow: 0 }}
+              style={{ flex: 1 }}
               contentContainerStyle={{ paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: spacing.lg, gap: spacing.lg }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled">

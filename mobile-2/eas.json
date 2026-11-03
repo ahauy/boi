@@ -17,8 +17,9 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://REPLACE-NGROK-OR-STAGING.ngrok-free.app/api/v1",
-        "EXPO_PUBLIC_WEB_URL": "https://REPLACE-WEB-URL"
+        "EXPO_PUBLIC_API_URL": "https://boi-qvgy.onrender.com/api/v1",
+        "EXPO_PUBLIC_ADS_ENABLED": "false",
+        "EXPO_PUBLIC_ADS_MOCK": "false"
       }
     },
     "production": {
@@ -27,8 +28,9 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://<domain-production>/api/v1",
-        "EXPO_PUBLIC_WEB_URL": "https://<domain-production>"
+        "EXPO_PUBLIC_API_URL": "https://boi-qvgy.onrender.com/api/v1",
+        "EXPO_PUBLIC_ADS_ENABLED": "false",
+        "EXPO_PUBLIC_ADS_MOCK": "false"
       }
     }
   },
