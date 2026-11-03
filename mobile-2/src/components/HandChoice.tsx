@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { HandOrientation } from '@palmsight/shared';
 
-import { PALM_OUTLINE_PATH } from './mystic/palmGeometry';
+import { PALM_LINES, PALM_OUTLINE_PATH } from './mystic/palmGeometry';
 import Text from './AppText';
 import { colors, radius, spacing, text as type } from '../theme';
 import { handLabel } from '../lib/format';
@@ -40,6 +40,18 @@ export default function HandChoice({ side, selected, onPress }: HandChoiceProps)
         <View style={{ transform: [{ scaleX: side === HandOrientation.LEFT ? -1 : 1 }] }}>
           <Svg width={58} height={76} viewBox="0 0 200 260" fill="none">
             <Path d={PALM_OUTLINE_PATH} stroke={selected ? colors.gold : colors.stone} strokeWidth="2" strokeLinecap="round" />
+            {/* Chỉ tay vẽ cùng màu nét bao, mờ hơn một bậc: đủ để đọc là lòng bàn tay, không biến thẻ thành bảng màu. */}
+            {PALM_LINES.map((line) => (
+              <Path
+                key={line.name}
+                d={line.d}
+                stroke={selected ? colors.gold : colors.stone}
+                strokeOpacity={0.55}
+                strokeWidth={line.width}
+                strokeLinecap="round"
+                strokeDasharray={line.dashed ? '4 6' : undefined}
+              />
+            ))}
           </Svg>
         </View>
         <Text style={[type.bodyBold, { color: selected ? colors.goldLight : colors.ink }]}>{handLabel(side)}</Text>
