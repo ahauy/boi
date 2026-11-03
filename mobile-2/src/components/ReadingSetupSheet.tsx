@@ -191,7 +191,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
               {step === 2 ? (
                 <View style={{ gap: spacing.lg }}>
                   <View accessibilityRole="radiogroup" accessibilityLabel="Chọn tay" style={{ flexDirection: 'row', gap: spacing.md }}>
-                    {[HandOrientation.LEFT, HandOrientation.RIGHT].map((side) => (
+                    {[HandOrientation.RIGHT, HandOrientation.LEFT].map((side) => (
                       <HandChoice
                         key={side}
                         side={side}
