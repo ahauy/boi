@@ -13,6 +13,7 @@ import { OnboardingProvider, useOnboarding } from '../state/onboarding';
 import { CaptureProvider } from '../state/capture';
 import { ReadingDraftProvider } from '../state/readingDraft';
 import { SessionErrorScreen, SessionLoadingScreen } from '../components/SessionGate';
+import SimulatedAdHost from '../components/SimulatedAdHost';
 import { colors } from '../theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -95,6 +96,8 @@ export default function RootLayout() {
             <ReadingDraftProvider>
               <ThemeProvider value={palmTheme}>
                 <StatusBar style="light" />
+                {/* Đăng ký trình phát trước khi màn ví kịp hỏi `rewardedAdsSupported()`. */}
+                <SimulatedAdHost />
                 <Gate appReady={fontsLoaded || Boolean(fontError)} />
               </ThemeProvider>
             </ReadingDraftProvider>

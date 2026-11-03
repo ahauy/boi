@@ -45,6 +45,8 @@ export interface TestAppOptions {
   /** Nơi test phục bộ khoá công khai giả để chạy thật logic xác minh chữ ký SSV. */
   adSsvKeysUrl?: string;
   rewardedAdsEnabled?: boolean;
+  /** Bật cửa sau dev-grant, đường cấp credit không cần chữ ký dành cho máy dev. */
+  rewardedAdsDevGrant?: boolean;
 }
 
 export async function createTestApp(
@@ -107,6 +109,9 @@ export async function createTestApp(
             FACEBOOK_APP_ID: "test-facebook-app-id",
             FACEBOOK_APP_SECRET: "test-facebook-app-secret",
             REWARDED_ADS_ENABLED: options.rewardedAdsEnabled ? "true" : "false",
+            REWARDED_ADS_DEV_GRANT: options.rewardedAdsDevGrant
+              ? "true"
+              : "false",
             REWARDED_AD_DAILY_CAP: 3,
             AD_SSV_KEYS_URL: options.adSsvKeysUrl ?? "http://127.0.0.1:1/no-keys",
             NODE_ENV: "test",

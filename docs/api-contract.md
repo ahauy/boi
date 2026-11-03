@@ -168,6 +168,7 @@ Với `VALIDATION_ERROR`, `details.fields` liệt kê từng trường lỗi. `f
 | `POST /readings/guest` | Giới hạn trượt 5 lượt bói thử thành công/IP/24 giờ (`IP_TRIAL_LIMIT_EXCEEDED`); 1 lượt bói thử/thiết bị (`GUEST_TRIAL_LIMIT_REACHED`) |
 | `POST /ads/rewarded/intent` | 5 request/phút/user |
 | `GET /ads/rewarded/verify` | **Không** đếm theo IP, có chủ đích: callback của nhiều user khác nhau cùng đi ra từ một dải IP egress của Google, nên chặn theo IP sẽ làm mất lượt thưởng của user thật. Chữ ký ECDSA đã tự chứng minh nguồn gửi |
+| `POST /ads/rewarded/dev-grant` | 5 request/phút/user (chỉ có tác dụng khi backend bật `REWARDED_ADS_DEV_GRANT`) |
 | Còn lại | 60 request/phút |
 
 ## Endpoints
@@ -201,6 +202,7 @@ Với `VALIDATION_ERROR`, `details.fields` liệt kê từng trường lỗi. `f
 | POST | `/ads/rewarded/intent` | Bearer | body JSON | Xin `nonce` một lần cho một lượt xem quảng cáo thưởng |
 | GET | `/ads/rewarded/status` | Bearer | query `nonce` | App polling hỏi callback của Google đã về chưa |
 | GET | `/ads/rewarded/verify` | — | query do Google ký | Google gọi trực tiếp khi user xem xong; endpoint này xác minh chữ ký rồi cộng credit |
+| POST | `/ads/rewarded/dev-grant` | Bearer | body JSON | **chỉ môi trường dev**: mô phỏng callback của Google, bỏ qua bước kiểm chữ ký. Trả 404 khi `NODE_ENV=production` |
 
 Danh sách trường phái và các mục bói không có endpoint riêng: web đọc từ `@palmsight/shared` (`READING_SCHOOLS`, `LIFE_ASPECTS`).
 
@@ -865,3 +867,22 @@ Response: `200` rỗng khi đã xử lý xong, kể cả khi đây là callback 
 
 Lỗi: `AD_SSV_SIGNATURE_INVALID`, `AD_SSV_REWARD_MISMATCH`, `REWARDED_AD_CLAIM_NOT_FOUND` (nonce lạ
 hoặc đã hết hạn — trường hợp này không cộng credit).
+
+### POST /ads/rewarded/dev-grant
+
+**Chỉ dành cho môi trường phát triển.** Body `{ "nonce": "<nonce từ /intent>" }`, trả về đúng cấu trúc
+của `GET /ads/rewarded/status`.
+
+Tồn tại vì hai giới hạn không vượt được trên máy cục bộ: ad unit thử của Google **không** phát SSV, và
+máy chủ Google **không gọi được** `localhost`. App vì thế không có cách nào khoá tín dụng trọn vẹn khi
+test trên emulator.
+
+Endpoint bỏ qua đúng một bước — xác minh chữ ký — rồi đi qua cùng `settle()` với SSV, nên trần 24 giờ,
+ledger, số dư và polling của app vẫn là code thật. Ba điều kiện dựng lên:
+
+- `NODE_ENV === "production"` → `404` trước khi chạm dữ liệu, kể khi `REWARDED_ADS_DEV_GRANT=true`.
+- `REWARDED_ADS_DEV_GRANT` không bật (mặc định) → `404`.
+- nonce được tra theo cả `userId` của người gọi → nonce của tài khoản khác là `404`, không cộng được
+  credit cho người khác.
+
+Không bật cờ này trên máy chủ deploy.

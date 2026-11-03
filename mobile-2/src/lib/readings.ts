@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+import { File } from 'expo-file-system';
 import type {
   HandOrientation,
   ReadingDto,
@@ -6,11 +8,24 @@ import type {
 } from '@palmsight/shared';
 import { del, get, upload } from './api';
 
-/** Ảnh đã chụp/chọn trên máy: React Native truyền file qua object URI, không dùng Blob như web. */
+/**
+ * Ảnh đã chụp/chọn trên máy. `uri` là đường dẫn native, không phải nội dung ảnh.
+ */
 export interface ImagePart {
   uri: string;
   name: string;
   type: string;
+}
+
+/**
+ * RN 0.88 từ chối part dạng object `{uri, name, type}`: fetch báo
+ * "Unsupported FormDataPart implementation" ngay trước khi gửi, nên quẻ không bao giờ tới server.
+ * Native phải nhận một Blob thật — `File` của expo-file-system implements Blob và đọc thẳng từ URI,
+ * không nạp cả ảnh vào bộ nhớ JS. Web giữ object vì ImagePicker ở đó trả blob URL trình duyệt hiểu.
+ */
+function toUploadPart(image: ImagePart): Blob {
+  if (Platform.OS === 'web') return image as unknown as Blob;
+  return new File(image.uri) as unknown as Blob;
 }
 
 export interface CreateReadingParams {
@@ -36,8 +51,7 @@ export function createReading({ school, hand, topics, aiConsent, image, idempote
   form.append('hand', hand);
   form.append('aiConsent', String(aiConsent));
   if (topics.length > 0) form.append('topics', topics.join(','));
-  // Kiểu của React Native khai báo part dạng Blob/File; object {uri,name,type} mới là cách chạy trên native
-  form.append('image', image as unknown as Blob);
+  form.append('image', toUploadPart(image));
 
   return upload<CreateReadingResult>('/readings', form, {
     headers: { 'Idempotency-Key': idempotencyKey },

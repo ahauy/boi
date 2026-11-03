@@ -18,6 +18,9 @@ Commit efa8ed0 (đã push lên main) gồm 39 file:
       POST intent         (Bearer)  xin nonce, kiểm tra trần 24h TẠI ĐÂY
       GET  status         (Bearer)  app polling kết quả
       GET  verify         (public)  Google gọi, xác minh chữ ký rồi cấp credit
+      POST dev-grant      (Bearer)  MÔ PHỎNG callback của Google cho máy dev,
+                                    bỏ qua đúng bước kiểm chữ ký, đi qua cùng
+                                    settle(). Tắt hẳn khi NODE_ENV=production.
   - Xác minh SSV: ECDSA P-256/SHA-256, ký trên CHÍNH query string
     (bỏ signature và key_id, sắp xếp theo tên tham số, giá trị đã giải mã),
     khoá public tải theo key_id từ gstatic.com/admob/reward/verifier-keys.json,
@@ -35,11 +38,24 @@ Commit efa8ed0 (đã push lên main) gồm 39 file:
     => Expo Go và bản web không nhiễm.
   - src/lib/rewardedAds.ts: intent -> chơi ad -> polling status tối đa 20s.
   - src/components/RewardedOffer.tsx: CTA trong wallet.tsx và ở điểm
-    "Hết credits" của (tabs)/scan.tsx.
+    "Hết credits" của (tabs)/scan.tsx. Sau khi được cấp, wallet reload bảng
+    biến động credits (trước đó onGranted không được nối -> ledger đứng yên).
+  - src/components/SimulatedAdHost.tsx: ĐĂNG KÝ PLAYER GIẢ để chạy trọn vòng
+    "xem quảng cáo -> +1 credit" trong Expo Go. Bật bằng EXPO_PUBLIC_ADS_MOCK
+    và chỉ khi __DEV__; màn đếm 12s rồi gọi POST /ads/rewarded/dev-grant.
+    Mount ở _layout.tsx TRƯỚC Gate, vì RewardedOffer đọc rewardedAdsSupported()
+    ngay lúc mount chứ không re-render khi player đăng ký sau.
+  - BUG THẬT đã sửa (không phải tại máy ảo): src/lib/readings.ts append part
+    {uri,name,type}. RN 0.88 từ chối -> "Unsupported FormDataPart implementation",
+    fetch chết TRƯỚC khi gửi, và api.ts dịch mọi lỗi fetch thành "không kết nối
+    được máy chủ" nên bug mã hoá request trông hệt mất mạng. Nay dùng
+    new File(uri) của expo-file-system (File implements Blob). ApiError giữ
+    lỗi gốc ở cause. Ảnh hưởng mọi build Android, không riêng emulator.
   - Tab Quét thành tab thường, đồng nhất với Trang chủ/Lịch sử/Hồ sơ.
 
   CHƯA LÀM (có chủ đích)
-  - Chưa cài react-native-google-mobile-ads, chưa đăng ký player.
+  - Chưa cài react-native-google-mobile-ads, chưa đăng ký player THẬT (mới có
+    player mô phỏng ở trên).
     Lý do: cần AdMob App ID thật, và chữ ký hàm RewardedAd.createForId
     thay đổi theo phiên bản SDK — mình từ chối viết code gọi SDK dựa trên đoán.
     Mẫu 15 dòng nằm ở mobile-2/README.md, mục "Bật quảng cáo".
@@ -49,22 +65,38 @@ Commit efa8ed0 (đã push lên main) gồm 39 file:
 ====================================================================
 2. BẰNG CHỨNG ĐÃ KIỂM CHỨNG
 ====================================================================
-  backend  257/257 pass (41 file), gồm 9 test rewarded-ads.spec.ts:
+  backend  261/261 pass (41 file), gồm 13 test rewarded-ads.spec.ts:
     ký thật bằng khoá EC tự sinh -> được cấp credit;
     Google retry callback -> không cộng lần hai;
     chữ ký sai -> 400; reward_item lạ -> 400; nonce lạ -> 404;
-    intent hết hạn -> 200 nhưng không cộng; intent thứ 4 -> 429.
+    intent hết hạn -> 200 nhưng không cộng; intent thứ 4 -> 429;
+    dev-grant: cấp đúng một lần, lặp lại không cộng thêm, nonce của account
+    khác -> 404, claim hết hạn -> ISSUED + 0 credit, và production + cờ bật
+    vẫn isDevGrantEnabled() == false.
   frontend 232/232 pass. typecheck: backend, shared, mobile, mobile-2.
   lint mobile-2 sạch.
   Smoke test trên server đang chạy: availability/intent/verify/unauth trả
   đúng 200/404/400/401; POST /readings chặn đúng từ request thứ 6.
+
+  ĐÃ THẤY BẰNG MẮT TRÊN MÁY ẢO (Expo Go, AVD Medium_Phone_API_37.0) — 2026-11-03:
+  - Ví hiện card "Xem quảng cáo, nhận credit" 3/3 -> bấm -> màn MÔ PHỎNG đếm
+    12s -> "Đã cộng 1 credit", số dư 3 -> 4, đếm 3/3 -> 2/3.
+  - API-level: intent -> dev-grant -> REDEEMED +1; dev-grant lặp lại vẫn 4;
+    nonce lạ 404; availability remainingToday giảm đúng.
+  - Bói: app upload ảnh bàn tay thật (CC BY-SA từ Wikimedia Commons, push vào
+    /sdcard/DCIM) -> backend trả verdict thật. AI bảo "bạn chọn tay trái mà ảnh
+    là tay phải" => chuỗi ảnh đi trọn vẹn. curl cùng ảnh: DONE sau ~7s.
 
   HẠN CHẾ PHẢI ĐỌC TRƯỚC KHI TIN
   - Bộ test ký bằng khoá GIẢ rồi tự xác minh bằng THUẬT TOÁN CỦA CHÍNH MÌNH.
     Nó chứng minh verifier nhất quán và không âm thầm từ chối mọi thứ,
     CHỨA KHÔNG chứng minh chuỗi ký của ta trùng từng byte với cách Google dựng.
     => Callback SSV đầu tiên từ traffic thật phải được đối chiếu ở staging.
-  - CTA quảng cáo chưa từng hiển thị trên màn hình thật (cần player đã đăng ký).
+  - CTA và màn "xem quảng cáo" ĐÃ hiển thị thật, nhưng là quảng cáo MÔ PHỎNG:
+    nó chứng minh phần kinh tế credit, KHÔNG chứng minh chữ ký của Google.
+    Video AdMob thật vẫn cần dev build + App ID.
+  - Ad unit thử của Google KHÔNG phát SSV, và Google không gọi được localhost,
+    nên đường chữ ký thật bắt buộc phải có backend HTTPS công khai mới test được.
   - Kinh tế chưa đo trên traffic thật.
 
 ====================================================================
@@ -104,7 +136,10 @@ Commit efa8ed0 (đã push lên main) gồm 39 file:
   0. Chốt nền tảng: Google Play trước; iOS để sau (cần máy Mac + quyền ATT).   [bạn]
   1. Deploy backend mang code ads mới + bật REWARDED_ADS_ENABLED.      [mình sửa, bạn deploy]
   2. AdMob: tạo app lấy App ID + rewarded unit, bật SSV dán callback URL.          [chỉ bạn]
-  3. Dev build + cài SDK, verify bằng unit test của Google (không cần chờ duyệt).  [cả hai]
+  3. Dev build + cài SDK, verify bằng unit test của Google (không cần chờ duyệt).
+     Nghiệp vụ credit ĐÃ được chứng minh qua quảng cáo mô phỏng, nên bước này chỉ
+     còn là "video thật có phát được không" — không phải lúc mò logic cộng credit.
+     Chặn kỹ thuật trên máy này: chỉ có JDK 25, Gradle của RN 0.88 có thể cần 17/21.
   4. app-ads.txt, Privacy Policy nói rõ ad SDK, Play Ads disclosure + Data Safety,
      khai KHÔNG hướng trẻ em, ATT cho iOS.               [mình tạo file, bạn khai]
   5. Publish lên Play -> AdMob duyệt serving -> bật cờ -> đo eCPM thật.            [bạn]
@@ -126,6 +161,19 @@ Commit efa8ed0 (đã push lên main) gồm 39 file:
     mobile-2/.env giữ http://localhost:4000/api/v1. src/lib/api.ts đã bỏ rewrite
     localhost -> 10.0.2.2 vì chính nó đẩy app vào con đường hỏng.
   - mobile-2 chạy Expo Go được; SDK ads thì KHÔNG -> cần development build.
+    Giờ đã có đường vòng để test nghiệp vụ credit: EXPO_PUBLIC_ADS_MOCK (xem mục 1).
+  - Metro PHẢI khởi động bằng binary trực tiếp:
+      node ../node_modules/.bin/expo start --port 8084 -c
+    Gọi `pnpm exec expo start` làm lệch phân giải module -> Expo Go báo
+    "Cannot find native module 'ExpoCrypto'" dù module đó có trong Expo Go 58.
+  - Cờ EXPO_PUBLIC_* inline lúc Metro start, đổi .env phải restart Metro.
+    nest start --watch thì NGƯỢC LẠI: nó đọc lại backend/.env mỗi lần restart,
+    nhưng chỉ restart khi NỘI DUNG file src đổi — `touch` không ăn.
+  - Mỗi Metro ngốn rất nhiều inotify watch; máy này max_user_watches=65536 và
+    đã đầy nên Metro thứ ba chết với ENOSPC. Đừng mở nhiều instance song song.
+  - Camera ảo của AVD trả khung ĐEN, quẻ chụp từ nó luôn bị AI từ chối. Muốn bói
+    trên máy ảo: push ảnh bàn tay thật vào /sdcard/DCIM + broadcast
+    MEDIA_SCANNER_SCAN_FILE, rồi chọn "Chọn ảnh khác" (picker có thể cần mở 2 lần).
     Máy đã có: ~/Android/Sdk (build-tools 36.0.0, licenses), JDK 25 trong
     ~/Android/android-studio/jbr, đĩa còn 159G. Chưa có: cmdline-tools,
     JAVA_HOME/ANDROID_HOME chưa export. Rủi ro: Gradle của RN 0.88 có thể chưa

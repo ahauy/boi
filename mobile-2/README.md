@@ -66,6 +66,44 @@ Nếu app hiện "Chưa kết nối được", phân biệt hai nguyên nhân kh
 **thật sự** không gọi được máy chủ; lỗi native module hay lỗi code app sẽ báo "Không mở được phiên
 trên thiết bị này" kèm `console.warn` chi tiết trong Metro/logcat.
 
+### Dùng như người dùng thật trên máy ảo
+
+Là cách kiểm tra trọn vòng *bói + xem quảng cáo* mà chưa cần dev build.
+
+```bash
+~/Android/Sdk/emulator/emulator -avd Medium_Phone_API_37.0 -no-snapshot-save &   # ~1 phút
+adb wait-for-device && adb shell input keyevent 82                                # bỏ màn khoá
+adb reverse tcp:4000 tcp:4000 && adb reverse tcp:8084 tcp:8084
+# Metro PHẢI gọi trực tiếp, không qua `pnpm exec`:
+node ../node_modules/.bin/expo start --port 8084 -c
+adb shell am start -a android.intent.action.VIEW -d 'exp://127.0.0.1:8084' host.exp.exponent
+```
+
+Hai thứ đã đốt nhiều thời gian khi debug ở đây, ghi lại để khỏi lặp:
+
+- `pnpm exec expo start` làm lệch cách phân giải module, Expo Go nhận bundle với registry hỏng và
+  báo `Cannot find native module 'ExpoCrypto'` dù Expo Go 58 có sẵn module đó. Cùng project, cùng
+  thư mục, chỉ khác cách gọi. Gọi thẳng binary như trên thì chạy đúng.
+- Cờ `EXPO_PUBLIC_*` được inline lúc Metro start, **không** đọc lại lúc app reload. Sửa `.env` xong
+  phải khởi động lại Metro.
+
+**Bói**: camera ảo của AVD trả khung hình đen nên quẻ chụp từ camera ảo luôn bị AI từ chối. Đường
+đúng là nạp ảnh bàn tay thật vào thư viện máy ảo rồi chọn *Chọn ảnh khác / Tải ảnh*:
+
+```bash
+adb push /tmp/palm-real.jpg /sdcard/DCIM/palm-real.jpg
+adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/DCIM/palm-real.jpg
+```
+
+Android Photo Picker chỉ hiện ảnh sau khi MediaStore index xong (bấm *Chọn ảnh khác* hai lần nếu lần
+đầu báo "No photos yet"). Chọn đúng tay: ảnh tay phải mà đặt *Tay trái* thì AI trả `REJECTED` với
+lý do rõ ràng — đó là nội dung, không phải lỗi kết nối.
+
+Mọi chỗ upload file đều phải append một **Blob thật** (`new File(uri)` của `expo-file-system`), không
+phải object `{uri, name, type}`: RN 0.88 từ chối object với `Unsupported FormDataPart implementation`
+ngay trước khi gửi, và app dịch mọi lỗi fetch thành "Không thể kết nối đến máy chủ" nên bug mã hoá
+request trông hệt như mất mạng. `ApiError` giờ giữ lỗi gốc ở `cause` — đọc nó trước khi đổ cho đường truyền.
+
 ## Cấu trúc chính
 
 ```text
@@ -136,6 +174,32 @@ API ở [docs/api-contract.md](../docs/api-contract.md#get-adsrewardedverify).
    thật, vì nó cần App ID của tài khoản AdMob.
 4. **Env**: `EXPO_PUBLIC_ADS_ENABLED=true`, `EXPO_PUBLIC_ADMOB_REWARDED_UNIT_ID=<unit id>`, và
    `REWARDED_ADS_ENABLED=true` ở backend.
+
+### Xem quảng cáo mà chưa có dev build
+
+SDK ads là native module nên Expo Go không phát được video. Phần còn lại của luồng — xin nonce, trần
+24 giờ, cộng credit, ledger, số dư — thì chạy được, và đó mới là phần dễ hỏng. Bật hai cờ là đi trọn
+vòng *xem → +1 credit* ngay trên máy ảo:
+
+```text
+mobile-2/.env    EXPO_PUBLIC_ADS_ENABLED=true
+                 EXPO_PUBLIC_ADS_MOCK=true
+backend/.env     REWARDED_ADS_ENABLED=true
+                 REWARDED_ADS_DEV_GRANT=true
+```
+
+`SimulatedAdHost` thay video bằng một màn đếm 12 giây rồi gọi `POST /ads/rewarded/dev-grant` — endpoint
+mô phỏng callback của Google, bỏ qua đúng bước xác minh chữ ký và đi qua cùng `settle()` mà SSV dùng.
+Nó chỉ đăng ký khi `__DEV__`, còn backend tự tắt hẳn khi `NODE_ENV=production`, nên không có đường nào
+ship quảng cáo giả tới user thật.
+
+Cờ dev-grant tồn tại vì hai giới hạn thật, đừng quên:
+
+- **ad unit thử của Google không phát SSV**, nên kể cả khi có dev build thì callback vẫn không về.
+- **Google không gọi được `localhost`**; muốn thử chữ ký thật phải có backend HTTPS công khai (hoặc
+  hầm) và unit đã được duyệt.
+
+Tức là màn mô phỏng chứng minh *kinh tế credit* chạy đúng, không chứng minh *chữ ký* của Google khớp.
 
 ### Việc bắt buộc trước khi phát hành
 

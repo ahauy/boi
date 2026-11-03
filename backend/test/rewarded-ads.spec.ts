@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { Types } from 'mongoose';
 import { createTestApp, closeTestApp, TestAppInstance } from './test-helper';
 import { buildSignedContent } from '../src/ads/rewarded-ad-ssv.verifier';
+import { RewardedAdsService } from '../src/ads/rewarded-ads.service';
 
 /**
  * Test chạy thật entire chuỗi ký -> xác minh: tự sinh một cặp khoá EC, phát khoá qua một HTTP
@@ -106,7 +107,11 @@ describe('Rewarded ads: SSV + credit caps', () => {
     await new Promise<void>((resolve) => keyServer.listen(0, '127.0.0.1', resolve));
     const keysUrl = `http://127.0.0.1:${(keyServer.address() as AddressInfo).port}/keys.json`;
 
-    testApp = await createTestApp({ adSsvKeysUrl: keysUrl, rewardedAdsEnabled: true });
+    testApp = await createTestApp({
+      adSsvKeysUrl: keysUrl,
+      rewardedAdsEnabled: true,
+      rewardedAdsDevGrant: true,
+    });
 
     const session = await fetch(`${testApp.baseUrl}/api/v1/auth/device`, {
       method: 'POST',
@@ -245,5 +250,100 @@ describe('Rewarded ads: SSV + credit caps', () => {
     const { res, body } = await newIntent();
     expect(res.status).toBe(429);
     expect(body.error.code).toBe('REWARDED_AD_CAP_REACHED');
+  });
+
+  /**
+   * Cắm claim thẳng xuống collection thay vì gọi /intent: test ngay phía trên đã ăn hết trần 24 giờ,
+   * còn dev-grant cần nonce đang hiệu lực. `createdAt` đặt lùi ra ngoài cửa sổ để mấy claim này
+   * không làm lệch các test đếm theo cửa sổ.
+   */
+  const seedClaim = async (overrides: Record<string, unknown> = {}) => {
+    const nonce = crypto.randomBytes(16).toString('hex');
+    await testApp.connection.collection('rewarded_ad_claims').insertOne({
+      _id: new Types.ObjectId(),
+      userId: new Types.ObjectId(userId),
+      nonce,
+      status: 'ISSUED',
+      rewardCredits: 1,
+      placement: 'wallet',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      ...overrides,
+    });
+    return nonce;
+  };
+
+  const devGrant = (nonce: string) =>
+    api('/ads/rewarded/dev-grant', {
+      method: 'POST',
+      body: JSON.stringify({ nonce }),
+    });
+
+  const rewardedTxCount = () =>
+    testApp.connection
+      .collection('credit_transactions')
+      .countDocuments({ type: 'REWARDED_AD' });
+
+  it('dev-grant pays a claim once and repeats without extra credit', async () => {
+    const nonce = await seedClaim();
+    const before = await balance();
+    const txBefore = await rewardedTxCount();
+
+    const first = await devGrant(nonce);
+    expect(first.status).toBe(201);
+    expect(((await first.json()) as any).creditsEarned).toBe(1);
+    expect(await balance()).toBe(before + 1);
+
+    const second = await devGrant(nonce);
+    expect(second.status).toBe(201);
+    expect(await balance()).toBe(before + 1);
+    expect(await rewardedTxCount()).toBe(txBefore + 1);
+  });
+
+  it('dev-grant does not recognise a nonce issued to another account', async () => {
+    const nonce = await seedClaim({ userId: new Types.ObjectId() });
+    const before = await balance();
+
+    const res = await devGrant(nonce);
+    expect(res.status).toBe(404);
+    expect(await balance()).toBe(before);
+
+    const claim = await testApp.connection
+      .collection('rewarded_ad_claims')
+      .findOne({ nonce });
+    expect(claim!.status).toBe('ISSUED');
+  });
+
+  it('dev-grant leaves an expired claim unpaid instead of paying it anyway', async () => {
+    const nonce = await seedClaim({ expiresAt: new Date(Date.now() - 1000) });
+    const before = await balance();
+
+    const res = await devGrant(nonce);
+    const body = (await res.json()) as any;
+    expect(res.status).toBe(201);
+    expect(body.status).toBe('ISSUED');
+    expect(body.creditsEarned).toBe(0);
+    expect(await balance()).toBe(before);
+  });
+
+  it('dev-grant stays dead in production even with the flag on', () => {
+    const service = (vars: Record<string, string>) =>
+      new RewardedAdsService(
+        undefined as any,
+        undefined as any,
+        undefined as any,
+        { get: (key: string, fallback?: string) => vars[key] ?? fallback } as any,
+        undefined as any,
+        undefined as any
+      );
+
+    expect(
+      service({ NODE_ENV: 'production', REWARDED_ADS_DEV_GRANT: 'true' }).isDevGrantEnabled()
+    ).toBe(false);
+    expect(
+      service({ NODE_ENV: 'development', REWARDED_ADS_DEV_GRANT: 'true' }).isDevGrantEnabled()
+    ).toBe(true);
+    expect(service({ NODE_ENV: 'development' }).isDevGrantEnabled()).toBe(false);
   });
 });

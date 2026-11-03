@@ -111,7 +111,10 @@ export default function WalletScreen() {
               </LinearGradient>
             </View>
 
-            <RewardedOffer placement={RewardedAdPlacement.WALLET} />
+            <RewardedOffer
+              placement={RewardedAdPlacement.WALLET}
+              onGranted={() => void loadFirst()}
+            />
 
             {failure && !failureMore && items.length > 0 ? (
               <Banner variant="error" title={failure} action={{ label: 'Thử lại', onPress: () => void loadFirst() }} />

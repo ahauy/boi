@@ -20,7 +20,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { UserRateLimit, UserRateLimitGuard } from '../auth/guards/user-rate-limit.guard';
 import { RewardedAdsService } from './rewarded-ads.service';
-import { rewardedAdIntentBodySchema } from './schemas';
+import { rewardedAdDevGrantBodySchema, rewardedAdIntentBodySchema } from './schemas';
 
 @Controller('ads/rewarded')
 @UseGuards(JwtAuthGuard)
@@ -56,6 +56,22 @@ export class RewardedAdsController {
     @Query('nonce') nonce: string
   ): Promise<RewardedAdClaimStatusDto> {
     return this.rewardedAdsService.getClaimStatus(new Types.ObjectId(userId), nonce ?? '');
+  }
+
+  /**
+   * Mô phỏng callback của Google cho máy phát triển: app gọi sau khi xem xong quảng cáo thử, backend
+   * đi qua đúng `settle()` mà SSV dùng. Production trả 404 trước khi chạm dữ liệu, nên route này vô
+   * hình với user thật.
+   */
+  @Post('dev-grant')
+  @UseGuards(UserRateLimitGuard)
+  @UserRateLimit({ limit: 5, windowMs: 60 * 1000 })
+  async devGrant(
+    @CurrentUser('sub') userId: string,
+    @Body() body: { nonce: string }
+  ): Promise<RewardedAdClaimStatusDto> {
+    const validated = await rewardedAdDevGrantBodySchema.validate(body, { abortEarly: false });
+    return this.rewardedAdsService.devGrant(new Types.ObjectId(userId), validated.nonce);
   }
 }
 

@@ -47,6 +47,15 @@ export class RewardedAdsService {
     return this.configService.get<string>('REWARDED_ADS_ENABLED', 'false') === 'true';
   }
 
+  /**
+   * Dev-grant là cửa sau cấp credit không cần chữ ký nên mặc định tắt, và tắt hẳn khi
+   * NODE_ENV=production để một cờ set nhầm trên máy chủ deploy không mở được cửa này.
+   */
+  isDevGrantEnabled(): boolean {
+    if (this.configService.get<string>('NODE_ENV') === 'production') return false;
+    return this.configService.get<string>('REWARDED_ADS_DEV_GRANT', 'false') === 'true';
+  }
+
   async getAvailability(userId: Types.ObjectId): Promise<RewardedAdAvailabilityDto> {
     const dailyCap = this.dailyCap();
     return {
@@ -170,12 +179,69 @@ export class RewardedAdsService {
       );
     }
 
+    const claim = await this.settle(nonce, transactionId ?? undefined);
+
+    if (!claim) {
+      const known = await this.claimModel.findOne({ nonce }).lean();
+      // Retry của Google cho một nonce đã cấp rồi: trả 200 để không retry dây dưa
+      if (known) {
+        this.logger.log(`Callback SSV lặp lại cho nonce ${redact(nonce)} — bỏ qua`);
+        return;
+      }
+      throw new NotFoundException({
+        code: 'REWARDED_AD_CLAIM_NOT_FOUND',
+        message: 'Lượt xem quảng cáo này không còn hiệu lực.',
+      });
+    }
+
+    this.logger.log(
+      `Cấp ${claim.rewardCredits} credit cho lượt xem quảng cáo (${claim.placement ?? 'n/a'})`
+    );
+  }
+
+  /**
+   * Cấp credit cho một lượt xem chỉ có trên máy phát triển.
+   *
+   * Lý do tồn tại: Google chỉ gọi được endpoint công khai, còn ad unit thử nghiệm của Google thì
+   * không phát SSV, nên trên emulator không có đường nào để khoá tín dụng chạy trọn. Đường này bỏ
+   * qua đúng một bước — chữ ký — và đi qua cùng `settle()` với SSV, nên trần 24 giờ, ledger, số dư
+   * và polling của app vẫn là code thật. Bật bằng `REWARDED_ADS_DEV_GRANT=true`, chết hẳn ở production.
+   */
+  async devGrant(userId: Types.ObjectId, nonce: string): Promise<RewardedAdClaimStatusDto> {
+    if (!this.isDevGrantEnabled()) {
+      throw new NotFoundException({
+        code: 'REWARDED_ADS_DISABLED',
+        message: 'Tính năng này tạm chưa mở.',
+      });
+    }
+
+    // Tra theo cả userId: nonce của user khác phải không tồn tại với người gọi, kể khi đang dev
+    const mine = await this.claimModel.findOne({ userId, nonce }).lean();
+    if (!mine) {
+      throw new NotFoundException({
+        code: 'REWARDED_AD_CLAIM_NOT_FOUND',
+        message: 'Lượt xem quảng cáo này không còn hiệu lực.',
+      });
+    }
+
+    await this.settle(nonce);
+    return this.getClaimStatus(userId, nonce);
+  }
+
+  /**
+   * Phần thưởng đổi thành credit: SSV và dev-grant cùng đi qua đây để hai đường không lệch nhau.
+   *
+   * ISSUED + chưa hết hạn nằm ngay trong điều kiện update: Google retry callback, và hai callback
+   * đến cùng lúc chỉ được một bên sang tay được claim.
+   */
+  private async settle(
+    nonce: string,
+    transactionId?: string
+  ): Promise<RewardedAdClaimDocument | null> {
     const session = await this.connection.startSession();
     try {
       session.startTransaction();
 
-      // ISSUED + chưa hết hạn nằm ngay trong điều kiện update: Google retry callback, và hai callback
-      // đến cùng lúc chỉ được một bên sang tay được claim.
       const claim = await this.claimModel.findOneAndUpdate(
         {
           nonce,
@@ -194,16 +260,7 @@ export class RewardedAdsService {
 
       if (!claim) {
         await session.abortTransaction();
-        const known = await this.claimModel.findOne({ nonce }).lean();
-        // Retry của Google cho một nonce đã cấp rồi: trả 200 để không retry dây dưa
-        if (known) {
-          this.logger.log(`Callback SSV lặp lại cho nonce ${redact(nonce)} — bỏ qua`);
-          return;
-        }
-        throw new NotFoundException({
-          code: 'REWARDED_AD_CLAIM_NOT_FOUND',
-          message: 'Lượt xem quảng cáo này không còn hiệu lực.',
-        });
+        return null;
       }
 
       await this.creditLedgerService.grantRewardedAd(
@@ -214,9 +271,7 @@ export class RewardedAdsService {
       );
 
       await session.commitTransaction();
-      this.logger.log(
-        `Cấp ${claim.rewardCredits} credit cho lượt xem quảng cáo (${claim.placement ?? 'n/a'})`
-      );
+      return claim;
     } finally {
       await session.endSession();
     }

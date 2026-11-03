@@ -49,6 +49,9 @@ export default function ReadingCard({ item, compact = false }: { item: ReadingLi
         <View
           style={{
             width: compact ? 78 : 88,
+            // Không có height thì chiều cao ô ảnh bị tỷ lệ của ảnh gốc quyết định: ảnh 3:4 dựng đứng
+            // cả card và bóp chữ sang một bên. Box phải tự quyết kích thước, ảnh chỉ việc crop vào.
+            height: compact ? 96 : 104,
             borderRadius: radius.md,
             overflow: 'hidden',
             borderWidth: 1,

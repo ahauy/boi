@@ -21,8 +21,19 @@ export class ApiError extends Error {
   readonly fields: Record<string, string>;
   readonly details: Record<string, unknown>;
 
-  constructor(status: number, code: string, message: string, fields: Record<string, string> = {}, details: Record<string, unknown> = {}) {
-    super(message);
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    fields: Record<string, string> = {},
+    details: Record<string, unknown> = {},
+    /**
+     * Lỗi gốc từ fetch. Mọi thất bại đều bị đóng dấu "không kết nối được máy chủ", nên nếu không giữ
+     * lại nguyên nhân thì một bug mã hoá request cũng trông hệt như mất mạng.
+     */
+    cause?: unknown
+  ) {
+    super(message, { cause });
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
@@ -145,7 +156,10 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
       aborted ? TIMEOUT_ERROR : NETWORK_ERROR,
       aborted
         ? 'Yêu cầu quá thời gian chờ. Vui lòng thử lại.'
-        : 'Không thể kết nối đến máy chủ. Vui lòng thử lại.'
+        : 'Không thể kết nối đến máy chủ. Vui lòng thử lại.',
+      {},
+      {},
+      error
     );
   } finally {
     clearTimeout(timer);
