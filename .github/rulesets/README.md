@@ -21,16 +21,26 @@ Token cần scope `administration:write`. Xem ruleset đã áp: `GET /repos/ahau
 | File | Enforcement | Nội dung |
 | --- | --- | --- |
 | `01-default-branch.json` | `active` | Chặn xoá và force-push nhánh mặc định; PR phải có 4 check xanh: `Lint`, `Typecheck`, `Test`, `Build` |
-| `02-default-branch-pr-only.json` | `active` | Bản nghiêm ngặt: thêm `update` (không được push thẳng vào main), lịch sử tuyến tính, chỉ squash, và check `Dependency review` |
+| `02-default-branch-pr-only.json` | `active` | Bản nghiêm ngặt: lịch sử tuyến tính, chỉ squash, thêm check `Dependency review` |
 | `03-release-tags.json` | `active` | Tag `v*` không xoá được, không ghi đè được |
 
-`02` là bản đang bật: nó bao gồm luôn những gì `01` làm, nên khi `02` active thì **xoá `01`**
-(kể cả ruleset cũ `main — bắt buộc CI` nếu còn) để hai ruleset cùng nhắm một ref khỏi giao nhau.
+`02` bao gồm luôn những gì `01` làm, nên khi `02` active thì **xoá `01`** để hai ruleset cùng
+nhắm một ref khỏi giao nhau.
 
-Vì `02` có rule `update`, `git push origin main` sẽ bị từ chối với
-`push declined due to repository rule violations`. Mọi thay đổi phải đi qua PR — bao gồm cả
-push trực tiếp từ máy dev. Lưu ý thêm: chính `required_status_checks` trong ruleset cũng đã đủ
-chặn push thẳng, không cần đến `update`.
+## Ai chặn cái gì — phân biệt cho khỏi nhầm
+
+| Rule | Chặn |
+| --- | --- |
+| `pull_request` | Push thẳng vào nhánh: bắt buộc mọi thay đổi đi qua PR. **PR vẫn merge được.** |
+| `update` ("Restrict updates") | **Mọi** thay đổi trên ref, kể cả merge PR. Ai không có trong bypass list thì không merge được — kể cả chủ repo |
+| `required_status_checks` | Merge khi check chưa xanh; không tự nó đổi được quyền push |
+| `non_fast_forward` | Force push |
+| `creation` / `deletion` | Tạo / xoá ref |
+
+Vì vậy `02` **không** chứa rule `update`: thứ cần là "phải đi qua PR", và `pull_request` đã làm
+việc đó. Khi `update` bật mà bypass list rỗng, UI báo `Merging is blocked — Cannot update this
+protected ref` và không ai merge được kể cả owner. Push thẳng vào `main` bị từ chối với
+`push declined due to repository rule violations` là do `pull_request`, không phải do `update`.
 
 ## Hai liên kết dễ gãy
 
