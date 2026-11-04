@@ -174,7 +174,7 @@ export default function HomeScreen() {
         onClose={() => setSheetOpen(false)}
         onStartScan={() => {
           setSheetOpen(false);
-          router.navigate('/scan');
+          router.push('/camera');
         }}
       />
     </>

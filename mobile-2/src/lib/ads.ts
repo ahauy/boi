@@ -27,10 +27,6 @@ export function setRewardedAdPlayer(nextPlayer: RewardedAdPlayer | null): void {
   player = nextPlayer;
 }
 
-export function rewardedAdPlayerRegistered(): boolean {
-  return player !== null;
-}
-
 /** Cờ env là nguồn sự thật: tắt cờ là lời đề nghị biến mất khỏi app mà không cần bản build mới. */
 export function rewardedAdsSupported(): boolean {
   return process.env.EXPO_PUBLIC_ADS_ENABLED === 'true' && player !== null && isNativePlatform();

@@ -58,7 +58,9 @@ export default function CameraScreen() {
         return;
       }
       submitPhoto({ uri: shot.uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
-      setTimeout(() => router.back(), 120);
+      // Modal mở từ cả Trang chủ lẫn phòng quét, nên về đích là /scan chứ không phải `back()`:
+      // nút "Xem bói" và checkbox đồng ý chỉ tồn tại ở đó.
+      setTimeout(() => router.navigate('/scan'), 120);
     } catch {
       // Android throw khi preview chưa sẵn sàng
       setError('Không thể chụp ảnh, vui lòng thử lại.');
@@ -78,7 +80,7 @@ export default function CameraScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsEditing: false });
     if (result.canceled || result.assets.length === 0) return;
     submitPhoto({ uri: result.assets[0].uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
-    router.back();
+    router.navigate('/scan');
   }
 
   function toggleSelfie() {
