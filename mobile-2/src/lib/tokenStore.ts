@@ -12,8 +12,10 @@ export async function getRefreshToken(): Promise<string | null> {
 }
 
 export async function saveSession(accessToken: string, refreshToken?: string | null): Promise<void> {
-  await SecureStore.setItemAsync(ACCESS_KEY, accessToken);
-  if (refreshToken) await SecureStore.setItemAsync(REFRESH_KEY, refreshToken);
+  await Promise.all([
+    SecureStore.setItemAsync(ACCESS_KEY, accessToken),
+    ...(refreshToken ? [SecureStore.setItemAsync(REFRESH_KEY, refreshToken)] : []),
+  ]);
 }
 
 export async function clearSession(): Promise<void> {

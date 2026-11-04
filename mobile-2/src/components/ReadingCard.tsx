@@ -19,7 +19,7 @@ const STATUS_LABEL: Record<ReadingStatus, string> = {
   [ReadingStatus.GUEST_PREVIEW]: 'bói thử',
 };
 
-export default function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; compact?: boolean }) {
+function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; compact?: boolean }) {
   const thumbnail = item.annotatedImageUrl ?? item.imageUrl;
   const createdDate = formatDateTime(item.createdAt).split(' ')[0];
 
@@ -102,3 +102,6 @@ export default function ReadingCard({ item, compact = false }: { item: ReadingLi
     </Pressable>
   );
 }
+
+// Danh sách quẻ dài ra từng trang; mỗi dòng mang 2 gradient và một ảnh, nên chỉ vẽ lại khi item đổi.
+export default React.memo(ReadingCard);

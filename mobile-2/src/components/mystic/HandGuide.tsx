@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { colors, radius } from '../../theme';
 import { useAnimatedValue } from '../../lib/useAnimatedValue';
-import { useReduceMotion } from '../../lib/motion';
+import { useAppActive, useReduceMotion } from '../../lib/motion';
 import { PALM_OUTLINE_PATH } from './palmGeometry';
 import TarotCorners from './TarotCorners';
 
@@ -19,16 +19,17 @@ interface HandGuideProps {
 export default function HandGuide({ height, showBeam = true, color = colors.goldLight, children }: HandGuideProps) {
   const beam = useAnimatedValue(0);
   const reduceMotion = useReduceMotion();
+  const appActive = useAppActive();
   const animateBeam = showBeam && !reduceMotion;
 
   useEffect(() => {
-    if (!animateBeam) return;
+    if (!animateBeam || !appActive) return;
     const loop = Animated.loop(
       Animated.timing(beam, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
     );
     loop.start();
     return () => loop.stop();
-  }, [animateBeam, beam]);
+  }, [animateBeam, appActive, beam]);
 
   const travel = Math.max(120, height * 0.82);
   const translateY = beam.interpolate({ inputRange: [0, 1], outputRange: [0, travel] });

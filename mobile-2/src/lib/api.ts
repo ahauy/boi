@@ -72,8 +72,10 @@ export function onSessionExpired(listener: () => void): () => void {
 
 /** Nạp token đã lưu để request đầu tiên của phiên được mang Authorization. */
 export async function loadStoredTokens(): Promise<boolean> {
-  accessToken = await tokenStore.getAccessToken();
-  return Boolean(accessToken || (await tokenStore.getRefreshToken()));
+  // Hai khoá đọc song song: mỗi lượt chạm Keystore Android tốn hàng chục ms và nó chặn màn đầu tiên.
+  const [storedAccess, storedRefresh] = await Promise.all([tokenStore.getAccessToken(), tokenStore.getRefreshToken()]);
+  accessToken = storedAccess;
+  return Boolean(storedAccess || storedRefresh);
 }
 
 /** Đăng nhập thành công: giữ token trong bộ nhớ và trong SecureStore. */

@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, font, gradients, radius, shadow, spacing, text as type, MAX_FONT_SCALE } from '../theme';
 import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
-import { useReduceMotion } from '../lib/motion';
+import { useAppActive, useReduceMotion } from '../lib/motion';
 import Text from './AppText';
 import CosmicBackground from './CosmicBackground';
 import CosmicHand from './CosmicHand';
@@ -594,9 +594,10 @@ export function StatusPill({ status }: { status: ReadingStatus }) {
 function ScanBeam({ height }: { height: number }) {
   const beam = useAnimatedValue(0);
   const reduceMotion = useReduceMotion();
+  const appActive = useAppActive();
 
   React.useEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion || !appActive) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(beam, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
@@ -605,7 +606,7 @@ function ScanBeam({ height }: { height: number }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [beam, reduceMotion]);
+  }, [appActive, beam, reduceMotion]);
 
   if (reduceMotion) return null;
 

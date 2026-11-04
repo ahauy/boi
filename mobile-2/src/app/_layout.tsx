@@ -5,13 +5,14 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CormorantGaramond_600SemiBold, CormorantGaramond_600SemiBold_Italic, CormorantGaramond_700Bold } from '@expo-google-fonts/cormorant-garamond';
-import { BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold } from '@expo-google-fonts/be-vietnam-pro';
+import { BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold } from '@expo-google-fonts/be-vietnam-pro';
 import { JetBrainsMono_400Regular, JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 
 import { AuthProvider, useAuth } from '../state/auth';
 import { OnboardingProvider, useOnboarding } from '../state/onboarding';
 import { CaptureProvider } from '../state/capture';
 import { ReadingDraftProvider } from '../state/readingDraft';
+import { FontScaleProvider } from '../lib/fontScale';
 import { SessionErrorScreen, SessionLoadingScreen } from '../components/SessionGate';
 import SimulatedAdHost from '../components/SimulatedAdHost';
 import { colors } from '../theme';
@@ -83,27 +84,28 @@ export default function RootLayout() {
     BeVietnamPro_400Regular,
     BeVietnamPro_500Medium,
     BeVietnamPro_600SemiBold,
-    BeVietnamPro_700Bold,
     JetBrainsMono_400Regular,
     JetBrainsMono_500Medium,
   });
 
   return (
-    <SafeAreaProvider>
-      <CaptureProvider>
-        <AuthProvider>
-          <OnboardingProvider>
-            <ReadingDraftProvider>
-              <ThemeProvider value={palmTheme}>
-                <StatusBar style="light" />
-                {/* Đăng ký trình phát trước khi màn ví kịp hỏi `rewardedAdsSupported()`. */}
-                <SimulatedAdHost />
-                <Gate appReady={fontsLoaded || Boolean(fontError)} />
-              </ThemeProvider>
-            </ReadingDraftProvider>
-          </OnboardingProvider>
-        </AuthProvider>
-      </CaptureProvider>
-    </SafeAreaProvider>
+    <FontScaleProvider>
+      <SafeAreaProvider>
+        <CaptureProvider>
+          <AuthProvider>
+            <OnboardingProvider>
+              <ReadingDraftProvider>
+                <ThemeProvider value={palmTheme}>
+                  <StatusBar style="light" />
+                  {/* Đăng ký trình phát trước khi màn ví kịp hỏi `rewardedAdsSupported()`. */}
+                  <SimulatedAdHost />
+                  <Gate appReady={fontsLoaded || Boolean(fontError)} />
+                </ThemeProvider>
+              </ReadingDraftProvider>
+            </OnboardingProvider>
+          </AuthProvider>
+        </CaptureProvider>
+      </SafeAreaProvider>
+    </FontScaleProvider>
   );
 }

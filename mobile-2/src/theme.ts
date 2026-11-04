@@ -83,7 +83,6 @@ export const font = {
   body: 'BeVietnamPro_400Regular',
   bodyMedium: 'BeVietnamPro_500Medium',
   bodyStrong: 'BeVietnamPro_600SemiBold',
-  bodyBold: 'BeVietnamPro_700Bold',
   mono: 'JetBrainsMono_400Regular',
   monoMedium: 'JetBrainsMono_500Medium',
 } as const;

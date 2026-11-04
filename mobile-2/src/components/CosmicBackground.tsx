@@ -3,7 +3,7 @@ import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors } from '../theme';
-import { useReduceMotion } from '../lib/motion';
+import { useAppActive, useReduceMotion } from '../lib/motion';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
 
 interface CosmicBackgroundProps {
@@ -17,8 +17,9 @@ function seeded(index: number): number {
   return value - Math.floor(value);
 }
 
-export default function CosmicBackground({ intensity = 1, stars = true }: CosmicBackgroundProps) {
+function CosmicBackground({ intensity = 1, stars = true }: CosmicBackgroundProps) {
   const reduceMotion = useReduceMotion();
+  const appActive = useAppActive();
   const drift = useAnimatedValue(0);
 
   useEffect(() => {
@@ -26,6 +27,8 @@ export default function CosmicBackground({ intensity = 1, stars = true }: Cosmic
       drift.setValue(0.4);
       return;
     }
+    // Vòng lặp nghỉ khi app ra sau; drift giữ nguyên giá trị nên lúc quay lại không nhảy hình.
+    if (!appActive) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(drift, { toValue: 1, duration: 14000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -34,7 +37,7 @@ export default function CosmicBackground({ intensity = 1, stars = true }: Cosmic
     );
     loop.start();
     return () => loop.stop();
-  }, [drift, reduceMotion]);
+  }, [appActive, drift, reduceMotion]);
 
   const starField = useMemo(
     () =>
@@ -128,3 +131,6 @@ export default function CosmicBackground({ intensity = 1, stars = true }: Cosmic
     </View>
   );
 }
+
+// 46 View sao + 2 gradient full-screen: không có lý do gì dựng lại khi parent đổi state.
+export default React.memo(CosmicBackground);
