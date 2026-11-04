@@ -26,7 +26,8 @@ export default function HomeScreen() {
   const loadRecent = useCallback(async () => {
     setLoading(true);
     try {
-      const page = await fetchReadings();
+      // Màn này chỉ vẽ 2 thẻ, nên xin đúng 2 thay vì một trang 20 rồi cắt.
+      const page = await fetchReadings(undefined, 2);
       setRecent(page.items.slice(0, 2));
       setFailure(null);
     } catch (error) {

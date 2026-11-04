@@ -8,7 +8,7 @@ import { Banner, Button, Card } from './ui';
 import { errorCodeOf, errorMessageOf } from '../lib/forms';
 import { rewardedAdsSupported } from '../lib/ads';
 import { earnRewardedCredit, fetchRewardedAvailability } from '../lib/rewardedAds';
-import { useAuth } from '../state/auth';
+import { useAuthActions } from '../state/auth';
 import { colors, font, spacing, text as type } from '../theme';
 
 type Phase = 'ready' | 'preparing' | 'watching' | 'confirming';
@@ -35,7 +35,7 @@ interface RewardedOfferProps {
  * đi hỏi backend — nguồn duy nhất của phần thưởng là callback đã Google ký.
  */
 export default function RewardedOffer({ placement, variant = 'card', onGranted }: RewardedOfferProps) {
-  const { setCreditBalance } = useAuth();
+  const { setCreditBalance } = useAuthActions();
   const [availability, setAvailability] = useState<RewardedAdAvailabilityDto | null>(null);
   const [phase, setPhase] = useState<Phase>('ready');
   const [notice, setNotice] = useState<{ variant: 'success' | 'info' | 'error'; title: string; lines?: string[] } | null>(null);

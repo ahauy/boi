@@ -50,6 +50,11 @@ interface RequestOptions {
   timeoutMs?: number;
   /** Gửi kèm access token (mặc định true). Endpoint /auth/* không cần. */
   auth?: boolean;
+  /**
+   * Cho phép thử lại một lần khi không kết nối được. Chỉ bật cho request an toàn khi lặp lại:
+   * GET, hoặc POST mà server tự nhận diện trùng (như /auth/device theo deviceId).
+   */
+  retryOnNetworkError?: boolean;
 }
 
 let accessToken: string | null = null;
@@ -187,8 +192,30 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, code, message, fields, details);
 }
 
+/** Render gói miễn phí ngủ sau ~15 phút không có traffic; đánh thức nó lâu hơn một nhịp timeout. */
+const COLD_START_RETRY_DELAY_MS = 1500;
+
+function isNetworkFailure(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 0;
+}
+
+function mayRetry(options: RequestOptions): boolean {
+  if (options.form) return false;
+  return options.retryOnNetworkError === true || (options.method ?? 'GET') === 'GET';
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const response = await send(path, options);
+  let response: Response;
+
+  try {
+    response = await send(path, options);
+  } catch (error) {
+    // Lần gọi đầu sau một khoảng im lặng chết vì máy chủ đang tỉnh dậy, không phải vì hết mạng.
+    // Không thử lại thì người dùng thấy "không kết nối được" và phải tự bấm lại, mất thêm 20 giây.
+    if (!isNetworkFailure(error) || !mayRetry(options)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, COLD_START_RETRY_DELAY_MS));
+    response = await send(path, options);
+  }
 
   if (response.status === 401 && options.auth !== false) {
     // TOKEN_EXPIRED: làm mới rồi thử lại đúng một lần. UNAUTHENTICATED (hoặc hết session): về login.

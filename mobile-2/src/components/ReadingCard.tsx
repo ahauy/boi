@@ -61,7 +61,13 @@ function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; comp
             justifyContent: 'center',
           }}>
           {thumbnail ? (
-            <Image source={{ uri: thumbnail, cacheKey: item.id }} style={{ width: '100%', height: '100%' }} contentFit="cover" transition={160} />
+            <Image
+              source={{ uri: thumbnail, cacheKey: item.id }}
+              recyclingKey={item.id}
+              style={{ width: '100%', height: '100%' }}
+              contentFit="cover"
+              transition={160}
+            />
           ) : (
             <View style={{ alignItems: 'center', gap: 3 }}>
               <Text style={{ fontFamily: font.display, fontSize: 26, color: colors.gold }}>✦</Text>

@@ -7,16 +7,21 @@ import { fetchMe } from '../lib/users';
 
 type AuthStatus = 'loading' | 'ready' | 'error';
 
-interface AuthContextValue {
+interface AuthStateValue {
   status: AuthStatus;
   user: UserDto | null;
   /** Lỗi mạng/máy chủ khi mở app — màn hình gốc hiện nút thử lại */
   error: string | null;
+}
+
+interface AuthActionsValue {
   retry(): Promise<void>;
   refreshUser(): Promise<void>;
   /** API trả creditBalance trong mọi response, dùng nó để cập nhật header ngay */
   setCreditBalance(balance: number): void;
 }
+
+type AuthContextValue = AuthStateValue & AuthActionsValue;
 
 type SessionResult = { user: UserDto } | { error: string };
 
@@ -60,7 +65,8 @@ async function resolveSession(): Promise<SessionResult> {
   return inflightSession;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+const AuthStateContext = createContext<AuthStateValue | null>(null);
+const AuthActionsContext = createContext<AuthActionsValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -115,16 +121,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser((current) => (current ? { ...current, creditBalance: balance } : current));
   }, []);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({ status, user, error, retry, refreshUser, setCreditBalance }),
-    [status, user, error, retry, refreshUser, setCreditBalance]
-  );
+  const state = useMemo<AuthStateValue>(() => ({ status, user, error }), [status, user, error]);
+  // Ba hàm này có diện trị ổn định, nên actions không đổi khi số dư đổi: màn chỉ cần gọi
+  // refreshUser (kết quả, trang chi tiết) sẽ không bị vẽ lại mỗi lần user cập nhật.
+  const actions = useMemo<AuthActionsValue>(() => ({ retry, refreshUser, setCreditBalance }), [retry, refreshUser, setCreditBalance]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthStateContext.Provider value={state}>
+      <AuthActionsContext.Provider value={actions}>{children}</AuthActionsContext.Provider>
+    </AuthStateContext.Provider>
+  );
 }
 
 export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth phải nằm trong AuthProvider');
-  return context;
+  const state = useContext(AuthStateContext);
+  const actions = useContext(AuthActionsContext);
+  if (!state || !actions) throw new Error('useAuth phải nằm trong AuthProvider');
+  return { ...state, ...actions };
+}
+
+/** Cho màn chỉ cần gọi API chứ không hiển thị dữ liệu người dùng. */
+export function useAuthActions(): AuthActionsValue {
+  const actions = useContext(AuthActionsContext);
+  if (!actions) throw new Error('useAuthActions phải nằm trong AuthProvider');
+  return actions;
 }

@@ -25,9 +25,10 @@ import { Banner, Button, Card, Chip, IconButton, SectionLabel } from '../../comp
 import { ApiError } from '../../lib/api';
 import { errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
+import { useAppActive } from '../../lib/motion';
 import { formatDateTime, handLabel, topicLabels, topicsLabel } from '../../lib/format';
 import { deleteReading, fetchReading } from '../../lib/readings';
-import { useAuth } from '../../state/auth';
+import { useAuthActions } from '../../state/auth';
 import { colors, font, radius, spacing, text as type } from '../../theme';
 
 const TABS = [
@@ -54,7 +55,8 @@ const LINE_LEGEND = [
 
 export default function ReadingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { refreshUser } = useAuth();
+  const { refreshUser } = useAuthActions();
+  const appActive = useAppActive();
   const scrollRef = useRef<ScrollViewInstance>(null);
   const [reading, setReading] = useState<ReadingDto | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -92,8 +94,9 @@ export default function ReadingDetailScreen() {
   );
 
   // Quẻ đang xử lý: tự cập nhật đến khi có kết quả để mở từ Lịch sử không bị kẹt.
+  // Khi app ra sau thì nghỉ; effect chạy lại ngay khi quay về nên kết quả không bị trễ.
   useEffect(() => {
-    if (!id || reading?.status !== ReadingStatus.PROCESSING) return;
+    if (!id || !appActive || reading?.status !== ReadingStatus.PROCESSING) return;
     let cancelled = false;
 
     async function poll() {
@@ -115,7 +118,7 @@ export default function ReadingDetailScreen() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [id, reading?.status, refreshUser]);
+  }, [appActive, id, reading?.status, refreshUser]);
 
   function confirmDelete() {
     haptic.warning();

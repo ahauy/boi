@@ -15,6 +15,7 @@ import ReadingSetupSheet from '../../components/ReadingSetupSheet';
 import RewardedOffer from '../../components/RewardedOffer';
 import { Banner, Button, Checkbox, LoadingOverlay, SectionLabel } from '../../components/ui';
 import { ApiError } from '../../lib/api';
+import { sleepUntilActive } from '../../lib/appActive';
 import { errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
 import { handLabel, topicsLabel } from '../../lib/format';
@@ -115,7 +116,9 @@ export default function ScanStudioScreen() {
 
       if (cancelRef.current) return;
 
-      await refreshUser();
+      // Số dư về sau một vòng gọi mạng; bắt người dùng đứng chờ nó chỉ để thấy con số trên header
+      // là đánh đổi sai, chip sẽ tự cập nhật khi response về.
+      void refreshUser().catch(() => undefined);
 
       if (reading.status === ReadingStatus.REJECTED || reading.status === ReadingStatus.FAILED) {
         haptic.warning();
@@ -372,7 +375,8 @@ async function waitForReading(id: string, shouldStop: () => boolean) {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   let current = await fetchReading(id);
   while (current.status === ReadingStatus.PROCESSING && Date.now() < deadline && !shouldStop()) {
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    // Người dùng rời app giữa lúc luận giải: đừng gọi API trong nền, nhịp đầu sau khi quay lại sẽ lấy kết quả.
+    await sleepUntilActive(POLL_INTERVAL_MS);
     current = await fetchReading(id);
   }
   return current;
