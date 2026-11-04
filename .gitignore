@@ -59,6 +59,8 @@ AGENTS.md
 .github/*
 !.github/workflows/
 !.github/workflows/*
+!.github/rulesets/
+!.github/rulesets/*
 !.github/ISSUE_TEMPLATE/
 !.github/pull_request_template.md
 
