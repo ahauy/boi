@@ -50,6 +50,9 @@ describe('AuthService Unit Logic (TC-004, TC-005, TC-006)', () => {
     creditLedgerService = {
       recordWithSession: vi.fn().mockResolvedValue(undefined),
       spendForReading: vi.fn().mockResolvedValue(undefined),
+      grantSignupBonus: vi.fn().mockResolvedValue({ balanceAfter: 3, amount: 3, type: 'SIGNUP_BONUS' }),
+      credit: vi.fn().mockResolvedValue({ balanceAfter: 3, amount: 3 }),
+      debit: vi.fn().mockResolvedValue({ balanceAfter: 2, amount: -1 }),
     } as unknown as CreditLedgerService;
     const jwtService = new JwtService({ secret: 'test-jwt-access-secret-minimum-32-chars-long' });
 
@@ -102,6 +105,7 @@ describe('AuthService Unit Logic (TC-004, TC-005, TC-006)', () => {
       deletedIdentityModel,
       readingModel as any,
       guestTrialModel as any,
+      ({ findOne: () => ({ session: () => Promise.resolve(null) }), updateOne: () => Promise.resolve({ acknowledged: true }) }) as any,
       mailService,
       creditLedgerService,
       jwtService,

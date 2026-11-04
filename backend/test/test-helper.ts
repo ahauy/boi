@@ -13,6 +13,7 @@ import { CreditsModule } from "../src/credits/credits.module";
 import { HealthModule } from "../src/health/health.module";
 import { ReadingsModule } from "../src/readings/readings.module";
 import { AdsModule } from "../src/ads/ads.module";
+import { AppConfigModule } from "../src/config/app-config.module";
 import { MailService } from "../src/mail/mail.service";
 import { GoogleAuthVerifier } from "../src/auth/google-auth.verifier";
 import { FacebookAuthVerifier } from "../src/auth/facebook-auth.verifier";
@@ -47,6 +48,10 @@ export interface TestAppOptions {
   rewardedAdsEnabled?: boolean;
   /** Bật cửa sau dev-grant, đường cấp credit không cần chữ ký dành cho máy dev. */
   rewardedAdsDevGrant?: boolean;
+  starterGrant?: number;
+  pricePerAction?: number;
+  starterNetworkDailyCap?: number;
+  anonymousSignupDailyCap?: number;
 }
 
 export async function createTestApp(
@@ -98,11 +103,16 @@ export async function createTestApp(
             REFRESH_TOKEN_TTL_DAYS: 30,
             EMAIL_VERIFY_TTL_HOURS: 24,
             IDENTITY_HASH_SECRET: "test-identity-secret-at-least-32-chars-long",
-            SIGNUP_BONUS_CREDITS: 3,
+            SIGNUP_BONUS_CREDITS: options.starterGrant ?? 3,
+            STARTER_GRANT: options.starterGrant ?? 3,
+            READING_COST_CREDITS: options.pricePerAction ?? 1,
+            PRICE_PER_ACTION: options.pricePerAction ?? 1,
+            MAX_ACTIONS_PER_TAP: 5,
+            STARTER_NETWORK_DAILY_CAP: options.starterNetworkDailyCap ?? 5,
+            ANONYMOUS_SIGNUP_DAILY_CAP: options.anonymousSignupDailyCap ?? 3,
             REFERRAL_REWARD_CREDITS: 2,
             REFEREE_REWARD_CREDITS: 1,
             REFERRAL_DAILY_CAP: 10,
-            ANONYMOUS_SIGNUP_DAILY_CAP: 3,
             PUBLIC_BASE_URL: "http://localhost:5173",
             GOOGLE_CLIENT_ID:
               "test-google-client-id.apps.googleusercontent.com",
@@ -131,6 +141,7 @@ export async function createTestApp(
       UsersModule,
       ReadingsModule,
       AdsModule,
+      AppConfigModule,
     ],
   })
     .overrideProvider(MailService)
@@ -170,6 +181,7 @@ export async function createTestApp(
     "readings",
     "guest_trials",
     "rewarded_ad_claims",
+    "devices",
   ];
   for (const col of collectionNames) {
     try {

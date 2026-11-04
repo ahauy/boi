@@ -10,6 +10,7 @@ import {
   ReadingSchema,
   CreditTransactionSchema,
   DeletedIdentitySchema,
+  DeviceSchema,
 } from '../src/schemas';
 
 export function loadEnv(): void {
@@ -40,6 +41,7 @@ export const CHECK_TARGETS = [
   { name: 'Reading', schema: ReadingSchema },
   { name: 'CreditTransaction', schema: CreditTransactionSchema },
   { name: 'DeletedIdentity', schema: DeletedIdentitySchema },
+  { name: 'Device', schema: DeviceSchema },
 ];
 
 export interface ConnectivityResult {

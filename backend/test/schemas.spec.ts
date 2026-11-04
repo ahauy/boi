@@ -10,6 +10,7 @@ import {
   CreditTransactionSchema,
   DeletedIdentitySchema,
   GuestTrialSchema,
+  DeviceSchema,
 } from '../src/schemas';
 import {
   AuthProvider,
@@ -34,6 +35,7 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
       expect((CreditTransactionSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('credit_transactions');
       expect((DeletedIdentitySchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('deleted_identities');
       expect((GuestTrialSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('guest_trials');
+      expect((DeviceSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('devices');
     });
   });
 
@@ -376,9 +378,24 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
     });
   });
 
+  describe('DeviceSchema & Indexes', () => {
+    it('should have deviceIdHash unique and starterIpHash compound index', () => {
+      const indexes = DeviceSchema.indexes();
+
+      const deviceIdIdx = indexes.find(([fields]) => fields.deviceIdHash === 1);
+      expect(deviceIdIdx).toBeDefined();
+      expect(deviceIdIdx![1]).toMatchObject({ unique: true });
+
+      const ipIdx = indexes.find(
+        ([fields]) => fields.starterIpHash === 1 && fields.starterGrantedAt === -1,
+      );
+      expect(ipIdx).toBeDefined();
+    });
+  });
+
   describe('sync-indexes targets', () => {
-    it('should register all 10 schemas in SYNC_TARGETS', () => {
-      expect(SYNC_TARGETS).toHaveLength(10);
+    it('should register all 11 schemas in SYNC_TARGETS', () => {
+      expect(SYNC_TARGETS).toHaveLength(11);
       const names = SYNC_TARGETS.map((t) => t.name);
       expect(names).toEqual([
         'User',
@@ -391,6 +408,7 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
         'DeletedIdentity',
         'GuestTrial',
         'RewardedAdClaim',
+        'Device',
       ]);
     });
   });

@@ -8,6 +8,7 @@ import { AuthModule } from "./auth/auth.module";
 import { UsersModule } from "./users/users.module";
 import { ReadingsModule } from "./readings/readings.module";
 import { AdsModule } from "./ads/ads.module";
+import { AppConfigModule } from "./config/app-config.module";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AdsModule } from "./ads/ads.module";
     UsersModule,
     ReadingsModule,
     AdsModule,
+    AppConfigModule,
   ],
 })
 export class AppModule {}

@@ -98,6 +98,30 @@ export class User {
   @Prop({ type: String, default: null, trim: true })
   signupIpHash?: string | null;
 
+  @Prop({ type: Date, default: null })
+  vipExpiresAt?: Date | null;
+
+  @Prop({ type: String, default: null, trim: true })
+  vipProductId?: string | null;
+
+  @Prop({ type: Boolean, default: false })
+  vipWillRenew?: boolean;
+
+  @Prop({ type: String, default: null, trim: true })
+  billingRef?: string | null;
+
+  @Prop({ type: Date, default: null })
+  starterGrantedAt?: Date | null;
+
+  @Prop({ type: String, default: null, trim: true })
+  checkinDay?: string | null;
+
+  @Prop({ type: Number, default: 0, min: 0, max: 365 })
+  checkinStreak?: number;
+
+  @Prop({ type: String, default: null, trim: true })
+  vipDailyDay?: string | null;
+
   createdAt: Date;
   updatedAt: Date;
 

@@ -128,7 +128,7 @@ export class ReferralsService {
     session.startTransaction();
 
     try {
-      // 1. Insert referral record
+      // 1. Create referral record
       const [referralDoc] = await this.referralModel.create(
         [
           {
@@ -142,29 +142,12 @@ export class ReferralsService {
       );
 
       // 2. Update referee creditBalance: +1 credit (REFEREE_REWARD)
-      const refereeUpdate = await this.userModel.updateOne(
-        { _id: user._id, deletedAt: null },
-        { $inc: { creditBalance: CREDIT_AMOUNTS.REFEREE_REWARD } },
-        { session },
-      );
-      if (refereeUpdate.matchedCount !== 1) {
-        throw new NotFoundException({
-          code: 'USER_NOT_FOUND',
-          message: 'Người dùng không tồn tại.',
-        });
-      }
-
-      const updatedReferee = await this.userModel
-        .findById(user._id)
-        .session(session)
-        .lean();
-
-      await this.creditLedgerService.recordWithSession(
+      const refereeTx = await this.creditLedgerService.credit(
         {
           userId: user._id,
           amount: CREDIT_AMOUNTS.REFEREE_REWARD,
           type: CreditTransactionType.REFEREE_BONUS,
-          balanceAfter: updatedReferee!.creditBalance,
+          reason: 'referee_bonus',
           referralId: referralDoc._id,
         },
         session,
@@ -172,29 +155,12 @@ export class ReferralsService {
 
       // 3. If status === ReferralStatus.REWARDED:
       if (status === ReferralStatus.REWARDED) {
-        const referrerUpdate = await this.userModel.updateOne(
-          { _id: referrer._id, deletedAt: null },
-          { $inc: { creditBalance: CREDIT_AMOUNTS.REFERRAL_REWARD } },
-          { session },
-        );
-        if (referrerUpdate.matchedCount !== 1) {
-          throw new NotFoundException({
-            code: 'USER_NOT_FOUND',
-            message: 'Chủ mã không tồn tại.',
-          });
-        }
-
-        const updatedReferrer = await this.userModel
-          .findById(referrer._id)
-          .session(session)
-          .lean();
-
-        await this.creditLedgerService.recordWithSession(
+        await this.creditLedgerService.credit(
           {
             userId: referrer._id,
             amount: CREDIT_AMOUNTS.REFERRAL_REWARD,
             type: CreditTransactionType.REFERRAL_BONUS,
-            balanceAfter: updatedReferrer!.creditBalance,
+            reason: 'referral_bonus',
             referralId: referralDoc._id,
           },
           session,
@@ -210,7 +176,7 @@ export class ReferralsService {
         accepted: true,
         referrer: { displayName: referrer.displayName },
         creditsEarned: CREDIT_AMOUNTS.REFEREE_REWARD,
-        creditBalance: updatedReferee!.creditBalance,
+        creditBalance: refereeTx.balanceAfter,
       };
     } catch (err: any) {
       await session.abortTransaction();

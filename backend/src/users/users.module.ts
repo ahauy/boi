@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { MongooseModule } from "@nestjs/mongoose";
 import { AuthModule } from "../auth/auth.module";
 import { CreditsModule } from "../credits/credits.module";
+import { User, UserSchema } from "../schemas/user.schema";
 import { Referral, ReferralSchema } from "../schemas/referral.schema";
 import { ReferralsModule } from "../referrals/referrals.module";
 import { UsersController } from "./users.controller";
@@ -14,6 +15,7 @@ import { UserRateLimitGuard } from "../auth/guards/user-rate-limit.guard";
     CreditsModule,
     ReferralsModule,
     MongooseModule.forFeature([
+      { name: User.name, schema: UserSchema },
       { name: Referral.name, schema: ReferralSchema },
     ]),
   ],

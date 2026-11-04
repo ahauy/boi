@@ -15,6 +15,7 @@ import * as crypto from "crypto";
 import * as argon2 from "argon2";
 
 import {
+  ECONOMY_DEFAULTS,
   RegisterRequestDto,
   RegisterResponseDto,
   ResendVerificationRequestDto,
@@ -43,6 +44,7 @@ import {
 } from "../schemas/deleted-identity.schema";
 import { Reading, ReadingDocument } from "../schemas/reading.schema";
 import { GuestTrial, GuestTrialDocument } from "../schemas/guest-trial.schema";
+import { Device, DeviceDocument } from "../schemas/device.schema";
 import { MailService } from "../mail/mail.service";
 import { CreditLedgerService } from "../credits/credit-ledger.service";
 import type { GoogleProfile } from "./google-auth.verifier";
@@ -71,6 +73,8 @@ export class AuthService {
     private readonly readingModel: Model<ReadingDocument>,
     @InjectModel(GuestTrial.name)
     private readonly guestTrialModel: Model<GuestTrialDocument>,
+    @InjectModel(Device.name)
+    private readonly deviceModel: Model<DeviceDocument>,
     private readonly mailService: MailService,
     private readonly creditLedgerService: CreditLedgerService,
     private readonly jwtService: JwtService,
@@ -710,27 +714,83 @@ export class AuthService {
     session: ClientSession
   ): Promise<UserDocument> {
     const referralCode = await this.generateReferralCode(session);
+
+    let canGrantStarter = !isDeletedIdentity;
+    const deviceIdHash = data.deviceIdHash;
+    const signupIpHash = data.signupIpHash;
+
+    if (canGrantStarter && deviceIdHash) {
+      const existingDevice = await this.deviceModel
+        .findOne({ deviceIdHash })
+        .session(session);
+      if (existingDevice && existingDevice.starterGrantedAt) {
+        canGrantStarter = false;
+      }
+    }
+
+    if (canGrantStarter && signupIpHash) {
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const starterNetworkDailyCap = Number(
+        this.configService.get(
+          "STARTER_NETWORK_DAILY_CAP",
+          ECONOMY_DEFAULTS.STARTER_NETWORK_DAILY_CAP
+        )
+      );
+      const networkGrantsCount = await this.userModel
+        .countDocuments({
+          signupIpHash,
+          starterGrantedAt: { $gte: since24h },
+        })
+        .session(session);
+
+      if (networkGrantsCount >= starterNetworkDailyCap) {
+        canGrantStarter = false;
+      }
+    }
+
     const [newUser] = await this.userModel.create(
       [
         {
           ...data,
           referralCode,
-          creditBalance: isDeletedIdentity ? 0 : CREDIT_AMOUNTS.SIGNUP_BONUS,
+          creditBalance: 0,
           referralBlocked: isDeletedIdentity,
+          starterGrantedAt: null,
         },
       ],
       { session }
     );
 
-    if (!isDeletedIdentity) {
-      await this.creditLedgerService.recordWithSession(
+    if (canGrantStarter) {
+      const bonusTx = await this.creditLedgerService.grantSignupBonus(newUser._id, session);
+      newUser.creditBalance = bonusTx.balanceAfter;
+      newUser.starterGrantedAt = new Date();
+      if (deviceIdHash) {
+        await this.deviceModel.updateOne(
+          { deviceIdHash },
+          {
+            $set: {
+              deviceIdHash,
+              starterGrantedAt: new Date(),
+              starterUserId: newUser._id,
+              starterIpHash: signupIpHash || null,
+            },
+          },
+          { upsert: true, session }
+        );
+      }
+    } else if (deviceIdHash) {
+      await this.deviceModel.updateOne(
+        { deviceIdHash },
         {
-          userId: newUser._id,
-          amount: CREDIT_AMOUNTS.SIGNUP_BONUS,
-          type: CreditTransactionType.SIGNUP_BONUS,
-          balanceAfter: CREDIT_AMOUNTS.SIGNUP_BONUS,
+          $setOnInsert: {
+            deviceIdHash,
+            starterGrantedAt: null,
+            starterUserId: null,
+            starterIpHash: signupIpHash || null,
+          },
         },
-        session
+        { upsert: true, session }
       );
     }
 
@@ -772,17 +832,16 @@ export class AuthService {
       .session(session);
     if (!referrer || referrer._id.toString() === referee._id.toString()) return;
 
-    referee.creditBalance += CREDIT_AMOUNTS.REFEREE_REWARD;
-    await referee.save({ session });
-    await this.creditLedgerService.recordWithSession(
+    const refereeTx = await this.creditLedgerService.credit(
       {
         userId: referee._id,
         amount: CREDIT_AMOUNTS.REFEREE_REWARD,
         type: CreditTransactionType.REFEREE_BONUS,
-        balanceAfter: referee.creditBalance,
+        reason: "referee_bonus",
       },
       session
     );
+    referee.creditBalance = refereeTx.balanceAfter;
 
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
@@ -815,8 +874,6 @@ export class AuthService {
       return;
     }
 
-    referrer.creditBalance += CREDIT_AMOUNTS.REFERRAL_REWARD;
-    await referrer.save({ session });
     const [referralDoc] = await this.referralModel.create(
       [
         {
@@ -828,16 +885,17 @@ export class AuthService {
       ],
       { session }
     );
-    await this.creditLedgerService.recordWithSession(
+    const referrerTx = await this.creditLedgerService.credit(
       {
         userId: referrer._id,
         amount: CREDIT_AMOUNTS.REFERRAL_REWARD,
         type: CreditTransactionType.REFERRAL_BONUS,
-        balanceAfter: referrer.creditBalance,
+        reason: "referral_bonus",
         referralId: referralDoc._id,
       },
       session
     );
+    referrer.creditBalance = referrerTx.balanceAfter;
   }
 
   private async handleTrialClaim(

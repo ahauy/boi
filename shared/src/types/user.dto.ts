@@ -14,6 +14,13 @@ export interface UserReferralInfoDto {
   enteredCode: string | null;
 }
 
+export interface UserVipInfoDto {
+  active: boolean;
+  productId: string | null;
+  expiresAt: string | null;
+  willRenew: boolean;
+}
+
 export interface UserDto {
   id: string;
   displayName: string;
@@ -28,6 +35,11 @@ export interface UserDto {
   /** Tài khoản tạo tự động theo thiết bị, không có email hay mật khẩu */
   isAnonymous: boolean;
   referral: UserReferralInfoDto;
+  balance?: number;
+  vip?: UserVipInfoDto;
+  billingRef?: string;
+  grantedNow?: boolean;
+  vipDailyGranted?: number;
 }
 
 export type MeResponseDto = UserDto;

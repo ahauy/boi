@@ -155,6 +155,35 @@ export const CREDIT_AMOUNTS = {
   REWARDED_AD_REWARD_CREDITS: 1,
 } as const;
 
+export const ECONOMY_DEFAULTS = {
+  CURRENCY: "GEM",
+  PRICE_PER_ACTION: 5,
+  MAX_ACTIONS_PER_TAP: 5,
+  STARTER_GRANT: 5,
+  STARTER_NETWORK_DAILY_CAP: 5,
+  REWARD_TZ: "Asia/Ho_Chi_Minh",
+  CHECKIN_LADDER: [3, 3, 5, 3, 3, 8, 10] as const,
+  STREAK_LENGTH: 365,
+  MILESTONES: { 30: 20, 60: 30, 100: 50, 180: 80, 270: 100, 365: 200 } as const,
+  RESTORE_COST_PER_DAY: 10,
+  RESTORE_MAX_MISSED: 3,
+  WHEEL_PRIZES: [2, 3, 5, 10, 20, 50] as const,
+  FREE_SPINS: 1,
+  AD_SPINS: 3,
+  CURRENCY_SPIN_COST: 3,
+  CHECKIN_DOUBLE_CAP: 1,
+  BONUS_AD_AMOUNT: 3,
+  BONUS_AD_CAP: 5,
+  VIP_DAILY: 50,
+  MIN_AD_WATCH_SECONDS: 15,
+  INTERSTITIAL_GAP_SECONDS: 90,
+  ADS_USER_GAP_SECONDS: 30,
+  ADS_USER_DECLINES: 3,
+  PAYWALL_RETURN_AFTER_SECONDS: 10,
+  PAYWALL_CLOSE_DELAY_MS: 1500,
+  NO_AD_WAIT_SECONDS: 15,
+} as const;
+
 /** Một lượt xem quảng cáo đổi credit chỉ có hiệu lực trong khoảng này; quá hạn là claim hết giá trị. */
 export const REWARDED_AD_INTENT_TTL_MS = 10 * 60 * 1000;
 
