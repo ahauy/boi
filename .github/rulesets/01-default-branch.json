@@ -1,5 +1,5 @@
 {
-  "name": "main — bắt buộc CI",
+  "name": "01 — default branch: chặn phá history, bắt buộc CI",
   "target": "branch",
   "source_type": "Repository",
   "enforcement": "active",
@@ -27,10 +27,11 @@
     {
       "type": "required_status_checks",
       "parameters": {
-        "strict_required_status_checks_policy": true,
         "do_not_enforce_on_create": false,
+        "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          { "context": "Lint & typecheck" },
+          { "context": "Lint" },
+          { "context": "Typecheck" },
           { "context": "Test" },
           { "context": "Build" }
         ]

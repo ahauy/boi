@@ -7,11 +7,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# CI chỉ đọc mã nguồn: không job nào được quyền đẩy quyền repo hay phát hành.
+# CI chỉ đọc mã nguồn: không job nào cần quyền ghi metadata, phát hành, hay kiểm tra bảo mật.
 permissions:
   contents: read
 
-# Commit mới nhất thắng: PR bị đẩy thêm commit thì bỏ run cũ, còn push vào main thì chạy đủ mọi commit.
+# Commit mới nhất thắng: PR bị đẩy thêm commit thì bỏ run cũ, push vào main vẫn chạy đủ mọi commit.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -19,49 +19,56 @@ concurrency:
 env:
   NODE_VERSION: '22'
 
+# Bốn gate độc lập, không job nào needs job nào: mỗi gate tự cài từ pnpm store cache.
+# Đổi tên job thì phải đổi context trong .github/rulesets/ theo, nếu không PR kẹt vĩnh viễn.
 jobs:
-  static:
-    name: Lint & typecheck
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
-
-      # Các gói khác import type từ @palmsight/shared, nên nó phải build trước khi typecheck.
+      # Các gói khác import type từ @palmsight/shared nên nó phải build trước.
       - run: pnpm --filter @palmsight/shared build
-
       - run: pnpm lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @palmsight/shared build
       - run: pnpm typecheck
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    # 41 file backend chạy tuần tự (fileParallelism: false) và mỗi file dựng một replica set riêng.
+    # 41 file backend chạy tuần tự (fileParallelism: false) vì mỗi file dựng một replica set riêng.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
-
       - run: pnpm --filter @palmsight/shared build
 
-      # mongodb-memory-server tải about 200 MB binary ở lần chạy đầu; không cache thì mỗi run đều tải lại.
+      # mongodb-memory-server tải about 200 MB binary; không cache thì mỗi run đều tải lại.
       - uses: actions/cache@v4
         with:
           path: ~/.cache/mongodb-binaries
@@ -76,16 +83,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
-
       - run: pnpm --filter @palmsight/shared build
-
       - run: pnpm build

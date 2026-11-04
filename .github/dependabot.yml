@@ -1,0 +1,33 @@
+version: 2
+
+updates:
+  - package-ecosystem: pnpm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: 'Asia/Ho_Chi_Minh'
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    labels:
+      - dependencies
+    groups:
+      patch-and-minor:
+        update-types:
+          - patch
+          - minor
+        patterns:
+          - '*'
+
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: 'Asia/Ho_Chi_Minh'
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - ci

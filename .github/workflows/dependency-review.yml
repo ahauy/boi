@@ -1,0 +1,35 @@
+name: Dependency review
+
+on:
+  pull_request:
+    branches: [main]
+
+# Chỉ đọc manifest/lockfile. Không cần token riêng cho repo public.
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Khác biệt so với "pnpm audit": audit sẽ đỏ ngay từ đầu vì repo đang có 19 lỗ hổng tồn đọng.
+      # Dependency review chỉ chặn khi chính PR này đưa lỗ hổng MỚI vào, nên nó dùng làm gate được.
+      #
+      # Điều kiện cần — Settings -> Code security and analysis -> Dependency graph phải đang bật:
+      # action này đọc Dependency graph chứ không đọc lockfile. Chưa bật thì nó báo
+      # "Dependency review is not supported on this repository". Sau khi bật vẫn phải chờ nó quét
+      # nhánh nền một lần để có snapshot baseline.
+      #
+      # continue-on-error là tạm thời, không phải thiết kế: ruleset đang sống bắt context
+      # "Dependency review", mà repo này chưa bật Dependency graph và mình không có token để sửa
+      # ruleset. Bỏ workflow mà vẫn giữ context đó sẽ khiến MỌI PR chờ một check không bao giờ báo
+      # cáo — trạng thái tệ hơn cả check đỏ. Bật Dependency graph xong thì xoá dòng
+      # continue-on-error để nó thành gate thật.
+      - uses: actions/dependency-review-action@v4
+        continue-on-error: true
+        with:
+          fail-on-severity: high
