@@ -44,14 +44,19 @@ chặn push thẳng, không cần đến `update`.
 
 `02` đòi check `Dependency review`. Check đó chạy bằng `actions/dependency-review-action`, thứ
 đọc **Dependency graph** chứ không đọc lockfile. Graph chưa bật ở
-`Settings → Code security and analysis` thì check fail với
-`Dependency review is not supported on this repository`, và PR không merge được.
+`Settings → Code security and analysis` thì nó fail với
+`Dependency review is not supported on this repository`.
 
-Bật graph xong vẫn phải chờ nó quét nhánh nền một lần để có snapshot baseline, rồi
-`Re-run failed jobs` trên PR. Nếu không muốn phụ thuộc graph, bỏ context `Dependency review`
-khỏi `02` (Sửa ruleset trong Settings → Rules → Rulesets, hoặc `PATCH /repos/ahauy/boi/rulesets/{id}`)
-và xoá `.github/workflows/dependency-review.yml` — đừng chỉ xoá workflow mà giữ lại context,
-vì PR sẽ chờ mãi một check không bao giờ báo cáo.
+Hiện workflow đang chạy với `continue-on-error: true`, nên nó **báo cáo nhưng không chặn merge** —
+đây là trạng thái tạm thời để PR không bị kẹt vĩnh viễn trong lúc graph chưa bật. Cách về đích
+đúng, theo thứ tự:
+
+1. Bật Dependency graph, chờ nó quét nhánh nền lần đầu (vài phút).
+2. Xoá dòng `continue-on-error` trong `.github/workflows/dependency-review.yml`.
+3. Từ đó check mới thật sự chặn PR đưa lỗ hổng high trở lên.
+
+Đừng làm nửa vời: xoá workflow mà vẫn giữ context trong ruleset thì mọi PR chờ một check không bao
+giờ báo cáo, và đó là lỗi khó chẩn đoán hơn nhiều so với một check đỏ.
 
 ## Những thứ chuẩn công ty nhưng cố ý không có
 
