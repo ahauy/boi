@@ -16,8 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Khác biệt so với "pnpm audit": audit sẽ đỏ ngay từ đầu vì repo đang có 19 lỗ hổng cũ.
-      # Dependency review chỉ chặn khi chính PR này introduces lỗ hổng mới, nên nó dùng làm gate được.
+      # Khác biệt so với "pnpm audit": audit sẽ đỏ ngay từ đầu vì repo đang có 19 lỗ hổng tồn đọng.
+      # Dependency review chỉ chặn khi chính PR này đưa lỗ hổng MỚI vào, nên nó dùng làm gate được.
+      #
+      # Điều kiện cần — Settings -> Code security and analysis -> Dependency graph phải đang bật:
+      # action này đọc Dependency graph chứ không đọc lockfile. Chưa bật thì nó báo
+      # "Dependency review is not supported on this repository". Sau khi bật vẫn phải chờ nó quét
+      # nhánh nền một lần để có snapshot baseline, rồi mới re-run check.
       - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high

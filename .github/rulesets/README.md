@@ -40,6 +40,19 @@ chặn push thẳng, không cần đến `update`.
    cùng hoạt động trên một ref sẽ giao nhau theo hướng nghiêm ngặt nhất. Khi bật `02`, xoá `01`
    bằng `DELETE /repos/ahauy/boi/rulesets/{id}` để khỏi rối.
 
+## Một gate phụ thuộc vào cấu hình repo
+
+`02` đòi check `Dependency review`. Check đó chạy bằng `actions/dependency-review-action`, thứ
+đọc **Dependency graph** chứ không đọc lockfile. Graph chưa bật ở
+`Settings → Code security and analysis` thì check fail với
+`Dependency review is not supported on this repository`, và PR không merge được.
+
+Bật graph xong vẫn phải chờ nó quét nhánh nền một lần để có snapshot baseline, rồi
+`Re-run failed jobs` trên PR. Nếu không muốn phụ thuộc graph, bỏ context `Dependency review`
+khỏi `02` (Sửa ruleset trong Settings → Rules → Rulesets, hoặc `PATCH /repos/ahauy/boi/rulesets/{id}`)
+và xoá `.github/workflows/dependency-review.yml` — đừng chỉ xoá workflow mà giữ lại context,
+vì PR sẽ chờ mãi một check không bao giờ báo cáo.
+
 ## Những thứ chuẩn công ty nhưng cố ý không có
 
 `require_code_owner_review` — repo không có `CODEOWNERS`, bật vào là chặn mọi PR.
