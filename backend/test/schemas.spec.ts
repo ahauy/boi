@@ -400,8 +400,8 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
   });
 
   describe('sync-indexes targets', () => {
-    it('should register all 14 schemas in SYNC_TARGETS', () => {
-      expect(SYNC_TARGETS).toHaveLength(14);
+    it('should register all 13 schemas in SYNC_TARGETS', () => {
+      expect(SYNC_TARGETS).toHaveLength(13);
       const names = SYNC_TARGETS.map((t) => t.name);
       expect(names).toEqual([
         'User',
@@ -413,7 +413,6 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
         'CreditTransaction',
         'DeletedIdentity',
         'GuestTrial',
-        'RewardedAdClaim',
         'Device',
         'AdReward',
         'PlaySubscription',

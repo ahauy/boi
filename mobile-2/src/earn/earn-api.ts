@@ -1,5 +1,6 @@
 import {
   AdRewardClaimResponseDto,
+  AdRewardKind,
   AdRewardReleaseResponseDto,
   AdRewardTicketDto,
   CheckinClaimResponseDto,
@@ -23,12 +24,6 @@ import { del, get, post } from '../lib/api';
  * - DELETE /api/v1/currency/ad-rewards/:id
  */
 
-export interface CreateAdRewardResponse extends Partial<AdRewardTicketDto> {
-  nonceId: string;
-  expiresAt?: string;
-  [key: string]: any;
-}
-
 export async function fetchCurrencyEarn(): Promise<CurrencyEarnResponseDto> {
   return get<CurrencyEarnResponseDto>('/currency/earn');
 }
@@ -49,24 +44,8 @@ export async function spinPaidWheel(): Promise<WheelSpinResponseDto> {
   return post<WheelSpinResponseDto>('/currency/paid-spin');
 }
 
-export async function createAdReward(
-  kind: string = 'bonus',
-  placement?: string
-): Promise<CreateAdRewardResponse> {
-  let normalizedKind = kind;
-  if (placement === 'checkin_double' || kind === 'checkin_double' || kind === 'checkin') {
-    normalizedKind = 'checkin';
-  } else if (kind === 'spin' || placement === 'lucky_wheel_ad') {
-    normalizedKind = 'spin';
-  } else if (kind === 'ad_reward' || kind === 'streak_restore') {
-    normalizedKind = 'bonus';
-  }
-  const res = await post<any>('/currency/ad-rewards', { kind: normalizedKind });
-  const nonceId = res?.nonceId || res?.id || res?.ticketId || '';
-  return {
-    ...res,
-    nonceId,
-  };
+export async function createAdReward(kind: AdRewardKind): Promise<AdRewardTicketDto> {
+  return post<AdRewardTicketDto>('/currency/ad-rewards', { kind });
 }
 
 export async function claimAdReward(
@@ -81,10 +60,4 @@ export async function releaseAdReward(
   return del<AdRewardReleaseResponseDto>(`/currency/ad-rewards/${id}`);
 }
 
-// Aliases for convenience across screens
-export type EarnStateDto = CurrencyEarnResponseDto;
-export const getEarnState = fetchCurrencyEarn;
-export const restoreStreak = restoreCheckin;
-export const spinWheel = spinFreeWheel;
-export const paidSpinWheel = spinPaidWheel;
 

@@ -8,7 +8,6 @@ import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import Text from './AppText';
 import { colors, shadow, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
-import { onTabSwitchInterstitial } from '../ads/interstitial-triggers';
 
 type TabName = 'index' | 'scan' | 'currency' | 'history' | 'profile';
 
@@ -36,7 +35,6 @@ export default function CosmicTabBar({ state, emitter, navigateToTab }: BottomTa
     const event = emitter.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
     if (!focused && !event.defaultPrevented) {
       haptic.select();
-      void onTabSwitchInterstitial(name);
       navigateToTab(route.key);
     }
   }

@@ -26,6 +26,11 @@ module.exports = ({ config } = {}) => {
   const hygiene = validateReleaseHygiene(process.env, isProduction);
   const applovinSdkKey = process.env.APPLOVIN_SDK_KEY || '';
 
+  // .env.local is git-ignored, so EAS workers only see variables set in EAS itself.
+  if (process.env.EAS_BUILD === 'true' && isProduction && !applovinSdkKey) {
+    throw new Error('APPLOVIN_SDK_KEY is not set in EAS for this production build');
+  }
+
   const googleServicesPath = path.resolve(__dirname, 'google-services.json');
   const hasGoogleServicesFile = fs.existsSync(googleServicesPath);
 
@@ -53,6 +58,11 @@ module.exports = ({ config } = {}) => {
       pluginName === './plugins/withMonetization.js'
     );
   });
+
+  // These plugins fail prebuild without google-services.json; analytics stays off until it is added.
+  if (hasGoogleServicesFile) {
+    existingPlugins.push('@react-native-firebase/app', '@react-native-firebase/crashlytics');
+  }
 
   if (!hasMonetizationPlugin) {
     existingPlugins.push([

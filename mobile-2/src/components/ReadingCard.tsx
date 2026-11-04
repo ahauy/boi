@@ -3,6 +3,7 @@ import { Pressable, View } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { triggerOpenHistoryResult } from '../ads/interstitial-triggers';
 import { READING_SCHOOLS, ReadingStatus, type ReadingListItemDto } from '@palmsight/shared';
 
 import Text from './AppText';
@@ -30,7 +31,7 @@ export default function ReadingCard({ item, compact = false }: { item: ReadingLi
       android_ripple={{ color: 'rgba(231,199,119,0.1)', foreground: true }}
       onPress={() => {
         haptic.select();
-        router.push({ pathname: '/reading/[id]', params: { id: item.id } });
+        triggerOpenHistoryResult(item.id, () => router.push({ pathname: '/reading/[id]', params: { id: item.id } }));
       }}
       style={({ pressed }) => ({ borderRadius: radius.xl, overflow: 'hidden', opacity: pressed ? 0.86 : 1 })}>
       <LinearGradient

@@ -2,19 +2,21 @@ import React, { useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { AdRewardKind, ECONOMY_DEFAULTS } from '@palmsight/shared';
 import type { CurrencyEarnResponseDto } from '@palmsight/shared';
 
 import Text from '../components/AppText';
 import { Button } from '../components/ui';
-import { watchForAction } from '../ads/rewarded';
-import { spinFreeWheel, spinPaidWheel } from './earn-api';
+import { watch } from '../ads/rewarded';
+import { spinFreeWheel } from './earn-api';
+import { useI18n } from '../i18n';
+import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { useReduceMotion } from '../lib/motion';
+import { useAuth } from '../state/auth';
 import { colors, radius, shadow, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
 
-export const WHEEL_SLICES = [5, 5, 5, 10, 10, 15, 25, 50] as const;
-const SLICE_COUNT = WHEEL_SLICES.length;
-const SLICE_ANGLE = 360 / SLICE_COUNT;
+const SPIN_DURATION_MS = 4200;
 
 export interface LuckyWheelProps {
   earnState?: CurrencyEarnResponseDto | null;
@@ -23,29 +25,33 @@ export interface LuckyWheelProps {
 
 export function LuckyWheel({ earnState, onUpdated }: LuckyWheelProps) {
   const reduceMotion = useReduceMotion();
+  const { t } = useI18n();
+  const { setCreditBalance } = useAuth();
   const [spinning, setSpinning] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const rotationAnim = useRef(new Animated.Value(0)).current;
+  const rotationAnim = useAnimatedValue(0);
   const currentAngleRef = useRef(0);
 
   const wheelData = earnState?.wheel;
   const freeSpinAvailable = wheelData?.freeSpinAvailable ?? true;
   const adSpinsRemaining = wheelData?.adSpinsRemaining ?? 3;
-  const gemSpinCost = wheelData?.gemSpinCost ?? 5;
+  const hasSpinsLeft = freeSpinAvailable || adSpinsRemaining > 0;
+  const prizes: readonly number[] = wheelData?.prizes ?? ECONOMY_DEFAULTS.WHEEL_PRIZES;
+  const sliceAngle = 360 / prizes.length;
 
   function animateToSlice(sliceIndex: number, amount: number) {
     // 5 full rotations (1800 deg) + target angle offset
-    const targetSliceAngle = (360 - (sliceIndex * SLICE_ANGLE + SLICE_ANGLE / 2)) % 360;
-    const extraRotations = 360 * 5;
-    const finalAngle = currentAngleRef.current + extraRotations + targetSliceAngle;
+    const targetSliceAngle = (360 - sliceIndex * sliceAngle) % 360;
+    const currentTurns = Math.ceil(currentAngleRef.current / 360);
+    const finalAngle = (currentTurns + 5) * 360 + targetSliceAngle;
 
     if (reduceMotion) {
       currentAngleRef.current = finalAngle;
       rotationAnim.setValue(finalAngle);
       setSpinning(false);
-      setResultMessage(`Chúc mừng! Bạn nhận được +${amount} GEM!`);
+      setResultMessage(t('earn.wheel.won', { amount }));
       haptic.success();
       onUpdated?.();
       return;
@@ -53,65 +59,55 @@ export function LuckyWheel({ earnState, onUpdated }: LuckyWheelProps) {
 
     Animated.timing(rotationAnim, {
       toValue: finalAngle,
-      duration: 4200,
+      duration: SPIN_DURATION_MS,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
       currentAngleRef.current = finalAngle;
       setSpinning(false);
-      setResultMessage(`Chúc mừng! Bạn nhận được +${amount} GEM!`);
+      setResultMessage(t('earn.wheel.won', { amount }));
       haptic.success();
       onUpdated?.();
     });
   }
 
-  async function handleFreeSpin() {
-    if (spinning) return;
+  function beginSpin(): boolean {
+    if (spinning) return false;
     setSpinning(true);
     setResultMessage(null);
     setError(null);
     haptic.tap();
+    return true;
+  }
 
+  async function handleFreeSpin() {
+    if (!beginSpin()) return;
     try {
-      // 1. User watches rewarded ad first per §5.3
-      const ad = await watchForAction('lucky_wheel');
-      if (!ad.completed) {
-        setSpinning(false);
-        setError('Xem hết quảng cáo để nhận lượt quay.');
-        return;
-      }
-
-      // 2. Call server spin
       const res = await spinFreeWheel();
-      const sliceIdx =
-        res.prizeIndex !== undefined && res.prizeIndex >= 0 && res.prizeIndex < SLICE_COUNT
-          ? res.prizeIndex
-          : 0;
-      animateToSlice(sliceIdx, res.amount || WHEEL_SLICES[sliceIdx]);
-    } catch (err: any) {
+      setCreditBalance(res.balance);
+      animateToSlice(res.prizeIndex, res.amount);
+    } catch (err) {
       setSpinning(false);
-      setError(err?.message ?? 'Không thể quay lúc này. Vui lòng thử lại.');
+      setError(err instanceof Error ? err.message : t('earn.reward.noAd'));
+      onUpdated?.();
     }
   }
 
-  async function handlePaidSpin() {
-    if (spinning) return;
-    setSpinning(true);
-    setResultMessage(null);
-    setError(null);
-    haptic.tap();
+  async function handleAdSpin() {
+    if (!beginSpin()) return;
+    const result = await watch('lucky_wheel', AdRewardKind.SPIN);
 
-    try {
-      const res = await spinPaidWheel();
-      const sliceIdx =
-        res.prizeIndex !== undefined && res.prizeIndex >= 0 && res.prizeIndex < SLICE_COUNT
-          ? res.prizeIndex
-          : 0;
-      animateToSlice(sliceIdx, res.amount || WHEEL_SLICES[sliceIdx]);
-    } catch (err: any) {
-      setSpinning(false);
-      setError(err?.message ?? 'Không thể quay bằng GEM lúc này.');
+    if (result.status === 'rewarded' && result.claim?.prizeIndex != null) {
+      animateToSlice(result.claim.prizeIndex, result.claim.amount);
+      return;
     }
+
+    setSpinning(false);
+    if (result.status === 'capped') setError(t('earn.reward.limitReached'));
+    else if (result.status === 'no_ad') setError(t('earn.reward.noAd'));
+    else if (result.status === 'closed') setError(t('earn.reward.watchFull'));
+    else setError(result.errorMessage ?? t('earn.reward.noAd'));
+    onUpdated?.();
   }
 
   const spinInterpolation = rotationAnim.interpolate({
@@ -125,10 +121,8 @@ export function LuckyWheel({ earnState, onUpdated }: LuckyWheelProps) {
         colors={['rgba(28,38,76,0.66)', 'rgba(8,13,30,0.92)']}
         style={styles.card}>
         <View style={styles.header}>
-          <Text style={[type.eyebrow, { color: colors.goldLight }]}>VÒNG QUAY MAY MẮN</Text>
-          <Text style={[type.caption, { color: colors.stone }]}>
-            Quay mỗi ngày để nhận thêm GEM thưởng.
-          </Text>
+          <Text style={[type.eyebrow, { color: colors.goldLight }]}>{t('earn.segment.wheel')}</Text>
+          <Text style={[type.caption, { color: colors.stone }]}>{t('earn.wheel.subtitle')}</Text>
         </View>
 
         {/* Pointer indicator */}
@@ -143,8 +137,8 @@ export function LuckyWheel({ earnState, onUpdated }: LuckyWheelProps) {
               styles.wheelCircle,
               { transform: [{ rotate: spinInterpolation }] },
             ]}>
-            {WHEEL_SLICES.map((prize, idx) => {
-              const angle = idx * SLICE_ANGLE;
+            {prizes.map((prize, idx) => {
+              const angle = idx * sliceAngle;
               return (
                 <View
                   key={idx}
@@ -180,32 +174,36 @@ export function LuckyWheel({ earnState, onUpdated }: LuckyWheelProps) {
           </Text>
         ) : null}
 
-        {/* Action buttons (odds are server-side, NEVER displayed per §7.3) */}
+        {/* Không có nút quay bằng GEM để chống spam. Odds nằm ở server và không bao giờ hiển thị (§7.3). */}
         <View style={styles.actions}>
           <Button
             label={
               spinning
-                ? 'Đang quay…'
+                ? t('common.loading')
                 : freeSpinAvailable
-                  ? 'Xem quảng cáo để quay miễn phí'
-                  : `Quay bằng quảng cáo (${adSpinsRemaining} lượt còn lại)`
+                  ? t('earn.wheel.freeSpin')
+                  : adSpinsRemaining > 0
+                    ? t('earn.wheel.adSpin', { left: adSpinsRemaining })
+                    : t('earn.wheel.noSpins')
             }
-            onPress={() => void handleFreeSpin()}
-            disabled={spinning}
+            onPress={() => void (freeSpinAvailable ? handleFreeSpin() : handleAdSpin())}
+            disabled={spinning || !hasSpinsLeft}
             loading={spinning}
+            variant={hasSpinsLeft ? 'primary' : 'outline'}
             noInterstitial
             icon={
-              <MaterialCommunityIcons name="play-circle-outline" size={18} color={colors.onGold} />
+              <MaterialCommunityIcons
+                name={
+                  freeSpinAvailable
+                    ? 'star-four-points'
+                    : hasSpinsLeft
+                      ? 'play-circle-outline'
+                      : 'clock-outline'
+                }
+                size={18}
+                color={hasSpinsLeft ? colors.onGold : colors.stone}
+              />
             }
-          />
-
-          <Button
-            label={`Quay với ${gemSpinCost} GEM`}
-            variant="outline"
-            onPress={() => void handlePaidSpin()}
-            disabled={spinning}
-            noInterstitial
-            icon={<MaterialCommunityIcons name="diamond-stone" size={16} color={colors.goldLight} />}
           />
         </View>
       </LinearGradient>

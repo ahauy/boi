@@ -5,25 +5,27 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { CORE_READING_COST_GEM, ReadingStatus, RewardedAdPlacement } from '@palmsight/shared';
+import { CORE_READING_COST_GEM, ECONOMY_DEFAULTS, ReadingStatus } from '@palmsight/shared';
 
 import Screen from '../../components/Screen';
 import HeaderCredits from '../../components/HeaderCredits';
 import Text from '../../components/AppText';
 import CosmicHand from '../../components/CosmicHand';
 import ReadingSetupSheet from '../../components/ReadingSetupSheet';
-import RewardedOffer from '../../components/RewardedOffer';
 import { Banner, Button, Checkbox, LoadingOverlay, SectionLabel } from '../../components/ui';
-import NativeAdSlot from '../../ads/native-ad-slot';
+import { setCoreActionProgressVisible } from '../../ads/interstitial-policy';
+import { triggerAfterCoreAction } from '../../ads/interstitial-triggers';
 import NotEnoughSheet from '../../earn/not-enough-sheet';
 import { triggerPaywall } from '../../premium/paywall-triggers';
 import { ApiError } from '../../lib/api';
+import { runExternalActivity } from '../../lib/external-activity';
 import { errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
 import { handLabel, topicsLabel } from '../../lib/format';
 import { createReading, fetchReading } from '../../lib/readings';
 import { newIdempotencyKey } from '../../lib/uuid';
 import { useAuth } from '../../state/auth';
+import { t, useI18n } from '../../i18n';
 import { useCapture } from '../../state/capture';
 import { useReadingDraft } from '../../state/readingDraft';
 import { colors, radius, shadow, spacing, text as type } from '../../theme';
@@ -33,13 +35,14 @@ const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 90_000;
 
 const STAGE_HINTS = [
-  { icon: 'white-balance-sunny' as const, label: 'Đủ sáng' },
-  { icon: 'hand-back-right-outline' as const, label: 'Xoè ngón' },
-  { icon: 'camera-outline' as const, label: 'Hướng camera' },
+  { icon: 'white-balance-sunny' as const, labelKey: 'scan.hintLight' },
+  { icon: 'hand-back-right-outline' as const, labelKey: 'scan.hintFingers' },
+  { icon: 'camera-outline' as const, labelKey: 'scan.hintCamera' },
 ];
 
 export default function ScanStudioScreen() {
   const { user, refreshUser } = useAuth();
+  useI18n();
   const { photo, submitPhoto, clearPhoto } = useCapture();
   const draft = useReadingDraft();
   const { width } = useWindowDimensions();
@@ -58,6 +61,11 @@ export default function ScanStudioScreen() {
   const submitDisabled = !photo || gemBalance < CORE_READING_COST_GEM || !draft.aiConsent || backgroundBusy;
 
   useEffect(() => {
+    setCoreActionProgressVisible(busy);
+    return () => setCoreActionProgressVisible(false);
+  }, [busy]);
+
+  useEffect(() => {
     if (!busy) return;
     const timer = setInterval(() => setElapsed((second) => second + 1), 1000);
     return () => clearInterval(timer);
@@ -65,12 +73,14 @@ export default function ScanStudioScreen() {
 
   async function pickFromGallery() {
     setFailure(null);
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permission = await runExternalActivity('permission', () => ImagePicker.requestMediaLibraryPermissionsAsync());
     if (!permission.granted) {
-      setFailure({ title: 'Không thể truy cập thư viện ảnh. Vui lòng cấp quyền hoặc dùng camera.', retryable: false });
+      setFailure({ title: t('scan.libraryDenied'), retryable: false });
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsEditing: false });
+    const result = await runExternalActivity('photo_picker', () =>
+      ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsEditing: false })
+    );
     if (result.canceled || result.assets.length === 0) return;
     submitPhoto({ uri: result.assets[0].uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
   }
@@ -140,7 +150,7 @@ export default function ScanStudioScreen() {
       haptic.success();
       activeIdRef.current = null;
       clearPhoto();
-      router.push({ pathname: '/reading/[id]', params: { id: reading.id } });
+      triggerAfterCoreAction(reading.id, () => router.push({ pathname: '/reading/[id]', params: { id: reading.id } }));
     } catch (error) {
       if (cancelRef.current) {
         if (activeIdRef.current) trackInBackground(activeIdRef.current);
@@ -178,34 +188,34 @@ export default function ScanStudioScreen() {
         header={
           <View style={{ gap: spacing.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
-              <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 2.4 }]}>PHÒNG QUÉT</Text>
+              <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 2.4 }]}>{t('scan.eyebrow')}</Text>
               <HeaderCredits />
             </View>
             <View style={{ gap: spacing.xs }}>
-              <Text style={[type.headingLg, { color: colors.ink }]} numberOfLines={2}>Đưa bàn tay vào ánh sáng</Text>
+              <Text style={[type.headingLg, { color: colors.ink }]} numberOfLines={2}>{t('scan.headline')}</Text>
               <Text style={[type.caption, { color: colors.mute }]}>
-                Ảnh được lưu cùng quẻ trong Lịch sử và có thể xoá bất cứ lúc nào.
+                {t('scan.savedNote')}
               </Text>
             </View>
           </View>
         }
         footer={
           <View style={{ gap: spacing.sm }}>
-            {photo ? <Checkbox label="Tôi đồng ý gửi ảnh lòng bàn tay cho hệ thống AI phân tích" checked={draft.aiConsent} onChange={draft.setAiConsent} /> : null}
+            {photo ? <Checkbox label={t('scan.aiConsent')} checked={draft.aiConsent} onChange={draft.setAiConsent} /> : null}
             <Text style={[type.caption, { color: submitDisabled && photo ? colors.warning : colors.stone, textAlign: 'center', minHeight: 18 }]}>
               {backgroundBusy
-                ? 'Quẻ trước vẫn đang xử lý — vui lòng đợi hoặc xem trong Lịch sử.'
+                ? t('scan.statusBusy')
                 : !photo
-                  ? 'Chụp hoặc chọn ảnh lòng bàn tay để bắt đầu.'
+                  ? t('scan.statusNoPhoto')
                   : gemBalance < CORE_READING_COST_GEM
-                    ? `Bạn cần ${CORE_READING_COST_GEM} GEM để xem bói.`
+                    ? t('scan.statusNeedGem', { cost: CORE_READING_COST_GEM })
                     : !draft.aiConsent
-                      ? 'Bạn cần đồng ý gửi ảnh cho AI phân tích.'
-                      : `Mỗi quẻ tiêu thụ ${CORE_READING_COST_GEM} GEM.`}
+                      ? t('scan.statusNeedConsent')
+                      : t('scan.statusCost', { cost: CORE_READING_COST_GEM })}
             </Text>
             {photo ? (
               <Button
-                label={busy ? 'Đang luận giải...' : `Xem bói (−${CORE_READING_COST_GEM} GEM)`}
+                label={busy ? t('scan.reading') : t('scan.submit', { cost: CORE_READING_COST_GEM })}
                 onPress={() => void submit()}
                 loading={busy}
                 disabled={submitDisabled}
@@ -215,16 +225,17 @@ export default function ScanStudioScreen() {
             ) : (
               <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                 <Button
-                  label="Mở camera"
+                  label={t('scan.openCamera')}
                   style={{ flex: 2 }}
                   size="lg"
+                  noInterstitial
                   onPress={() => {
                     haptic.tap();
                     router.push('/camera');
                   }}
                   icon={<MaterialCommunityIcons name="camera-iris" size={19} color={colors.onGold} />}
                 />
-                <Button label="Tải ảnh" variant="outline" style={{ flex: 1 }} size="lg" onPress={() => void pickFromGallery()} />
+                <Button label={t('scan.upload')} variant="outline" style={{ flex: 1 }} size="lg" noInterstitial onPress={() => void pickFromGallery()} />
               </View>
             )}
           </View>
@@ -233,22 +244,22 @@ export default function ScanStudioScreen() {
           <View style={{ gap: spacing.sm }}>
             <Banner
               variant="warning"
-              title="Chưa đủ GEM"
-              lines={[`Mỗi quẻ đọc bài tiêu thụ ${CORE_READING_COST_GEM} GEM. Vào mục Gems để điểm danh hoặc xem video nhận thêm miễn phí.`]}
+              title={t('scan.notEnoughTitle')}
+              lines={[t('scan.notEnoughBody', { cost: CORE_READING_COST_GEM })]}
               action={{
-                label: 'Mở ví Gems',
+                label: t('scan.openWallet'),
                 onPress: () => router.push('/(tabs)/currency'),
               }}
             />
-            <RewardedOffer placement={RewardedAdPlacement.OUT_OF_CREDITS} variant="inline" />
+            <Button label={t('earn.notEnough.watchAd', { amount: ECONOMY_DEFAULTS.BONUS_AD_AMOUNT })} variant="primary" noInterstitial onPress={() => setNotEnoughOpen(true)} />
           </View>
         ) : null}
 
         <View style={{ gap: spacing.sm }}>
-          <SectionLabel right={<Text style={[type.code, { color: colors.goldLight }]}>{`${draft.selected.length} MỤC`}</Text>}>QUẺ ĐANG THIẾT LẬP</SectionLabel>
+          <SectionLabel right={<Text style={[type.code, { color: colors.goldLight }]}>{t('scan.itemsCount', { count: draft.selected.length })}</Text>}>{t('scan.setupLabel')}</SectionLabel>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Tùy chỉnh trường phái, mục bói và bàn tay"
+            accessibilityLabel={t('scan.setupA11y')}
             onPress={() => {
               haptic.select();
               setSheetOpen(true);
@@ -273,16 +284,16 @@ export default function ScanStudioScreen() {
         <View style={{ borderRadius: radius['3xl'], overflow: 'hidden', borderWidth: 1, borderColor: colors.glassBorder, ...shadow.violet }}>
           {photo ? (
             <View style={{ height: 390, backgroundColor: colors.obsidian }}>
-              <Image source={{ uri: photo.uri }} style={{ width: '100%', height: '100%' }} contentFit="cover" accessibilityLabel="Ảnh lòng bàn tay đã chọn" />
+              <Image source={{ uri: photo.uri }} style={{ width: '100%', height: '100%' }} contentFit="cover" accessibilityLabel={t('scan.photoA11y')} />
               <LinearGradient colors={['rgba(4,6,17,0.12)', 'rgba(4,6,17,0.2)', 'rgba(4,6,17,0.92)']} locations={[0, 0.5, 1]} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
               <View style={{ position: 'absolute', top: spacing.md, left: spacing.md, right: spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: colors.gold, borderRadius: radius.full, backgroundColor: 'rgba(4,6,17,0.7)', paddingHorizontal: spacing.sm, paddingVertical: 5 }}>
                   <MaterialCommunityIcons name="check-decagram" size={13} color={colors.goldLight} />
-                  <Text style={[type.code, { color: colors.goldLight, fontSize: 10 }]}>ẢNH ĐÃ CHỌN</Text>
+                  <Text style={[type.code, { color: colors.goldLight, fontSize: 10 }]}>{t('scan.photoSelected')}</Text>
                 </View>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Chụp lại ảnh"
+                  accessibilityLabel={t('scan.retakeA11y')}
                   onPress={() => {
                     haptic.select();
                     clearPhoto();
@@ -294,7 +305,7 @@ export default function ScanStudioScreen() {
               </View>
               <View style={{ position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg, gap: 4 }}>
                 <Text style={[type.eyebrow, { color: colors.goldLight, fontSize: 10 }]}>{`${handLabel(draft.hand).toUpperCase()} · ${draft.schoolConfig.name.toUpperCase()}`}</Text>
-                <Text style={[type.headingMd, { color: colors.ink }]}>Sẵn sàng luận giải</Text>
+                <Text style={[type.headingMd, { color: colors.ink }]}>{t('scan.ready')}</Text>
                 <Text style={[type.caption, { color: colors.body }]} numberOfLines={2}>{topicsLabel(draft.selected, draft.school)}</Text>
               </View>
             </View>
@@ -302,58 +313,47 @@ export default function ScanStudioScreen() {
             <LinearGradient colors={['rgba(124,108,246,0.26)', 'rgba(15,23,48,0.82)', 'rgba(4,6,17,0.98)']} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ paddingVertical: spacing.xl, paddingHorizontal: spacing.lg, alignItems: 'center', gap: spacing.md }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold }} />
-                <Text style={[type.eyebrow, { color: colors.goldLight, letterSpacing: 2.2 }]}>KHUNG BÀN TAY</Text>
+                <Text style={[type.eyebrow, { color: colors.goldLight, letterSpacing: 2.2 }]}>{t('scan.frame')}</Text>
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold }} />
               </View>
               <CosmicHand size={255} />
               <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap', justifyContent: 'center' }}>
                 {STAGE_HINTS.map((hint) => (
-                  <View key={hint.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: colors.glassBorder, borderRadius: radius.full, backgroundColor: colors.glassFill, paddingHorizontal: spacing.md, paddingVertical: 6 }}>
+                  <View key={hint.labelKey} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: colors.glassBorder, borderRadius: radius.full, backgroundColor: colors.glassFill, paddingHorizontal: spacing.md, paddingVertical: 6 }}>
                     <MaterialCommunityIcons name={hint.icon} size={12} color={colors.goldLight} />
-                    <Text style={[type.code, { color: colors.body, fontSize: 10 }]}>{hint.label.toUpperCase()}</Text>
+                    <Text style={[type.code, { color: colors.body, fontSize: 10 }]}>{t(hint.labelKey).toUpperCase()}</Text>
                   </View>
                 ))}
               </View>
               <Text style={[type.caption, { color: colors.mute, textAlign: 'center', maxWidth: 300 }]}>
-                Giữ bàn tay trong khung, lòng bàn tay hướng lên, ngón tay xoè tự nhiên.
+                {t('scan.frameHint')}
               </Text>
             </LinearGradient>
           )}
         </View>
-
-        {/* Native Ad Slot when idle (no photo, not busy) */}
-        {!photo && !busy ? (
-          <View style={{ alignItems: 'center', paddingVertical: spacing.md }}>
-            <NativeAdSlot
-              availableHeight={260}
-              availableWidth={Math.max(300, width - spacing.xl * 2)}
-              {...({ placement: 'scan_idle' } as any)}
-            />
-          </View>
-        ) : null}
 
         {failure ? (
           <Banner
             variant="error"
             title={failure.title}
             lines={failure.lines}
-            action={failure.retryable && photo ? { label: 'Thử lại', onPress: () => void submit() } : undefined}
+            action={failure.retryable && photo ? { label: t('screen.retry'), onPress: () => void submit() } : undefined}
           />
         ) : null}
 
         {cancelled ? (
           <Banner
             variant="info"
-            title="Đã hủy màn chờ kết quả."
-            lines={['Quẻ vẫn đang được xử lý phía hệ thống — kiểm tra lại trong Lịch sử sau ít phút.']}
-            action={{ label: 'Mở Lịch sử', onPress: () => router.navigate('/history') }}
+            title={t('scan.cancelledTitle')}
+            lines={[t('scan.cancelledBody')]}
+            action={{ label: t('screen.openHistory'), onPress: () => router.navigate('/history') }}
           />
         ) : null}
 
         {photo ? (
           <View style={{ flexDirection: 'row', gap: spacing.md }}>
             <Button
-              label="Chụp lại"
+              label={t('scan.retake')}
               variant="outline"
               style={{ flex: 1 }}
               onPress={() => {
@@ -362,7 +362,7 @@ export default function ScanStudioScreen() {
                 setTimeout(() => router.push('/camera'), 100);
               }}
             />
-            <Button label="Chọn ảnh khác" variant="ghost" style={{ flex: 1 }} onPress={() => void pickFromGallery()} />
+            <Button label={t('scan.chooseOther')} variant="ghost" style={{ flex: 1 }} onPress={() => void pickFromGallery()} />
           </View>
         ) : null}
       </Screen>
@@ -389,8 +389,8 @@ export default function ScanStudioScreen() {
 
       <LoadingOverlay
         visible={busy}
-        title="Đang đọc bàn tay"
-        message="Hệ thống AI đang nhận diện các đường chỉ chính và liên kết với trường phái cổ truyền."
+        title={t('scan.loadingTitle')}
+        message={t('scan.loadingBody')}
         progress={elapsed / PROGRESS_SECONDS}
         photoUri={photo?.uri}
         onCancel={cancelWait}
@@ -426,14 +426,14 @@ function sleep(ms: number) {
 function outcomeFailure(status: ReadingStatus, reason?: string | null): { title: string; lines?: string[]; retryable: boolean } {
   if (status === ReadingStatus.REJECTED) {
     return {
-      title: 'Ảnh chụp chưa đạt chuẩn nhận diện.',
-      lines: [reason ?? 'Không tìm thấy lòng bàn tay rõ nét. Vui lòng chụp lại nơi đủ sáng, xoè đều 5 ngón.'],
+      title: t('scan.badPhotoTitle'),
+      lines: [reason ?? t('scan.badPhotoBody')],
       retryable: true,
     };
   }
   return {
-    title: 'Hệ thống luận giải gián đoạn.',
-    lines: ['Đã hoàn lại lượt xem bói cho bạn. Vui lòng thử lại sau ít phút.'],
+    title: t('scan.failedTitle'),
+    lines: [t('scan.failedBody')],
     retryable: true,
   };
 }
@@ -441,12 +441,12 @@ function outcomeFailure(status: ReadingStatus, reason?: string | null): { title:
 function toFailure(error: unknown): { title: string; lines?: string[]; retryable: boolean } {
   if (error instanceof ApiError) {
     if (error.code === 'INSUFFICIENT_CREDITS') {
-      return { title: 'Tài khoản không đủ GEM.', lines: ['Vào mục Gems để điểm danh hoặc xem video nhận thêm.'], retryable: false };
+      return { title: t('scan.noGemTitle'), lines: [t('scan.noGemBody')], retryable: false };
     }
     if (error.code === 'CONCURRENT_PROCESSING') {
-      return { title: 'Đang có quẻ khác được xử lý.', lines: ['Vui lòng đợi quẻ hiện tại hoàn tất hoặc kiểm tra Lịch sử.'], retryable: false };
+      return { title: t('scan.inProgressTitle'), lines: [t('scan.inProgressBody')], retryable: false };
     }
-    return { title: errorMessageOf(error, 'Không thể gửi ảnh để luận giải.'), retryable: error.status >= 500 };
+    return { title: errorMessageOf(error, t('scan.sendFailed')), retryable: error.status >= 500 };
   }
-  return { title: errorMessageOf(error, 'Đã xảy ra sự cố ngoài ý muốn. Vui lòng thử lại.'), retryable: true };
+  return { title: errorMessageOf(error, t('scan.unexpected')), retryable: true };
 }

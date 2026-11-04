@@ -1,102 +1,227 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AdRewardKind, ECONOMY_DEFAULTS } from '@palmsight/shared';
 import type { CurrencyEarnResponseDto } from '@palmsight/shared';
 
 import Text from '../components/AppText';
-import { Button } from '../components/ui';
+import { Button, ProgressBar } from '../components/ui';
 import StreakRestoreModal from './streak-restore-modal';
-import { claimCheckin, fetchCurrencyEarn } from './earn-api';
-import { watch } from '../ads/rewarded';
+import { claimCheckin } from './earn-api';
+import { watch, WatchResult } from '../ads/rewarded';
+import { useAuth } from '../state/auth';
+import { useI18n } from '../i18n';
 import { colors, radius, shadow, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
 
-export const CHECKIN_LADDER_DEFAULT = [5, 5, 10, 5, 10, 5, 15];
+const RESTORE_POPUP_DAY_KEY = 'palmsight.restorePopupDay';
+
+function formatCountdown(totalSeconds: number): string {
+  const seconds = Math.max(0, totalSeconds);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60]
+    .map(pad)
+    .join(':');
+}
 
 export interface CheckinCardProps {
   earnState?: CurrencyEarnResponseDto | null;
   onUpdated?: () => void;
 }
 
-export function CheckinCard({ earnState: propEarnState, onUpdated }: CheckinCardProps) {
-  const [internalState, setInternalState] = useState<CurrencyEarnResponseDto | null>(null);
+export function CheckinCard({ earnState, onUpdated }: CheckinCardProps) {
+  const { user, setCreditBalance } = useAuth();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [doubleLoading, setDoubleLoading] = useState(false);
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [syncedSecondsLeft, setSyncedSecondsLeft] = useState<number | null>(null);
 
-  const state = propEarnState ?? internalState;
-  const checkinData = state?.checkin;
-  const ladder = checkinData?.ladder && checkinData.ladder.length === 7 ? checkinData.ladder : CHECKIN_LADDER_DEFAULT;
-  const streakDays = checkinData?.streakDays ?? 0;
-  const checkedInToday = checkinData?.checkedInToday ?? false;
-  const dayInWeek = checkinData?.dayInWeek ?? (streakDays % 7);
-  const restoreOffer = checkinData?.restoreOffer;
-  const doubleRemaining = checkinData?.doubleAd?.remaining ?? 1;
+  // True when the popup was opened from the ad button: the ad plays after it resolves (§7.2).
+  const adPendingRef = useRef(false);
+  const reopenWhenVipRef = useRef(false);
+
+  const isVip = Boolean(user?.vip?.active);
+  const checkin = earnState?.checkin;
+  const ladder: readonly number[] =
+    checkin?.ladder?.length === 7 ? checkin.ladder : ECONOMY_DEFAULTS.CHECKIN_LADDER;
+  const streakDays = checkin?.streakDays ?? 0;
+  const checkedInToday = checkin?.checkedInToday ?? false;
+  const deviceUsedToday = checkin?.deviceUsedToday ?? false;
+  const dayInWeek = checkin?.dayInWeek ?? 1;
+  const restoreOffer = checkin?.restoreOffer ?? null;
+  const doubleRemaining = checkin?.doubleAd?.remaining ?? 0;
+  const nextMilestone = checkin?.nextMilestone ?? null;
+  const milestones = Object.entries(checkin?.milestones ?? {})
+    .map(([day, bonus]) => ({ day: Number(day), bonus }))
+    .sort((a, b) => a.day - b.day);
+  const previousMilestoneDay = milestones.filter((item) => item.day <= streakDays).pop()?.day ?? 0;
+  const milestoneProgress = nextMilestone
+    ? (streakDays - previousMilestoneDay) / (nextMilestone.day - previousMilestoneDay)
+    : 1;
+  const hasRestoreOffer = Boolean(restoreOffer && restoreOffer.missedDays > 0 && !checkedInToday);
+  const rewardDay = earnState?.rewardDay;
+
+  // Restart the countdown during render whenever the server sends a new value.
+  const serverSecondsLeft = earnState?.secondsUntilReset ?? null;
+  if (serverSecondsLeft !== syncedSecondsLeft) {
+    setSyncedSecondsLeft(serverSecondsLeft);
+    setSecondsLeft(serverSecondsLeft);
+  }
+
+  const hasCountdown = secondsLeft !== null;
+  useEffect(() => {
+    if (!hasCountdown) return;
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => (prev === null ? null : Math.max(0, prev - 1)));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [hasCountdown]);
+
+  // The popup opens by itself once per reward day per device (§7.2).
+  useEffect(() => {
+    if (!hasRestoreOffer || !rewardDay) return;
+    let cancelled = false;
+    void (async () => {
+      const shownDay = await AsyncStorage.getItem(RESTORE_POPUP_DAY_KEY).catch(() => null);
+      if (cancelled || shownDay === rewardDay) return;
+      setRestoreModalOpen(true);
+      void AsyncStorage.setItem(RESTORE_POPUP_DAY_KEY, rewardDay).catch(() => undefined);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasRestoreOffer, rewardDay]);
 
   useEffect(() => {
-    if (!propEarnState) {
-      void loadEarnState();
+    if (isVip && hasRestoreOffer && reopenWhenVipRef.current) {
+      reopenWhenVipRef.current = false;
+      setRestoreModalOpen(true);
     }
-  }, [propEarnState]);
+  }, [isVip, hasRestoreOffer]);
 
-  async function loadEarnState() {
+  async function claim(): Promise<boolean> {
+    setNotice(null);
     try {
-      const res = await fetchCurrencyEarn();
-      setInternalState(res);
-    } catch {
-      // Ignore load error
+      const res = await claimCheckin();
+      setCreditBalance(res.balance);
+      haptic.success();
+      setNotice(
+        res.milestoneBonus > 0
+          ? t('earn.milestone.reached', { day: res.streakDays, bonus: res.milestoneBonus })
+          : t('earn.reward.added', { amount: res.amount })
+      );
+      return true;
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : null);
+      return false;
     }
+  }
+
+  function noticeForAd(result: WatchResult): string | null {
+    switch (result.status) {
+      case 'rewarded':
+        return t('earn.reward.added', { amount: result.claim?.amount ?? 0 });
+      case 'capped':
+        return t('earn.reward.limitReached');
+      case 'no_ad':
+        return t('earn.reward.noAd');
+      case 'closed':
+        return null;
+      default:
+        return result.errorMessage ?? null;
+    }
+  }
+
+  async function playDoubleAd() {
+    setDoubleLoading(true);
+    const result = await watch('checkin_double', AdRewardKind.CHECKIN);
+    setDoubleLoading(false);
+    if (result.status === 'rewarded') haptic.success();
+    setNotice(noticeForAd(result));
+    onUpdated?.();
   }
 
   async function handleClaim() {
     if (checkedInToday) return;
-
-    // If streak is broken and restore is available, prompt restore first
-    if (restoreOffer && restoreOffer.missedDays > 0) {
+    if (hasRestoreOffer) {
+      adPendingRef.current = false;
       setRestoreModalOpen(true);
       return;
     }
-
     setLoading(true);
-    setNotice(null);
-    try {
-      const res = await claimCheckin();
-      haptic.success();
-      setNotice(`+${res.amount} GEM nhận thành công!`);
-      await loadEarnState();
-      onUpdated?.();
-    } catch (err: any) {
-      setNotice(err?.message ?? 'Không thể điểm danh lúc này.');
-    } finally {
-      setLoading(false);
+    await claim();
+    setLoading(false);
+    onUpdated?.();
+  }
+
+  // Never locked: one tap checks in first when needed, then plays the ad (§5.5).
+  async function handleDoubleCheckin() {
+    if (hasRestoreOffer) {
+      adPendingRef.current = true;
+      setRestoreModalOpen(true);
+      return;
+    }
+    if (!checkedInToday) {
+      setDoubleLoading(true);
+      const claimed = await claim();
+      setDoubleLoading(false);
+      if (!claimed) return;
+    }
+    await playDoubleAd();
+  }
+
+  async function handleRestoreResolved() {
+    onUpdated?.();
+    if (adPendingRef.current) {
+      adPendingRef.current = false;
+      await playDoubleAd();
     }
   }
 
-  async function handleDoubleCheckin() {
-    setDoubleLoading(true);
-    setNotice(null);
-    try {
-      // First ensure today is claimed
-      if (!checkedInToday) {
-        await claimCheckin().catch(() => undefined);
-      }
-      const adResult = await watch('checkin_double', 'ad_reward');
-      if (adResult.success) {
-        haptic.success();
-        setNotice('Đã nhân đôi phần thưởng hôm nay!');
-        await loadEarnState();
-        onUpdated?.();
-      } else {
-        setNotice('Xem hết quảng cáo để nhân đôi phần thưởng.');
-      }
-    } catch (err: any) {
-      setNotice(err?.message ?? 'Chưa sẵn sàng nhân đôi lúc này.');
-    } finally {
-      setDoubleLoading(false);
-    }
+  async function handleStartAgain() {
+    setLoading(true);
+    const claimed = await claim();
+    setLoading(false);
+    if (claimed) await handleRestoreResolved();
   }
+
+  const dayTiles = ladder.map((amount, index) => {
+    const day = index + 1;
+    const isToday = day === dayInWeek;
+    const isPast = day < dayInWeek;
+    return (
+      <View
+        key={day}
+        style={[
+          styles.dayTile,
+          isToday && styles.dayTileToday,
+          isPast && styles.dayTilePast,
+          day === 7 && styles.dayTileSeventh,
+        ]}>
+        <Text
+          numberOfLines={1}
+          style={[
+            type.captionStrong,
+            { color: isToday ? colors.goldLight : isPast ? colors.stone : colors.mute, fontSize: 10 },
+          ]}>
+          {t('earn.day.label', { day })}
+        </Text>
+        <MaterialCommunityIcons
+          name="diamond-stone"
+          size={14}
+          color={isToday ? colors.goldLight : colors.gold}
+        />
+        <Text style={[type.code, { color: colors.ink, fontSize: 11, fontWeight: '700' }]}>
+          {`+${amount}`}
+        </Text>
+      </View>
+    );
+  });
 
   return (
     <View style={styles.container}>
@@ -107,21 +232,62 @@ export function CheckinCard({ earnState: propEarnState, onUpdated }: CheckinCard
           <View style={styles.streakBadge}>
             <MaterialCommunityIcons name="fire" size={20} color={colors.goldLight} />
             <Text style={[type.headingSm, { color: colors.goldLight }]}>
-              {streakDays > 0 ? `Chuỗi ${streakDays} ngày` : 'Bắt đầu chuỗi điểm danh'}
+              {streakDays > 0 ? t('earn.streak.count', { days: streakDays }) : t('earn.streak.start')}
             </Text>
           </View>
+          {checkin ? (
+            <Text style={[type.captionStrong, { color: colors.mute }]}>
+              {t('earn.week.label', { week: checkin.weekNumber })}
+            </Text>
+          ) : null}
+        </View>
 
-          {restoreOffer && restoreOffer.missedDays > 0 ? (
+        {nextMilestone ? (
+          <View style={styles.milestoneBlock}>
+            <ProgressBar value={milestoneProgress} />
+            <Text style={[type.caption, { color: colors.mute }]}>
+              {t('earn.milestone.next', { day: nextMilestone.day, bonus: nextMilestone.bonus })}
+            </Text>
+            <View style={styles.milestoneChips}>
+              {milestones.map((item) => {
+                const reached = streakDays >= item.day;
+                const isNext = item.day === nextMilestone.day;
+                return (
+                  <View
+                    key={item.day}
+                    style={[
+                      styles.milestoneChip,
+                      reached && styles.milestoneChipReached,
+                      isNext && styles.milestoneChipNext,
+                    ]}>
+                    <Text style={[type.code, { color: reached || isNext ? colors.goldLight : colors.mute, fontSize: 10 }]}>
+                      {item.day}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {hasRestoreOffer && restoreOffer ? (
+          <View style={styles.restoreRow}>
+            <Text style={[type.caption, { color: colors.goldLight, flex: 1 }]}>
+              {t('earn.restore.cardTitle', { days: restoreOffer.streakToKeep })}
+            </Text>
             <Button
-              label="Giữ chuỗi"
+              label={t('earn.restore.keepBtn')}
               variant="outline"
               size="md"
               noInterstitial
-              onPress={() => setRestoreModalOpen(true)}
+              onPress={() => {
+                adPendingRef.current = false;
+                setRestoreModalOpen(true);
+              }}
               style={styles.keepStreakBtn}
             />
-          ) : null}
-        </View>
+          </View>
+        ) : null}
 
         {notice ? (
           <Text style={[type.caption, { color: colors.goldLight, textAlign: 'center' }]}>
@@ -129,105 +295,51 @@ export function CheckinCard({ earnState: propEarnState, onUpdated }: CheckinCard
           </Text>
         ) : null}
 
-        {/* 7-day ladder grid */}
-        <View style={styles.ladderGrid}>
-          {ladder.map((amount, index) => {
-            const isToday = index === dayInWeek;
-            const isPast = index < dayInWeek;
-            const isSeventhDay = index === 6;
+        <View style={styles.ladderGrid}>{dayTiles}</View>
 
-            return (
-              <View
-                key={index}
-                style={[
-                  styles.dayTile,
-                  isToday && styles.dayTileToday,
-                  isPast && styles.dayTilePast,
-                  isSeventhDay && styles.dayTileSeventh,
-                ]}>
-                <Text
-                  style={[
-                    type.captionStrong,
-                    {
-                      color: isToday ? colors.goldLight : isPast ? colors.stone : colors.mute,
-                      fontSize: 10,
-                    },
-                  ]}>
-                  {`Ngày ${index + 1}`}
-                </Text>
-                <MaterialCommunityIcons
-                  name="diamond-stone"
-                  size={14}
-                  color={isToday ? colors.goldLight : colors.gold}
-                />
-                <Text
-                  style={[
-                    type.code,
-                    {
-                      color: isToday ? colors.onGold : colors.ink,
-                      fontSize: 11,
-                      fontWeight: '700',
-                    },
-                  ]}>
-                  {`+${amount}`}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* Action buttons */}
         <View style={styles.actions}>
-          {/* Double today's check-in button (accent style above Check in, Playbook §5.5) */}
           {doubleRemaining > 0 ? (
             <Button
-              label={
-                doubleLoading
-                  ? 'Đang mở quảng cáo…'
-                  : 'Nhân đôi phần thưởng hôm nay (+GEM)'
-              }
+              label={t('earn.checkin.doubleBtn')}
               onPress={() => void handleDoubleCheckin()}
               loading={doubleLoading}
-              disabled={doubleLoading}
+              disabled={doubleLoading || loading || deviceUsedToday}
               noInterstitial
-              icon={
-                <MaterialCommunityIcons
-                  name="play-circle-outline"
-                  size={18}
-                  color={colors.onGold}
-                />
-              }
+              icon={<MaterialCommunityIcons name="play-circle-outline" size={18} color={colors.onGold} />}
             />
           ) : null}
 
           <Button
             label={
-              checkedInToday
-                ? 'Đã điểm danh hôm nay'
-                : loading
-                  ? 'Đang nhận…'
-                  : 'Điểm danh ngay'
+              deviceUsedToday && !checkedInToday
+                ? t('earn.checkin.deviceUsed')
+                : checkedInToday
+                  ? t('earn.checkin.claimed')
+                  : t('earn.checkin.claimBtn')
             }
-            variant={checkedInToday ? 'outline' : 'primary'}
+            variant={checkedInToday || deviceUsedToday ? 'outline' : 'primary'}
             onPress={() => void handleClaim()}
-            disabled={checkedInToday || loading}
+            disabled={checkedInToday || deviceUsedToday || loading || doubleLoading}
             loading={loading}
             noInterstitial
           />
+
+          {secondsLeft !== null ? (
+            <Text style={[type.code, { color: colors.mute, textAlign: 'center' }]}>
+              {t('earn.countdown.reset', { time: formatCountdown(secondsLeft) })}
+            </Text>
+          ) : null}
         </View>
       </LinearGradient>
 
       <StreakRestoreModal
         visible={restoreModalOpen}
-        brokenStreak={streakDays}
-        restoreRemaining={restoreOffer ? 2 : 0}
+        offer={restoreOffer}
         onClose={() => setRestoreModalOpen(false)}
-        onRestored={() => {
-          void loadEarnState();
-          onUpdated?.();
-        }}
-        onReset={() => {
-          void handleClaim();
+        onRestored={() => void handleRestoreResolved()}
+        onStartAgain={() => void handleStartAgain()}
+        onGetVip={() => {
+          reopenWhenVipRef.current = true;
         }}
       />
     </View>
@@ -258,6 +370,32 @@ const styles = StyleSheet.create({
   keepStreakBtn: {
     minHeight: 36,
     paddingHorizontal: spacing.md,
+  },
+  milestoneBlock: {
+    gap: spacing.xs,
+  },
+  milestoneChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  milestoneChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  milestoneChipReached: {
+    backgroundColor: colors.goldWashStrong,
+  },
+  milestoneChipNext: {
+    borderColor: colors.gold,
+  },
+  restoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   ladderGrid: {
     flexDirection: 'row',

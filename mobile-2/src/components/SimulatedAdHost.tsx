@@ -4,9 +4,6 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import Text from './AppText';
 import { Button } from './ui';
-import { post } from '../lib/api';
-import type { RewardedAdOutcome, RewardedAdPlayRequest } from '../lib/ads';
-import { setRewardedAdPlayer } from '../lib/ads';
 import {
   setSimulatedInterstitialPlayer,
   setSimulatedRewardedPlayer,
@@ -26,11 +23,6 @@ export function adsMockEnabled(): boolean {
 
 type ActiveMockAd =
   | {
-      mode: 'legacy_rewarded';
-      request: RewardedAdPlayRequest;
-      resolve: (outcome: RewardedAdOutcome) => void;
-    }
-  | {
       mode: 'max_rewarded';
       placement?: string;
       resolve: (res: { rewarded: boolean; completed: boolean }) => void;
@@ -49,21 +41,7 @@ export default function SimulatedAdHost() {
   useEffect(() => {
     if (!adsMockEnabled()) return;
 
-    // 1. Legacy player
-    setRewardedAdPlayer(
-      (nextRequest) =>
-        new Promise<RewardedAdOutcome>((resolve) => {
-          grantingRef.current = false;
-          setSecondsLeft(REWARDED_AD_SECONDS);
-          setActiveAd({
-            mode: 'legacy_rewarded',
-            request: nextRequest,
-            resolve,
-          });
-        })
-    );
-
-    // 2. AppLovin MAX Rewarded player for Expo Go / Web
+    // AppLovin MAX Rewarded player for Expo Go / Web
     setSimulatedRewardedPlayer(
       (placement) =>
         new Promise<{ rewarded: boolean; completed: boolean }>((resolve) => {
@@ -77,7 +55,7 @@ export default function SimulatedAdHost() {
         })
     );
 
-    // 3. AppLovin MAX Interstitial player for Expo Go / Web
+    // AppLovin MAX Interstitial player for Expo Go / Web
     setSimulatedInterstitialPlayer(
       (placement) =>
         new Promise<void>((resolve) => {
@@ -92,7 +70,6 @@ export default function SimulatedAdHost() {
     );
 
     return () => {
-      setRewardedAdPlayer(null);
       setSimulatedRewardedPlayer(null);
       setSimulatedInterstitialPlayer(null);
     };
@@ -103,9 +80,7 @@ export default function SimulatedAdHost() {
       if (!activeAd) return;
       const current = activeAd;
       setActiveAd(null);
-      if (current.mode === 'legacy_rewarded') {
-        current.resolve(completed ? 'earned' : 'skipped');
-      } else if (current.mode === 'max_rewarded') {
+      if (current.mode === 'max_rewarded') {
         current.resolve({ rewarded: completed, completed });
       } else {
         current.resolve();
@@ -125,13 +100,6 @@ export default function SimulatedAdHost() {
     if (grantingRef.current) return;
     grantingRef.current = true;
 
-    if (activeAd.mode === 'legacy_rewarded') {
-      void post('/ads/rewarded/dev-grant', { nonce: activeAd.request.nonce })
-        .catch(() => undefined)
-        .finally(() => closeAd(true));
-      return;
-    }
-
     if (activeAd.mode === 'max_rewarded') {
       const timer = setTimeout(() => closeAd(true), 600);
       return () => clearTimeout(timer);
@@ -142,10 +110,7 @@ export default function SimulatedAdHost() {
 
   const isInterstitial = activeAd.mode === 'max_interstitial';
   const finished = secondsLeft <= 0;
-  const placementLabel =
-    activeAd.mode !== 'legacy_rewarded' && activeAd.placement
-      ? activeAd.placement
-      : 'rewarded_video';
+  const placementLabel = activeAd.placement ?? 'rewarded_video';
 
   return (
     <Modal

@@ -3,12 +3,13 @@ import type {
   BillingVerifyRequestDto,
   BillingVerifyResponseDto,
 } from '@palmsight/shared';
+import type * as IapModule from 'react-native-iap';
 import * as api from '../lib/api';
 import {
   finishExternalActivity,
   recordExternalActivity,
 } from '../lib/external-activity';
-import { trackFirstPurchase } from '../ads/revenue';
+import { getAttributionIds, trackFirstPurchase } from '../ads/revenue';
 import { adsStore } from '../ads/ads-store';
 import {
   getBillingConfig,
@@ -30,35 +31,26 @@ import {
 const RECONCILE_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const PRODUCT_RETRY_DELAYS_MS = [1000, 3000] as const;
 
-export interface RawPlayPurchase {
-  productId?: string;
-  productIds?: string[];
-  purchaseToken?: string;
-  transactionId?: string;
-  orderId?: string;
-  obfuscatedAccountIdAndroid?: string;
-  autoRenewingAndroid?: boolean;
-  isAcknowledgedAndroid?: boolean;
-  packageNameAndroid?: string;
-  /** Optional override used in sandbox/test verification */
-  priceAmountMicros?: number;
-  priceCurrencyCode?: string;
-  isTrial?: boolean;
-}
+export type IapSdk = typeof IapModule;
+export type RawPlayPurchase = IapModule.PurchaseAndroid;
 
 export interface PurchaseResult {
   ok: boolean;
   restored?: boolean;
   canceled?: boolean;
+  /** Google Play accepted the order but it cannot be confirmed yet. */
+  pending?: boolean;
+  /** The plan being replaced has no purchase token on this device. */
+  upgradeUnavailable?: boolean;
   response?: BillingVerifyResponseDto;
   error?: string;
 }
 
 export type VerifiedVipListener = (response: BillingVerifyResponseDto) => void;
 
-let iapModuleOverride: any = null;
-let purchaseUpdateSubscription: { remove?: () => void } | null = null;
-let purchaseErrorSubscription: { remove?: () => void } | null = null;
+let iapModuleOverride: IapSdk | null = null;
+let purchaseUpdateSubscription: { remove: () => void } | null = null;
+let purchaseErrorSubscription: { remove: () => void } | null = null;
 let appStateSubscriptionInstalled = false;
 let currentBillingRef: string | null = null;
 const verifiedListeners = new Set<VerifiedVipListener>();
@@ -71,24 +63,27 @@ function isDev(): boolean {
   return typeof __DEV__ !== 'undefined' && Boolean(__DEV__);
 }
 
-function getIapSdk(): any {
+function getIapSdk(): IapSdk | null {
   if (iapModuleOverride) return iapModuleOverride;
-  if (Platform.OS === 'web') return null;
-  const injected = (globalThis as any).__PALMSIGHT_NATIVE_MODULES__?.['react-native-iap'];
-  if (injected) return injected;
-  if (typeof (globalThis as any).__r === 'function') return null;
+  if (Platform.OS !== 'android') return null;
   try {
-    const dynamicRequire = typeof require === 'function' ? require : null;
-    return dynamicRequire ? dynamicRequire('react-native-iap') : null;
+    return require('react-native-iap') as IapSdk;
   } catch {
     return null;
   }
 }
 
+function resolvePendingPurchase(productId: string, result: PurchaseResult): void {
+  const resolver = pendingPurchaseResolvers.get(productId);
+  if (!resolver) return;
+  pendingPurchaseResolvers.delete(productId);
+  resolver(result);
+}
+
 /**
  * Allows injecting a mock IAP SDK in unit/integration tests.
  */
-export function setBillingSdkForTesting(mockSdk: any): void {
+export function setBillingSdkForTesting(mockSdk: IapSdk | null): void {
   iapModuleOverride = mockSdk;
 }
 
@@ -140,30 +135,28 @@ export function parseIsoDurationDays(iso: string | undefined | null): number {
  * and dynamically calculates `savingsPercent` between yearly and weekly plans (§6.1).
  */
 export function normalizePlaySubscriptions(
-  rawSubs: any[],
+  rawSubs: IapModule.ProductSubscriptionAndroid[],
 ): Record<string, BillingProductInfo> {
   const config = getBillingConfig();
   const result: Record<string, BillingProductInfo> = {};
 
   for (const raw of rawSubs) {
-    const productId: string = raw?.productId || raw?.sku || '';
+    const productId = raw.id;
     if (!productId) continue;
 
     let planKind: PlanKind = 'yearly';
     if (productId === config.weeklyId) planKind = 'weekly';
     else if (productId === config.monthlyId) planKind = 'monthly';
 
-    const offers: any[] = Array.isArray(raw?.subscriptionOfferDetails)
-      ? raw.subscriptionOfferDetails
-      : [];
+    const offers = raw.subscriptionOffers ?? [];
 
     let baseOfferToken: string | null = null;
     let trialOfferToken: string | null = null;
     let hasFreeTrial = false;
     let freeTrialDays = 0;
-    let localizedPrice = raw?.localizedPrice || '';
-    let priceAmountMicros = Number(raw?.priceAmountMicros ?? 0);
-    let priceCurrencyCode = raw?.currency || raw?.priceCurrencyCode || 'USD';
+    let localizedPrice = raw.displayPrice || '';
+    let priceAmountMicros = 0;
+    let priceCurrencyCode = raw.currency || 'USD';
     let billingPeriodIso =
       planKind === 'weekly'
         ? 'P1W'
@@ -172,17 +165,11 @@ export function normalizePlaySubscriptions(
           : 'P1Y';
 
     for (const offer of offers) {
-      const token: string | null = offer?.offerToken ?? null;
-      const phases: any[] = Array.isArray(offer?.pricingPhases?.pricingPhaseList)
-        ? offer.pricingPhases.pricingPhaseList
-        : [];
+      const token = offer.offerTokenAndroid ?? null;
+      const phases = offer.pricingPhasesAndroid?.pricingPhaseList ?? [];
 
-      const zeroPhase = phases.find(
-        (p) => Number(p?.priceAmountMicros ?? -1) === 0,
-      );
-      const paidPhase = phases.find(
-        (p) => Number(p?.priceAmountMicros ?? 0) > 0,
-      );
+      const zeroPhase = phases.find((p) => Number(p.priceAmountMicros) === 0);
+      const paidPhase = phases.find((p) => Number(p.priceAmountMicros) > 0);
 
       if (paidPhase) {
         localizedPrice = paidPhase.formattedPrice || localizedPrice;
@@ -213,7 +200,7 @@ export function normalizePlaySubscriptions(
     result[productId] = {
       productId,
       planKind,
-      title: raw?.title || raw?.name || productId,
+      title: raw.title || raw.nameAndroid || productId,
       localizedPrice,
       priceAmountMicros,
       priceCurrencyCode,
@@ -264,7 +251,7 @@ export async function fetchBillingProductsWithRetry(): Promise<
   if (skus.length === 0) return {};
 
   const iap = getIapSdk();
-  if (!iap || typeof iap.getSubscriptions !== 'function') {
+  if (!iap) {
     return billingStore.getState().products;
   }
 
@@ -273,9 +260,11 @@ export async function fetchBillingProductsWithRetry(): Promise<
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const rawSubs = await iap.getSubscriptions({ skus });
+      const rawSubs = await iap.fetchProducts({ skus, type: 'subs' });
       if (Array.isArray(rawSubs) && rawSubs.length > 0) {
-        const products = normalizePlaySubscriptions(rawSubs);
+        const products = normalizePlaySubscriptions(
+          rawSubs as IapModule.ProductSubscriptionAndroid[],
+        );
         billingStore.setProducts(products);
         return products;
       }
@@ -295,45 +284,6 @@ export async function fetchBillingProductsWithRetry(): Promise<
 }
 
 /**
- * Resolves optional Adjust ADID and GAID (only when consent region is not GDPR/UNKNOWN per §5.6).
- */
-async function resolveAttributionIds(): Promise<{
-  adjustAdid: string | null;
-  gaid: string | null;
-}> {
-  const { consentRegion } = adsStore.getState();
-  if (consentRegion === 'GDPR' || consentRegion === 'UNKNOWN') {
-    return { adjustAdid: null, gaid: null };
-  }
-
-  let adjustAdid: string | null = null;
-  try {
-    const dynamicRequire =
-      typeof (globalThis as any).__r === 'function'
-        ? null
-        : typeof require === 'function'
-          ? require
-          : null;
-    const AdjustPkg =
-      (globalThis as any).__PALMSIGHT_NATIVE_MODULES__?.['react-native-adjust'] ??
-      (dynamicRequire ? dynamicRequire('react-native-adjust') : null);
-    if (AdjustPkg?.Adjust?.getAdid) {
-      adjustAdid = await new Promise<string | null>((resolve) => {
-        try {
-          AdjustPkg.Adjust.getAdid((adid: string) => resolve(adid || null));
-        } catch {
-          resolve(null);
-        }
-      });
-    }
-  } catch {
-    adjustAdid = null;
-  }
-
-  return { adjustAdid, gaid: null };
-}
-
-/**
  * Verifies a single Play purchase with `/v1/billing/verify` BEFORE calling `finishTransaction` (§6.5, §11.10).
  *
  * Pitfall §11.10:
@@ -342,38 +292,23 @@ async function resolveAttributionIds(): Promise<{
  */
 export async function verifyAndFinishPurchase(
   rawPurchase: RawPlayPurchase,
-  options?: { isTrialSelection?: boolean },
 ): Promise<BillingVerifyResponseDto | null> {
-  const productId =
-    rawPurchase.productId ||
-    (Array.isArray(rawPurchase.productIds) ? rawPurchase.productIds[0] : '') ||
-    '';
+  const productId = rawPurchase.productId || rawPurchase.ids?.[0] || '';
   const purchaseToken = rawPurchase.purchaseToken || '';
 
-  if (!productId || !purchaseToken) {
+  // A pending order has not been paid: Play delivers it again once it clears.
+  if (!productId || !purchaseToken || rawPurchase.purchaseState !== 'purchased') {
     return null;
   }
 
   const knownProduct = billingStore.getState().products[productId];
-  const isTrial = Boolean(
-    options?.isTrialSelection ??
-      rawPurchase.isTrial ??
-      (knownProduct?.hasFreeTrial &&
-        rawPurchase.priceAmountMicros === 0),
-  );
-
-  const priceAmountMicros = isTrial
-    ? 0
-    : typeof rawPurchase.priceAmountMicros === 'number'
-      ? rawPurchase.priceAmountMicros
-      : knownProduct?.priceAmountMicros;
+  const priceAmountMicros = knownProduct?.priceAmountMicros;
 
   // Pitfall §11.10: Unknown price -> don't verify yet (the first-purchase event needs it).
   if (
-    !isTrial &&
-    (typeof priceAmountMicros !== 'number' ||
-      !Number.isFinite(priceAmountMicros) ||
-      priceAmountMicros <= 0)
+    typeof priceAmountMicros !== 'number' ||
+    !Number.isFinite(priceAmountMicros) ||
+    priceAmountMicros <= 0
   ) {
     if (isDev()) {
       console.warn(
@@ -383,23 +318,18 @@ export async function verifyAndFinishPurchase(
     return null;
   }
 
-  const priceCurrencyCode =
-    rawPurchase.priceCurrencyCode ||
-    knownProduct?.priceCurrencyCode ||
-    'USD';
-  const orderId =
-    rawPurchase.orderId || rawPurchase.transactionId || null;
-
-  const { adjustAdid, gaid } = await resolveAttributionIds();
+  const priceCurrencyCode = knownProduct?.priceCurrencyCode || 'USD';
+  const orderId = rawPurchase.transactionId || rawPurchase.id || null;
+  const { adjustAdid, gaid } = await getAttributionIds(
+    adsStore.getState().consentRegion,
+  );
 
   const verifyPayload: BillingVerifyRequestDto = {
     productId,
     purchaseToken,
-    packageName: rawPurchase.packageNameAndroid,
     orderId,
     priceAmountMicros,
     priceCurrencyCode,
-    isTrial,
     obfuscatedAccountId:
       rawPurchase.obfuscatedAccountIdAndroid ?? currentBillingRef ?? null,
     adjustAdid,
@@ -413,13 +343,13 @@ export async function verifyAndFinishPurchase(
     verifyPayload,
   );
 
-  // Server verified! Now acknowledge/finish transaction with Google Play.
-  const iap = getIapSdk();
-  if (iap && typeof iap.finishTransaction === 'function') {
-    await iap.finishTransaction({
-      purchase: rawPurchase,
-      isConsumable: false,
-    });
+  // The server acknowledges too, so a failure here must not lose the verified VIP.
+  if (!rawPurchase.isAcknowledgedAndroid) {
+    await getIapSdk()
+      ?.finishTransaction({ purchase: rawPurchase, isConsumable: false })
+      .catch((err: unknown) => {
+        if (isDev()) console.warn('[BillingService] finishTransaction failed:', err);
+      });
   }
 
   billingStore.recordActivePurchaseToken(productId, purchaseToken);
@@ -430,13 +360,9 @@ export async function verifyAndFinishPurchase(
     });
   }
 
-  // First purchase only -> Adjust `Aj_Purchase` with paid price and order ID (never at trial start, §5.6)
-  if (
-    verifyResponse.firstPurchase &&
-    !isTrial &&
-    typeof priceAmountMicros === 'number' &&
-    priceAmountMicros > 0
-  ) {
+  // First purchase only -> Adjust `Aj_Purchase` with paid price and order ID. The server sets
+  // firstPurchase from Google's offer phase, so a trial never reaches this (§5.6).
+  if (verifyResponse.firstPurchase) {
     trackFirstPurchase({
       price: priceAmountMicros / 1_000_000,
       currency: priceCurrencyCode,
@@ -445,70 +371,73 @@ export async function verifyAndFinishPurchase(
   }
 
   notifyVerifiedListeners(verifyResponse);
-
-  const pendingResolver = pendingPurchaseResolvers.get(productId);
-  if (pendingResolver) {
-    pendingPurchaseResolvers.delete(productId);
-    pendingResolver({
-      ok: true,
-      restored: Boolean(verifyResponse.restored),
-      response: verifyResponse,
-    });
-  }
+  resolvePendingPurchase(productId, {
+    ok: true,
+    restored: Boolean(verifyResponse.restored),
+    response: verifyResponse,
+  });
 
   return verifyResponse;
+}
+
+async function handleAlreadyOwned(productId: string): Promise<void> {
+  const restored = await reconcilePurchases();
+  resolvePendingPurchase(
+    productId,
+    restored?.vip.active
+      ? { ok: true, restored: true, response: restored }
+      : { ok: false, error: 'Already owned' },
+  );
 }
 
 function attachPurchaseListeners(): void {
   const iap = getIapSdk();
   if (!iap) return;
 
-  if (purchaseUpdateSubscription?.remove) {
-    purchaseUpdateSubscription.remove();
-  }
-  if (purchaseErrorSubscription?.remove) {
-    purchaseErrorSubscription.remove();
-  }
+  purchaseUpdateSubscription?.remove();
+  purchaseErrorSubscription?.remove();
 
-  if (typeof iap.purchaseUpdatedListener === 'function') {
-    purchaseUpdateSubscription = iap.purchaseUpdatedListener(
-      (purchase: RawPlayPurchase) => {
-        void verifyAndFinishPurchase(purchase).catch((err) => {
-          if (isDev()) {
-            console.warn(
-              '[BillingService] Verify failed in listener (will retry next launch):',
-              err,
-            );
-          }
-          const productId = purchase?.productId || '';
-          const resolver = pendingPurchaseResolvers.get(productId);
-          if (resolver) {
-            pendingPurchaseResolvers.delete(productId);
-            resolver({
-              ok: false,
-              error: err instanceof Error ? err.message : 'Verification failed',
-            });
-          }
-        });
-      },
-    );
-  }
+  purchaseUpdateSubscription = iap.purchaseUpdatedListener((purchase) => {
+    const playPurchase = purchase as RawPlayPurchase;
+    if (playPurchase.purchaseState === 'pending') {
+      resolvePendingPurchase(playPurchase.productId, { ok: false, pending: true });
+      return;
+    }
 
-  if (typeof iap.purchaseErrorListener === 'function') {
-    purchaseErrorSubscription = iap.purchaseErrorListener((error: any) => {
-      const isCanceled =
-        error?.code === 'E_USER_CANCELLED' ||
-        error?.responseCode === 1;
-      for (const [productId, resolver] of pendingPurchaseResolvers.entries()) {
-        pendingPurchaseResolvers.delete(productId);
-        resolver({
+    verifyAndFinishPurchase(playPurchase)
+      .then((verified) => {
+        // Not verifiable yet (unknown state or price): reconcile picks it up on a later launch.
+        if (!verified) {
+          resolvePendingPurchase(playPurchase.productId, { ok: false, pending: true });
+        }
+      })
+      .catch((err) => {
+        if (isDev()) {
+          console.warn(
+            '[BillingService] Verify failed in listener (will retry next launch):',
+            err,
+          );
+        }
+        resolvePendingPurchase(playPurchase.productId, {
           ok: false,
-          canceled: isCanceled,
-          error: error?.message || 'Purchase failed',
+          error: err instanceof Error ? err.message : 'Verification failed',
         });
+      });
+  });
+
+  purchaseErrorSubscription = iap.purchaseErrorListener((error) => {
+    for (const productId of [...pendingPurchaseResolvers.keys()]) {
+      if (error.code === iap.ErrorCode.AlreadyOwned) {
+        void handleAlreadyOwned(productId);
+        continue;
       }
-    });
-  }
+      resolvePendingPurchase(productId, {
+        ok: false,
+        canceled: error.code === iap.ErrorCode.UserCancelled,
+        error: error.message || 'Purchase failed',
+      });
+    }
+  });
 }
 
 /**
@@ -517,18 +446,18 @@ function attachPurchaseListeners(): void {
 export async function reconcilePurchases(): Promise<BillingVerifyResponseDto | null> {
   if (!isBillingConfigured()) return null;
   const iap = getIapSdk();
-  if (!iap || typeof iap.getAvailablePurchases !== 'function') {
+  if (!iap) {
     billingStore.setState({ lastReconciledAt: Date.now() });
     return null;
   }
 
   let latestVipResponse: BillingVerifyResponseDto | null = null;
   try {
-    const available: RawPlayPurchase[] = await iap.getAvailablePurchases();
+    const available = await iap.getAvailablePurchases();
     if (Array.isArray(available)) {
       for (const purchase of available) {
         try {
-          const verified = await verifyAndFinishPurchase(purchase);
+          const verified = await verifyAndFinishPurchase(purchase as RawPlayPurchase);
           if (verified && verified.vip.active) {
             latestVipResponse = verified;
           }
@@ -584,13 +513,17 @@ export async function initializeBilling(): Promise<boolean> {
   ensureForegroundReconcileListener();
 
   const iap = getIapSdk();
-  if (!iap || typeof iap.initConnection !== 'function') {
-    billingStore.setState({ connected: false });
+  if (!iap) {
+    billingStore.setState({ connected: false, billingEnabled: false });
     return false;
   }
 
   try {
-    await iap.initConnection();
+    const connected = await iap.initConnection();
+    if (!connected) {
+      billingStore.setState({ connected: false, billingEnabled: false });
+      return false;
+    }
     billingStore.setState({ connected: true });
 
     // 1. Fetch products first (with 1s and 3s retries)
@@ -602,10 +535,13 @@ export async function initializeBilling(): Promise<boolean> {
     // 3. Reconcile available purchases on every launch (including guests)
     await reconcilePurchases();
 
-    return true;
+    // Prices only come from Play (§6.1): with none to show, the paywall stays closed.
+    const hasProducts = Object.keys(billingStore.getState().products).length > 0;
+    if (!hasProducts) billingStore.setState({ billingEnabled: false });
+    return hasProducts;
   } catch (err) {
     if (isDev()) console.warn('[BillingService] initConnection failed:', err);
-    billingStore.setState({ connected: false });
+    billingStore.setState({ connected: false, billingEnabled: false });
     return false;
   }
 }
@@ -687,7 +623,7 @@ export async function purchaseSubscription(
     }
 
     const iap = getIapSdk();
-    if (!iap || typeof iap.requestSubscription !== 'function') {
+    if (!iap) {
       return { ok: false, error: 'Billing unavailable on this device' };
     }
 
@@ -697,16 +633,24 @@ export async function purchaseSubscription(
       product = loaded[productId];
     }
 
-    const offerToken =
-      options?.useTrialOffer && product?.trialOfferToken
-        ? product.trialOfferToken
-        : product?.baseOfferToken;
+    const useTrial = Boolean(options?.useTrialOffer && product?.trialOfferToken);
+    const offerToken = useTrial ? product?.trialOfferToken : product?.baseOfferToken;
 
-    const oldToken = options?.upgradeFromProductId
-      ? billingStore.getState().activePurchaseTokens[
-          options.upgradeFromProductId
-        ]
-      : undefined;
+    const upgradeFrom = options?.upgradeFromProductId;
+    const activeToken = () =>
+      upgradeFrom
+        ? billingStore.getState().activePurchaseTokens[upgradeFrom]
+        : undefined;
+
+    if (upgradeFrom && !activeToken()) {
+      await reconcilePurchases();
+    }
+    const oldToken = activeToken();
+
+    // Without the old token Play would sell a second plan alongside the first.
+    if (upgradeFrom && !oldToken) {
+      return { ok: false, upgradeUnavailable: true };
+    }
 
     recordExternalActivity('payment');
     try {
@@ -714,20 +658,27 @@ export async function purchaseSubscription(
         pendingPurchaseResolvers.set(productId, resolve);
       });
 
-      await iap.requestSubscription({
-        sku: productId,
-        ...(offerToken
-          ? {
-              subscriptionOffers: [{ sku: productId, offerToken }],
-            }
-          : {}),
-        obfuscatedAccountIdAndroid: effectiveBillingRef,
-        ...(oldToken
-          ? {
-              purchaseTokenAndroid: oldToken,
-              prorationModeAndroid: 5, // CHARGE_FULL_PRICE (§6.2: charge full price, replace old token)
-            }
-          : {}),
+      await iap.requestPurchase({
+        type: 'subs',
+        request: {
+          google: {
+            skus: [productId],
+            ...(offerToken
+              ? { subscriptionOffers: [{ sku: productId, offerToken }] }
+              : {}),
+            obfuscatedAccountId: effectiveBillingRef,
+            // §6.2: an upgrade charges the full price and replaces the old token.
+            ...(oldToken && upgradeFrom
+              ? {
+                  purchaseToken: oldToken,
+                  subscriptionProductReplacementParams: {
+                    oldProductId: upgradeFrom,
+                    replacementMode: 'charge-full-price' as const,
+                  },
+                }
+              : {}),
+          },
+        },
       });
 
       return await purchasePromise;
@@ -736,8 +687,7 @@ export async function purchaseSubscription(
     }
   } catch (err: any) {
     pendingPurchaseResolvers.delete(productId);
-    const isCanceled =
-      err?.code === 'E_USER_CANCELLED' || err?.responseCode === 1;
+    const isCanceled = err?.code === 'user-cancelled';
     const message = err?.message || 'Purchase failed';
     if (!isCanceled) {
       billingStore.setState({ lastError: message });
@@ -753,12 +703,8 @@ export async function purchaseSubscription(
 }
 
 export function resetBillingServiceForTesting(): void {
-  if (purchaseUpdateSubscription?.remove) {
-    purchaseUpdateSubscription.remove();
-  }
-  if (purchaseErrorSubscription?.remove) {
-    purchaseErrorSubscription.remove();
-  }
+  purchaseUpdateSubscription?.remove();
+  purchaseErrorSubscription?.remove();
   purchaseUpdateSubscription = null;
   purchaseErrorSubscription = null;
   pendingPurchaseResolvers.clear();

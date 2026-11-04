@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { canShowAds } from './ads-config';
-import { adsStore, addOnAdShownListener } from './ads-store';
+import { adsStore } from './ads-store';
 import { isExternalActivityActive } from '../lib/external-activity';
 
 /**
@@ -9,23 +9,14 @@ import { isExternalActivityActive } from '../lib/external-activity';
  * - INTERSTITIAL_GAP_MS = 90_000 (90s)
  * - ADS_USER_GAP_MS = 30_000 (30s)
  * - ADS_USER_DECLINES = 3
- * - SESSION_WARMUP_MS = 15_000 (15s)
- * - FIRST_INTERSTITIAL_GAP_MS = 45_000 (45s)
- * - MAX_INTERSTITIALS_PER_SESSION = 6
- * - POST_REWARDED_COOLDOWN_MS = 20_000 (20s)
  * - Persists `lastInterstitialShownAt` and `paywallDeclineCount` in AsyncStorage
  *   so cooldowns and ads-user status survive app restarts.
  */
 
 export const INTERSTITIAL_GAP_MS = 90_000;
-export const SUBSEQUENT_INTERSTITIAL_GAP_MS = 90_000;
 export const ADS_USER_GAP_MS = 30_000;
 export const ADS_USER_DECLINES = 3;
 export const NO_INTERSTITIAL_SUPPRESSION_MS = 1_000;
-export const SESSION_WARMUP_MS = 15_000;
-export const FIRST_INTERSTITIAL_GAP_MS = 45_000;
-export const MAX_INTERSTITIALS_PER_SESSION = 6;
-export const POST_REWARDED_COOLDOWN_MS = 20_000;
 
 export const STORAGE_KEYS = {
   LAST_SHOWN_AT: 'palmsight.lastInterstitialShownAt',
@@ -62,26 +53,6 @@ const EXCLUDED_INTERSTITIAL_ROUTE_PATTERNS = [
   /^\/?register/i,
   /^\/?auth/i,
 ];
-
-let sessionStartTime = Date.now();
-let interstitialsShownInSession = 0;
-let lastRewardedShownAt = 0;
-
-addOnAdShownListener((now) => {
-  lastRewardedShownAt = now;
-});
-
-export function setSessionStartTimeForTests(time: number): void {
-  sessionStartTime = time;
-}
-
-export function recordRewardedShown(now: number = Date.now()): void {
-  lastRewardedShownAt = now;
-}
-
-export function getSessionInterstitialsCount(): number {
-  return interstitialsShownInSession;
-}
 
 let state: InterstitialPolicyState = {
   lastInterstitialShownAt: 0,
@@ -174,26 +145,7 @@ export function setStartupStep3Done(done: boolean): void {
 }
 
 /**
- * Record a paywall decline (X or Back, not after purchase).
- * Increments decline count; at 3 declines, user becomes an `adsUser` (§5.4).
- */
-export function recordPaywallDecline(now: number = Date.now()): number {
-  if (state.isVip) {
-    return 0;
-  }
-  const next = state.paywallDeclineCount + 1;
-  state = {
-    ...state,
-    paywallDeclineCount: next,
-    isAdsUser: next >= ADS_USER_DECLINES,
-  };
-  void AsyncStorage.setItem(STORAGE_KEYS.PAYWALL_DECLINES, String(next)).catch(() => undefined);
-  void now;
-  return next;
-}
-
-/**
- * Set paywall decline count directly (e.g., when synced from paywall-triggers).
+ * Mirrors the decline count owned by paywall-triggers, which also persists it (§5.4).
  */
 export function setPaywallDeclineCount(count: number): void {
   const normalized = state.isVip ? 0 : Math.max(0, count);
@@ -202,20 +154,12 @@ export function setPaywallDeclineCount(count: number): void {
     paywallDeclineCount: normalized,
     isAdsUser: !state.isVip && normalized >= ADS_USER_DECLINES,
   };
-  if (normalized <= 0) {
-    void AsyncStorage.removeItem(STORAGE_KEYS.PAYWALL_DECLINES).catch(() => undefined);
-  } else {
-    void AsyncStorage.setItem(STORAGE_KEYS.PAYWALL_DECLINES, String(normalized)).catch(
-      () => undefined
-    );
-  }
 }
 
 /**
  * Record that an interstitial was shown at `now` and persist to AsyncStorage (§12).
  */
 export function recordInterstitialShown(now: number = Date.now()): void {
-  interstitialsShownInSession += 1;
   state = {
     ...state,
     lastInterstitialShownAt: now,
@@ -272,79 +216,59 @@ export function getRequiredInterstitialGapMs(): number {
 /**
  * Synchronously evaluates whether an interstitial is allowed to show for `trigger` at `now` (§5.2, §5.4).
  */
-export function canTriggerInterstitial(
+export function interstitialBlockReason(
   trigger: InterstitialTrigger,
   options?: {
     now?: number;
     targetRoute?: string;
     readingId?: string;
   }
-): boolean {
+): string | null {
   const now = options?.now ?? Date.now();
 
   // 1. Format permission: must be Android build, known VIP status, and non-VIP (§5.1)
   if (!canShowAds('interstitial', { vipKnown: state.vipKnown, isVip: state.isVip })) {
-    return false;
+    return 'vip_or_ads_off';
   }
 
   // 2. External activity suppression: cannot show while external activity is active or within grace period (§11.8)
   if (isExternalActivityActive()) {
-    return false;
+    return 'external_activity';
   }
 
-  // 3. Max interstitials per session cap (max 6/session)
-  if (interstitialsShownInSession >= MAX_INTERSTITIALS_PER_SESSION) {
-    return false;
-  }
-
-  // 4. Session warmup: no interstitials during first 15s of session (<15s false)
-  if (now - sessionStartTime < SESSION_WARMUP_MS) {
-    return false;
-  }
-
-  // 5. First interstitial delay: must wait at least 45s from session start (first >=45s)
-  if (interstitialsShownInSession === 0 && now - sessionStartTime < FIRST_INTERSTITIAL_GAP_MS) {
-    return false;
-  }
-
-  // 6. Post-rewarded cooldown: 20s cooldown after a rewarded ad is shown/completed
-  if (lastRewardedShownAt > 0 && now - lastRewardedShownAt < POST_REWARDED_COOLDOWN_MS) {
-    return false;
-  }
-
-  // 7. Startup step 3 (launch paywall step) must have ended (§5.2)
+  // 3. Startup step 3 (launch paywall step) must have ended (§5.2)
   if (!state.startupStep3Done) {
-    return false;
+    return 'startup_paywall_step';
   }
 
-  // 8. Another full-screen ad must not already be showing
+  // 4. Another full-screen ad must not already be showing
   if (adsStore.getState().fullScreenAdShowing) {
-    return false;
+    return 'fullscreen_ad_showing';
   }
 
-  // 9. Core-action progress screen exclusion (§5.2)
+  // 5. Core-action progress screen exclusion (§5.2)
   // Exception: `after_core_action` fires right as the result arrives to transition to Result screen
   if (state.isCoreActionProgressVisible && trigger !== 'after_core_action') {
-    return false;
+    return 'core_action_progress';
   }
 
-  // 10. Excluded routes check (§5.2)
+  // 6. Excluded routes check (§5.2)
   const routeToCheck = options?.targetRoute ?? state.currentRoute;
   // Exception: `paywall_declined` fires when leaving the paywall
   if (trigger !== 'paywall_declined' && isInterstitialRouteExcluded(routeToCheck)) {
-    return false;
+    return 'excluded_route';
   }
   if (trigger === 'screen_change' && options?.targetRoute && isInterstitialRouteExcluded(options.targetRoute)) {
-    return false;
+    return 'excluded_route';
   }
 
-  // 11. Trigger-specific rules
+  // 7. Trigger-specific rules
   if (trigger === 'ads_user_tap' && !state.isAdsUser) {
-    return false;
+    return 'not_ads_user';
   }
 
   if (trigger === 'screen_change' && isWithinNoInterstitialWindow(now)) {
-    return false;
+    return 'no_interstitial_window';
   }
 
   if (
@@ -352,24 +276,31 @@ export function canTriggerInterstitial(
     options?.readingId &&
     hasReadingShownInterstitial(options.readingId)
   ) {
-    return false;
+    return 'reading_already_had_ad';
   }
 
-  // 12. Minimum time gap between interstitials (subsequent >=90s, or 30s for adsUser) (§5.2, §5.4)
-  if (state.lastInterstitialShownAt > 0) {
-    const gapMs = getRequiredInterstitialGapMs();
-    if (now - state.lastInterstitialShownAt < gapMs) {
-      return false;
-    }
+  // 8. Minimum gap between interstitials: 90 s, or 30 s for ads users (§5.2, §5.4)
+  if (getInterstitialGapLeftMs(now) > 0) {
+    return 'gap';
   }
 
-  return true;
+  return null;
+}
+
+/** Time left before the next interstitial is allowed, counted from when the last one closed. */
+export function getInterstitialGapLeftMs(now: number = Date.now()): number {
+  if (state.lastInterstitialShownAt <= 0) return 0;
+  return Math.max(0, getRequiredInterstitialGapMs() - (now - state.lastInterstitialShownAt));
+}
+
+export function canTriggerInterstitial(
+  trigger: InterstitialTrigger,
+  options?: { now?: number; targetRoute?: string; readingId?: string }
+): boolean {
+  return interstitialBlockReason(trigger, options) === null;
 }
 
 export function resetInterstitialPolicyForTests(): void {
-  sessionStartTime = Date.now();
-  interstitialsShownInSession = 0;
-  lastRewardedShownAt = 0;
   state = {
     lastInterstitialShownAt: 0,
     paywallDeclineCount: 0,

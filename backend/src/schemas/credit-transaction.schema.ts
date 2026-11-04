@@ -58,7 +58,6 @@ export class CreditTransaction {
 
   @Prop({
     type: Types.ObjectId,
-    ref: 'RewardedAdClaim',
     required: false,
     default: undefined,
     set: (v: unknown) => (v === null ? undefined : v),

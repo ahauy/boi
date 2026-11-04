@@ -15,11 +15,16 @@ import { ReadingDraftProvider } from '../state/readingDraft';
 import { SessionErrorScreen, SessionLoadingScreen } from '../components/SessionGate';
 import SimulatedAdHost from '../components/SimulatedAdHost';
 import BannerHost from '../ads/banner-host';
+import { initializeAds } from '../ads/ads-service';
+import { triggerScreenChange } from '../ads/interstitial-triggers';
+import { wireMonetizationTriggers } from '../ads/monetization-wiring';
 import { PaywallModal, setCurrentPaywallRoute, VipDailyGiftBanner } from '../premium';
 import { View } from 'react-native';
 import { colors } from '../theme';
 
 SplashScreen.preventAutoHideAsync();
+wireMonetizationTriggers();
+void initializeAds();
 
 // App mở ở "/" (route tabs). Khi onboarding còn bắt buộc, route này bị chặn và router lùi về anchor.
 export const unstable_settings = { anchor: 'onboarding' };
@@ -43,6 +48,7 @@ function Gate({ appReady }: { appReady: boolean }) {
 
   useEffect(() => {
     setCurrentPaywallRoute(pathname);
+    triggerScreenChange(pathname, () => undefined);
   }, [pathname]);
 
   useEffect(() => {
@@ -73,7 +79,6 @@ function Gate({ appReady }: { appReady: boolean }) {
         <Stack.Protected guard={onboarding === 'done'}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="reading/[id]" />
-          <Stack.Screen name="wallet" />
           <Stack.Screen name="referral" />
           <Stack.Screen name="enter-referral" />
         </Stack.Protected>
@@ -112,7 +117,7 @@ export default function RootLayout() {
             <ReadingDraftProvider>
               <ThemeProvider value={palmTheme}>
                 <StatusBar style="light" />
-                {/* Đăng ký trình phát trước khi màn ví kịp hỏi `rewardedAdsSupported()`. */}
+                {/* Chỉ chạy ở bản dev không có SDK quảng cáo (Expo Go). */}
                 <SimulatedAdHost />
                 <View style={{ flex: 1, backgroundColor: colors.canvas }}>
                   <View style={{ flex: 1 }}>

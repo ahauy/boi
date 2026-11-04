@@ -1,7 +1,8 @@
-import { initializeAds, preloadMrec } from '../ads/ads-service';
+import { initializeAds, preloadMrec, preloadRewarded } from '../ads/ads-service';
 import { requestInterstitialLoad } from '../ads/interstitial';
 import { hydrateInterstitialPolicy, setStartupStep3Done } from '../ads/interstitial-policy';
 import { initializeAdjust } from '../ads/revenue';
+import { isDeviceBlocked } from '../lib/integrity-gate';
 import { initializeBilling } from '../billing/billing-service';
 import { isBillingConfigured } from '../billing/billing-config';
 import { tryOpenPaywallOnLaunch } from '../premium/paywall-triggers';
@@ -20,7 +21,6 @@ import { tryOpenPaywallOnLaunch } from '../premium/paywall-triggers';
 export interface StartupContext {
   vipKnown: boolean;
   isVip: boolean;
-  billingOn?: boolean;
 }
 
 export type PaywallLaunchHandler = () => Promise<void> | void;
@@ -74,9 +74,14 @@ export async function runStartupSequence(ctx: StartupContext): Promise<void> {
       setTimeout(() => resolve('UNKNOWN'), 30_000)
     );
     const region = await Promise.race([initializeAds(), consentTimeoutPromise]);
-    await initializeAdjust(region);
-    requestInterstitialLoad();
-    preloadMrec();
+    if (!isDeviceBlocked()) {
+      await initializeAdjust(region);
+      preloadRewarded();
+      if (!ctx.isVip) {
+        requestInterstitialLoad();
+        void preloadMrec();
+      }
+    }
     if (isDev()) console.log('[StartupSequence] Step 1 finished (Ads & Adjust init, preloads queued)');
   } catch (err) {
     if (isDev()) console.warn('[StartupSequence] Step 1 note:', err);
@@ -98,7 +103,7 @@ export async function runStartupSequence(ctx: StartupContext): Promise<void> {
   }
 
   // Step 3: Launch paywall (non-VIP, billing on)
-  const billingEnabled = ctx.billingOn ?? (isBillingConfigured() && billingConnected);
+  const billingEnabled = isBillingConfigured() && billingConnected;
   const shouldOpenPaywall = ctx.vipKnown && !ctx.isVip && billingEnabled;
   try {
     if (shouldOpenPaywall) {

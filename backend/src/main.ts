@@ -71,6 +71,9 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   const nodeEnv = configService.get<string>("NODE_ENV", "development");
+  if (nodeEnv === "production" && !configService.get("IDENTITY_HASH_SECRET")) {
+    throw new Error("IDENTITY_HASH_SECRET must be set in production");
+  }
   const publicBaseUrl = configService.get<string>(
     "PUBLIC_BASE_URL",
     "http://localhost:5173"

@@ -1,3 +1,5 @@
+import { AppState } from 'react-native';
+
 /**
  * External Activity Tracker (Playbook §2.1, §6.3, §11.8)
  *
@@ -48,6 +50,19 @@ export function finishExternalActivity(kind: ExternalActivityKind): void {
     activeActivities.delete(kind);
     lastActivityEndedAt = Date.now();
   }
+}
+
+/**
+ * An ad click leaves the app with no matching SDK callback, so it ends on the next return.
+ * Left open, it would block the paywall and interstitials for the rest of the session.
+ */
+export function recordAdClick(): void {
+  recordExternalActivity('ad_click');
+  const subscription = AppState.addEventListener('change', (state) => {
+    if (state !== 'active') return;
+    subscription.remove();
+    finishExternalActivity('ad_click');
+  });
 }
 
 /**

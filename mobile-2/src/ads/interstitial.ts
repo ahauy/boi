@@ -1,9 +1,11 @@
 import { ADS_CONFIG, adsInBuild } from './ads-config';
 import { subscribeAdEvent } from './ad-events';
-import { isInterstitialReady, preloadInterstitial, showInterstitial } from './ads-service';
+import { preloadInterstitial, showInterstitial } from './ads-service';
 import { adsStore } from './ads-store';
 import {
-  canTriggerInterstitial,
+  getInterstitialGapLeftMs,
+  getInterstitialPolicyState,
+  interstitialBlockReason,
   InterstitialTrigger,
   markReadingInterstitialShown,
   recordInterstitialShown,
@@ -20,13 +22,12 @@ import {
  *   Preloads after init and after every show/fail.
  *   Retries failed loads with exponential backoff: 2, 4, 8, 16, 32, 64 s.
  *   Reloads a stuck load with no answer after 60 s.
- *   `isAdReady` check timeout <= 2 s.
+ *   An ad that never reports `displayed` releases the flow after 5 s.
  */
 
 export const BACKOFF_DELAYS_MS = [2_000, 4_000, 8_000, 16_000, 32_000, 64_000] as const;
 export const STUCK_LOAD_TIMEOUT_MS = 60_000;
-export const IS_READY_TIMEOUT_MS = 2_000;
-export const MISSING_HIDDEN_FALLBACK_MS = 8_000;
+export const DISPLAY_TIMEOUT_MS = 5_000;
 
 let isLoaded = false;
 let isLoading = false;
@@ -34,8 +35,18 @@ let isShowing = false;
 let retryAttempt = 0;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let stuckLoadTimer: ReturnType<typeof setTimeout> | null = null;
+let displayTimer: ReturnType<typeof setTimeout> | null = null;
+let adWasDisplayed = false;
+let shownAtBeforeThisAd = 0;
 let pendingCompletion: (() => void) | null = null;
 let listenersBound = false;
+
+function clearDisplayTimer(): void {
+  if (displayTimer) {
+    clearTimeout(displayTimer);
+    displayTimer = null;
+  }
+}
 
 function clearTimers(): void {
   if (retryTimer) {
@@ -50,8 +61,11 @@ function clearTimers(): void {
 
 function finishCurrentShow(): void {
   if (!isShowing && !pendingCompletion) return;
+  clearDisplayTimer();
   isShowing = false;
   isLoaded = false;
+  // The gap runs from the close (§5.4). The stamp taken at show only guards a relaunch mid-ad.
+  recordInterstitialShown(adWasDisplayed ? Date.now() : shownAtBeforeThisAd);
   adsStore.dismissFullScreenAd(`interstitial:${ADS_CONFIG.units.interstitial}`);
   const cb = pendingCompletion;
   pendingCompletion = null;
@@ -95,6 +109,8 @@ function ensureInterstitialListeners(): void {
   });
 
   subscribeAdEvent('interstitial', unitId, 'displayed', () => {
+    adWasDisplayed = true;
+    clearDisplayTimer();
     isLoaded = false;
   });
 
@@ -103,12 +119,13 @@ function ensureInterstitialListeners(): void {
   });
 
   subscribeAdEvent('interstitial', unitId, 'hidden', () => {
+    adWasDisplayed = true;
     finishCurrentShow();
   });
 
   // Also watch adsStore fullScreenAdShowing in case Pitfall §11.2 force-clears after 1s on foreground
   adsStore.subscribe(() => {
-    if (isShowing && !adsStore.getState().fullScreenAdShowing) {
+    if (isShowing && adWasDisplayed && !adsStore.getState().fullScreenAdShowing) {
       finishCurrentShow();
     }
   });
@@ -135,32 +152,6 @@ export function requestInterstitialLoad(): void {
   }, STUCK_LOAD_TIMEOUT_MS);
 
   preloadInterstitial(ADS_CONFIG.units.interstitial);
-}
-
-/**
- * Checks `isInterstitialReady` with a <= 2s timeout (§5.4) and syncs the `isLoaded` flag.
- */
-export async function checkInterstitialReadyWithTimeout(
-  timeoutMs: number = IS_READY_TIMEOUT_MS
-): Promise<boolean> {
-  if (isLoaded) return true;
-  try {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeoutPromise = new Promise<boolean>((resolve) => {
-      timer = setTimeout(() => resolve(false), timeoutMs);
-    });
-    const ready = await Promise.race([
-      isInterstitialReady(ADS_CONFIG.units.interstitial),
-      timeoutPromise,
-    ]);
-    if (timer) clearTimeout(timer);
-    if (ready) {
-      isLoaded = true;
-    }
-    return ready;
-  } catch {
-    return false;
-  }
 }
 
 export function isInterstitialLoadedSync(): boolean {
@@ -210,13 +201,21 @@ export function maybeShowThen(
   }
 
   const now = options?.now ?? Date.now();
-  const allowed = canTriggerInterstitial(trigger, {
+  const blockReason = interstitialBlockReason(trigger, {
     now,
     targetRoute: options?.targetRoute,
     readingId: options?.readingId,
   });
 
-  if (!allowed) {
+  if (__DEV__) {
+    console.log(
+      `[Interstitial] trigger=${trigger} route=${options?.targetRoute ?? '-'} allowed=${blockReason === null} ` +
+        `reason=${blockReason ?? (isLoaded ? 'none' : 'not_loaded')} ` +
+        `adsUser=${getInterstitialPolicyState().isAdsUser} gapLeftMs=${getInterstitialGapLeftMs(now)}`
+    );
+  }
+
+  if (blockReason) {
     next();
     return false;
   }
@@ -231,6 +230,8 @@ export function maybeShowThen(
   // All caps pass and ad is loaded -> show ad first, run `next` after close/fail
   isLoaded = false;
   isShowing = true;
+  adWasDisplayed = false;
+  shownAtBeforeThisAd = getInterstitialPolicyState().lastInterstitialShownAt;
   recordInterstitialShown(now);
 
   if (options?.readingId) {
@@ -247,6 +248,9 @@ export function maybeShowThen(
     next();
   };
 
+  // The §11.2 watchdog needs a return to foreground, which never comes if the ad never opened.
+  displayTimer = setTimeout(finishCurrentShow, DISPLAY_TIMEOUT_MS);
+
   try {
     showInterstitial(ADS_CONFIG.units.interstitial, trigger);
   } catch {
@@ -258,6 +262,9 @@ export function maybeShowThen(
 
 export function resetInterstitialManagerForTests(): void {
   clearTimers();
+  clearDisplayTimer();
+  adWasDisplayed = false;
+  shownAtBeforeThisAd = 0;
   isLoaded = false;
   isLoading = false;
   isShowing = false;

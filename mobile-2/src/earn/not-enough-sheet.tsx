@@ -1,13 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import Text from '../components/AppText';
 import { Button } from '../components/ui';
+import { AdRewardKind, ECONOMY_DEFAULTS } from '@palmsight/shared';
 import { watch } from '../ads/rewarded';
-import { triggerPaywall } from '../premium/paywall-triggers';
+import { registerOpenSheet, triggerPaywall } from '../premium/paywall-triggers';
+import { useBillingStore } from '../billing';
+import { useAuth } from '../state/auth';
+import { useI18n } from '../i18n';
 import { colors, radius, shadow, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
 
@@ -25,9 +28,12 @@ export function NotEnoughSheet({
   visible,
   onClose,
   currentBalance = 0,
-  requiredGem = 5,
+  requiredGem = ECONOMY_DEFAULTS.PRICE_PER_ACTION,
   onEarned,
 }: NotEnoughSheetProps) {
+  const { user } = useAuth();
+  const { billingEnabled } = useBillingStore();
+  const { t } = useI18n();
   const [adLoading, setAdLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const openedAtRef = useRef<number>(0);
@@ -35,10 +41,14 @@ export function NotEnoughSheet({
   useEffect(() => {
     if (visible) {
       openedAtRef.current = Date.now();
+      return registerOpenSheet();
     }
   }, [visible]);
 
   if (!visible) return null;
+
+  const bonusAmount = ECONOMY_DEFAULTS.BONUS_AD_AMOUNT;
+  const showGetVip = !user?.vip?.active && billingEnabled;
 
   function isGuardActive(): boolean {
     return Date.now() - openedAtRef.current < DOUBLE_TAP_GUARD_MS;
@@ -50,34 +60,29 @@ export function NotEnoughSheet({
     setError(null);
     haptic.tap();
 
-    try {
-      const res = await watch('not_enough_sheet', 'ad_reward');
-      if (res.success) {
-        haptic.success();
-        onEarned?.();
-        onClose();
-      } else {
-        setError('Xem hết video quảng cáo để nhận 5 GEM.');
-      }
-    } catch (err: any) {
-      setError(err?.message ?? 'Chưa sẵn sàng mở quảng cáo lúc này.');
-    } finally {
-      setAdLoading(false);
-    }
-  }
+    const result = await watch('not_enough_sheet', AdRewardKind.BONUS);
+    setAdLoading(false);
 
-  function handleGoToCurrency() {
-    if (isGuardActive()) return;
-    haptic.select();
-    onClose();
-    router.navigate('/(tabs)/currency' as any);
+    if (result.status === 'rewarded') {
+      haptic.success();
+      onEarned?.();
+      onClose();
+    } else if (result.status === 'capped') {
+      setError(t('earn.reward.limitReached'));
+    } else if (result.status === 'no_ad') {
+      setError(t('earn.reward.noAd'));
+    } else if (result.status === 'closed') {
+      setError(t('earn.reward.watchFull'));
+    } else {
+      setError(result.errorMessage ?? t('earn.reward.noAd'));
+    }
   }
 
   function handleGetVip() {
     if (isGuardActive()) return;
     haptic.select();
     onClose();
-    void triggerPaywall('out_of_currency');
+    void triggerPaywall('not_enough_sheet');
   }
 
   return (
@@ -101,10 +106,10 @@ export function NotEnoughSheet({
 
             <View style={styles.header}>
               <Text style={[type.headingLg, { color: colors.ink, textAlign: 'center' }]}>
-                Không đủ GEM
+                {t('earn.notEnough.title')}
               </Text>
               <Text style={[type.caption, { color: colors.stone, textAlign: 'center' }]}>
-                {`Quẻ này cần ${requiredGem} GEM. Bạn hiện có ${currentBalance} GEM.`}
+                {t('earn.notEnough.body', { price: requiredGem, balance: currentBalance })}
               </Text>
             </View>
 
@@ -115,9 +120,8 @@ export function NotEnoughSheet({
             ) : null}
 
             <View style={styles.actions}>
-              {/* Watch Ad Button (+5 GEM) with 450ms guard and noInterstitial */}
               <Button
-                label={adLoading ? 'Đang mở quảng cáo…' : 'Xem quảng cáo (+5 GEM)'}
+                label={t('earn.notEnough.watchAd', { amount: bonusAmount })}
                 onPress={() => void handleWatchAd()}
                 disabled={adLoading}
                 loading={adLoading}
@@ -127,26 +131,25 @@ export function NotEnoughSheet({
                 }
               />
 
-              {/* Navigate to Currency tab */}
-              <Button
-                label="Điểm danh / Vòng quay nhận GEM"
-                variant="outline"
-                onPress={handleGoToCurrency}
-                noInterstitial
-                icon={
-                  <MaterialCommunityIcons name="fire" size={18} color={colors.goldLight} />
-                }
-              />
+              {showGetVip ? (
+                <Button
+                  label={t('earn.notEnough.getVip')}
+                  variant="outline"
+                  onPress={handleGetVip}
+                  noInterstitial
+                  icon={
+                    <MaterialCommunityIcons name="crown-outline" size={18} color={colors.goldLight} />
+                  }
+                />
+              ) : null}
 
-              {/* Get VIP Button */}
               <Button
-                label="Mở gói VIP (50 GEM/ngày)"
+                label={t('common.close')}
                 variant="ghost"
-                onPress={handleGetVip}
+                onPress={() => {
+                  if (!isGuardActive()) onClose();
+                }}
                 noInterstitial
-                icon={
-                  <MaterialCommunityIcons name="crown-outline" size={18} color={colors.goldLight} />
-                }
               />
             </View>
           </LinearGradient>

@@ -7,8 +7,9 @@ import {
   TRANSLATIONS,
   LanguageOption,
 } from './translations';
+import { SCREEN_LANGUAGES, SCREEN_STRINGS } from './screen-strings';
 
-export { SUPPORTED_LANGUAGES, TRANSLATIONS };
+export { SCREEN_LANGUAGES, SCREEN_STRINGS, SUPPORTED_LANGUAGES, TRANSLATIONS };
 export type { SupportedLanguage, TranslationKey, LanguageOption };
 
 const LANGUAGE_STORAGE_KEY = 'palmsight.language';
@@ -76,7 +77,12 @@ export function t(
 ): string {
   const lang = langOverride ?? currentLanguage;
   const dict = (TRANSLATIONS[lang] ?? TRANSLATIONS.en) as Record<string, string>;
-  const template = dict[key] ?? (TRANSLATIONS.en as Record<string, string>)[key] ?? key;
+  const screenRow = SCREEN_STRINGS[key];
+  const template =
+    (screenRow && screenRow[SCREEN_LANGUAGES.indexOf(lang)]) ??
+    dict[key] ??
+    (TRANSLATIONS.en as Record<string, string>)[key] ??
+    key;
 
   if (!params) return template;
 

@@ -12,7 +12,6 @@ import { UsersModule } from "../src/users/users.module";
 import { CreditsModule } from "../src/credits/credits.module";
 import { HealthModule } from "../src/health/health.module";
 import { ReadingsModule } from "../src/readings/readings.module";
-import { AdsModule } from "../src/ads/ads.module";
 import { AppConfigModule } from "../src/config/app-config.module";
 import { CurrencyModule } from "../src/currency/currency.module";
 import { BillingModule } from "../src/billing/billing.module";
@@ -46,10 +45,8 @@ export interface TestAppOptions {
     Partial<Pick<GoogleAuthVerifier, "verifyCode">>;
   facebookVerifier?: Pick<FacebookAuthVerifier, "verify">;
   /** Nơi test phục bộ khoá công khai giả để chạy thật logic xác minh chữ ký SSV. */
-  adSsvKeysUrl?: string;
   rewardedAdsEnabled?: boolean;
   /** Bật cửa sau dev-grant, đường cấp credit không cần chữ ký dành cho máy dev. */
-  rewardedAdsDevGrant?: boolean;
   starterGrant?: number;
   pricePerAction?: number;
   starterNetworkDailyCap?: number;
@@ -121,12 +118,8 @@ export async function createTestApp(
             FACEBOOK_APP_ID: "test-facebook-app-id",
             FACEBOOK_APP_SECRET: "test-facebook-app-secret",
             REWARDED_ADS_ENABLED: options.rewardedAdsEnabled ? "true" : "false",
-            REWARDED_ADS_DEV_GRANT: options.rewardedAdsDevGrant
-              ? "true"
-              : "false",
-            REWARDED_AD_DAILY_CAP: 3,
-            AD_SSV_KEYS_URL: options.adSsvKeysUrl ?? "http://127.0.0.1:1/no-keys",
             NODE_ENV: "test",
+            RTDN_PUSH_TOKEN: "test-rtdn-token",
           }),
         ],
       }),
@@ -142,7 +135,6 @@ export async function createTestApp(
       AuthModule,
       UsersModule,
       ReadingsModule,
-      AdsModule,
       AppConfigModule,
       CurrencyModule,
       BillingModule,

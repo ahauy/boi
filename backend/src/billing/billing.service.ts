@@ -1,7 +1,10 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
@@ -24,7 +27,10 @@ import {
 } from '../schemas/billing-event.schema';
 import { CreditLedgerService } from '../credits/credit-ledger.service';
 import { getRewardDay } from '../currency/reward-day.util';
-import { PlayPurchaseVerifier } from './play-purchase.verifier';
+import {
+  PlayPurchaseVerifier,
+  VerifiedPlayPurchase,
+} from './play-purchase.verifier';
 
 export interface RtdnWebhookPayload {
   eventId?: string;
@@ -32,8 +38,6 @@ export interface RtdnWebhookPayload {
   notificationType?: number;
   productId?: string;
   subscriptionId?: string;
-  expiresAt?: string;
-  willRenew?: boolean;
   message?: {
     messageId?: string;
     data?: string;
@@ -47,6 +51,13 @@ export interface RtdnWebhookPayload {
   };
 }
 
+interface UserVipState {
+  active: boolean;
+  productId: string | null;
+  expiresAt: Date | null;
+  willRenew: boolean;
+}
+
 export interface RtdnWebhookResult {
   received: boolean;
   duplicate: boolean;
@@ -56,6 +67,7 @@ export interface RtdnWebhookResult {
 
 @Injectable()
 export class BillingService {
+  private readonly logger = new Logger(BillingService.name);
   private clockFn: () => Date = () => new Date();
 
   constructor(
@@ -162,22 +174,34 @@ export class BillingService {
         .session(session);
 
       const isPaidPurchase =
-        !verified.isTrial && verified.priceAmountMicros > 0;
+        !verified.isTrial &&
+        verified.priceAmountMicros > 0 &&
+        verified.expiresAt.getTime() > now.getTime();
       const firstPurchase = Boolean(isPaidPurchase && !priorPaidExists);
       const firstPurchaseCounted = Boolean(
         existingSub?.firstPurchaseCounted || firstPurchase,
       );
 
-      // Upgrade handling (Playbook §6.2): if the user already has another active subscription token,
-      // mark the old subscription as superseded by the new token.
+      // A superseded token stays superseded while its replacement lasts at least as long.
+      const replacement = existingSub?.supersededBy
+        ? await this.playSubscriptionModel
+            .findOne({ purchaseToken: existingSub.supersededBy })
+            .session(session)
+        : null;
+      const staysSuperseded = Boolean(
+        replacement && replacement.expiresAt >= verified.expiresAt,
+      );
+
+      // Upgrade handling (Playbook §6.2): the verified token replaces active tokens it outlasts.
+      // Tokens that outlast it stay, or re-verifying an old plan would displace the newer one.
       let supersededPurchaseToken: string | null = null;
-      if (verified.expiresAt.getTime() > now.getTime()) {
+      if (verified.expiresAt.getTime() > now.getTime() && !staysSuperseded) {
         const activeOtherSubs = await this.playSubscriptionModel
           .find({
             userId: lockedUser._id,
             purchaseToken: { $ne: verified.purchaseToken },
             supersededBy: null,
-            expiresAt: { $gt: now },
+            expiresAt: { $gt: now, $lte: verified.expiresAt },
           })
           .sort({ expiresAt: -1 })
           .session(session);
@@ -213,7 +237,7 @@ export class BillingService {
             priceAmountMicros: verified.priceAmountMicros,
             priceCurrencyCode: verified.priceCurrencyCode,
             acknowledged: verified.acknowledged,
-            supersededBy: null,
+            supersededBy: staysSuperseded ? existingSub?.supersededBy : null,
             adjustAdid: dto.adjustAdid ?? existingSub?.adjustAdid ?? null,
             gaid: dto.gaid ?? existingSub?.gaid ?? null,
             firstPurchaseCounted,
@@ -230,15 +254,19 @@ export class BillingService {
         await this.recomputeUserVipFields(previousOwnerId, now, session);
       }
 
-      const vipActive = verified.expiresAt.getTime() > now.getTime();
-      const effectiveWillRenew = vipActive ? verified.willRenew : false;
+      // VIP comes from every token the user holds: this one may be expired or the shorter plan.
+      const vip = await this.recomputeUserVipFields(
+        lockedUser._id,
+        now,
+        session,
+      );
 
       let currentBalance = lockedUser.creditBalance;
       let grantedNow = false;
       let vipDailyGranted: number | undefined;
 
       if (
-        vipActive &&
+        vip.active &&
         lockedUser.vipDailyDay !== currentRewardDay &&
         vipDaily > 0
       ) {
@@ -250,9 +278,6 @@ export class BillingService {
             reason: 'vip_daily',
             extraUserSet: {
               billingRef,
-              vipExpiresAt: verified.expiresAt,
-              vipProductId: verified.productId,
-              vipWillRenew: effectiveWillRenew,
               vipDailyDay: currentRewardDay,
             },
           },
@@ -267,9 +292,6 @@ export class BillingService {
           {
             $set: {
               billingRef,
-              vipExpiresAt: verified.expiresAt,
-              vipProductId: verified.productId,
-              vipWillRenew: effectiveWillRenew,
               updatedAt: now,
             },
           },
@@ -281,10 +303,10 @@ export class BillingService {
 
       return {
         vip: {
-          active: vipActive,
-          productId: vipActive ? verified.productId : null,
-          expiresAt: verified.expiresAt.toISOString(),
-          willRenew: effectiveWillRenew,
+          active: vip.active,
+          productId: vip.active ? vip.productId : null,
+          expiresAt: vip.expiresAt?.toISOString() ?? null,
+          willRenew: vip.willRenew,
         },
         firstPurchase,
         restored,
@@ -306,7 +328,7 @@ export class BillingService {
     userId: Types.ObjectId,
     now: Date,
     session: ClientSession,
-  ): Promise<void> {
+  ): Promise<UserVipState> {
     const latestSub = await this.playSubscriptionModel
       .findOne({
         userId,
@@ -328,22 +350,83 @@ export class BillingService {
         },
         { session },
       );
-      return;
+      return { active: false, productId: null, expiresAt: null, willRenew: false };
     }
 
     const active = latestSub.expiresAt.getTime() > now.getTime();
+    const willRenew = active ? latestSub.willRenew : false;
     await this.userModel.updateOne(
       { _id: userId },
       {
         $set: {
           vipExpiresAt: latestSub.expiresAt,
           vipProductId: latestSub.productId,
-          vipWillRenew: active ? latestSub.willRenew : false,
+          vipWillRenew: willRenew,
           updatedAt: now,
         },
       },
       { session },
     );
+    return {
+      active,
+      productId: latestSub.productId,
+      expiresAt: latestSub.expiresAt,
+      willRenew,
+    };
+  }
+
+  /**
+   * The Pub/Sub push subscription calls `/billing/rtdn?token=<RTDN_PUSH_TOKEN>`.
+   * Without a configured token the endpoint stays closed, so Pub/Sub keeps
+   * retrying instead of an open webhook accepting anyone.
+   */
+  assertRtdnToken(token: string | undefined): void {
+    const expected = this.configService.get<string>('RTDN_PUSH_TOKEN', '');
+    if (!expected) {
+      throw new ServiceUnavailableException({
+        code: 'rtdn_not_configured',
+        message: 'RTDN chưa được cấu hình.',
+      });
+    }
+
+    const expectedHash = crypto.createHash('sha256').update(expected).digest();
+    const actualHash = crypto
+      .createHash('sha256')
+      .update(token ?? '')
+      .digest();
+    if (!crypto.timingSafeEqual(expectedHash, actualHash)) {
+      throw new UnauthorizedException({
+        code: 'invalid_rtdn_token',
+        message: 'RTDN token không hợp lệ.',
+      });
+    }
+  }
+
+  /**
+   * Returns Google's current state for a subscription we know about. A token
+   * Google no longer recognises returns null so the event is still recorded;
+   * unavailability propagates so Pub/Sub redelivers.
+   */
+  private async fetchSubscriptionTruth(
+    purchaseToken: string,
+    productId: string,
+    now: Date,
+  ): Promise<VerifiedPlayPurchase | null> {
+    try {
+      return await this.playPurchaseVerifier.verify({
+        productId,
+        purchaseToken,
+        now,
+      });
+    } catch (err) {
+      if (err instanceof BadRequestException) {
+        this.logger.warn(
+          `RTDN could not re-verify a subscription: ${err.message}`,
+        );
+        return null;
+      }
+      throw err;
+    }
   }
 
   async handleRtdnWebhook(
@@ -429,6 +512,19 @@ export class BillingService {
       };
     }
 
+    // Look up outside the transaction: a Google outage must leave no event behind
+    // so the redelivered message is processed instead of treated as a duplicate.
+    const knownSub = purchaseToken
+      ? await this.playSubscriptionModel.findOne({ purchaseToken }).lean()
+      : null;
+    const truth = knownSub
+      ? await this.fetchSubscriptionTruth(
+          purchaseToken,
+          productId ?? knownSub.productId,
+          now,
+        )
+      : null;
+
     const session = await this.connection.startSession();
     try {
       session.startTransaction();
@@ -471,54 +567,21 @@ export class BillingService {
           .session(session);
 
         if (sub) {
-          let newExpiresAt = sub.expiresAt;
-          let newWillRenew = sub.willRenew;
+          let newExpiresAt = truth?.expiresAt ?? sub.expiresAt;
+          let newWillRenew = truth?.willRenew ?? sub.willRenew;
 
-          const explicitExpiresAt =
-            decodedData.expiresAt ?? body.expiresAt ?? null;
-          if (explicitExpiresAt) {
-            const parsed = new Date(explicitExpiresAt);
-            if (!Number.isNaN(parsed.getTime())) {
-              newExpiresAt = parsed;
-            }
-          }
-
-          if (typeof body.willRenew === 'boolean') {
-            newWillRenew = body.willRenew;
-          } else if (typeof decodedData.willRenew === 'boolean') {
-            newWillRenew = decodedData.willRenew;
-          } else if (notificationType !== null) {
-            // Google Play RTDN notificationType codes:
-            // 1: RECOVERED, 2: RENEWED, 4: PURCHASED, 7: RESTARTED -> active & willRenew = true
-            // 3: CANCELED, 5: ON_HOLD, 6: IN_GRACE_PERIOD, 10: PAUSED -> willRenew = false
-            // 12: REVOKED, 13: EXPIRED -> expired immediately & willRenew = false
-            if ([1, 2, 4, 7].includes(notificationType)) {
-              newWillRenew = true;
-              if (!explicitExpiresAt && newExpiresAt.getTime() <= now.getTime()) {
-                const days =
-                  sub.productId === 'yearlyid'
-                    ? 365
-                    : sub.productId === 'monthlyid'
-                      ? 30
-                      : 7;
-                newExpiresAt = new Date(
-                  now.getTime() + days * 24 * 60 * 60 * 1000,
-                );
-              }
-            } else if ([3, 5, 6, 10].includes(notificationType)) {
-              newWillRenew = false;
-            } else if ([12, 13].includes(notificationType)) {
-              newWillRenew = false;
-              if (!explicitExpiresAt || newExpiresAt.getTime() > now.getTime()) {
-                newExpiresAt = new Date(now.getTime() - 1000);
-              }
+          // 12: REVOKED, 13: EXPIRED end access now, whatever expiry Google still reports.
+          if (notificationType === 12 || notificationType === 13) {
+            newWillRenew = false;
+            if (newExpiresAt.getTime() > now.getTime()) {
+              newExpiresAt = new Date(now.getTime() - 1000);
             }
           }
 
           sub.expiresAt = newExpiresAt;
           sub.willRenew = newWillRenew;
-          if (productId) {
-            sub.productId = productId;
+          if (truth) {
+            sub.productId = truth.productId;
           }
           await sub.save({ session });
           await this.recomputeUserVipFields(sub.userId, now, session);

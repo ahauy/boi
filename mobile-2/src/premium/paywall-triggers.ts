@@ -6,6 +6,7 @@ import { adsStore } from '../ads/ads-store';
 import { isExternalActivityActive } from '../lib/external-activity';
 import { isBillingConfigured } from '../billing/billing-config';
 import { billingStore } from '../billing/billing-store';
+import { setPaywallDeclineCount } from '../ads/interstitial-policy';
 
 /**
  * Paywall State & Triggers (Playbook §5.4, §6.2, §6.3, §6.4, §11.8)
@@ -95,6 +96,7 @@ export async function loadPaywallDeclines(): Promise<number> {
       declineCount: count,
       isAdsUser: !state.isVip && count >= ADS_USER_DECLINES_THRESHOLD,
     };
+    setPaywallDeclineCount(count);
     notify();
     return count;
   } catch {

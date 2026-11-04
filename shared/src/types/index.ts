@@ -3,4 +3,3 @@ export * from './user.dto';
 export * from './auth.dto';
 export * from './reading.dto';
 export * from './credit.dto';
-export * from './ad.dto';

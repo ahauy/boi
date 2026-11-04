@@ -3,17 +3,19 @@ import { Tabs } from 'expo-router/js-tabs';
 
 import CosmicTabBar from '../../components/CosmicTabBar';
 import { colors } from '../../theme';
-import { runStartupSequence } from '../../startup/startup-sequence';
+import { registerNotificationAsker, runStartupSequence } from '../../startup/startup-sequence';
+import { requestNotificationPermission } from '../../startup/notifications';
 import { useAuth } from '../../state/auth';
 
 export default function TabsLayout() {
   const { user, status } = useAuth();
 
+  useEffect(() => registerNotificationAsker(requestNotificationPermission), []);
+
   useEffect(() => {
     void runStartupSequence({
       vipKnown: status === 'ready',
       isVip: Boolean(user?.vip?.active),
-      billingOn: true,
     });
   }, [user, status]);
 

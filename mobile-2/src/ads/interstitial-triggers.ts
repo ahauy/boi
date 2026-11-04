@@ -1,5 +1,4 @@
 import { AppState } from 'react-native';
-import { PAYWALL_RETURN_AFTER_MS } from '../premium/paywall-triggers';
 import {
   isInterstitialShowingSync,
   maybeShowThen,
@@ -7,7 +6,6 @@ import {
 import {
   getInterstitialPolicyState,
   markNoInterstitialTap,
-  recordPaywallDecline,
   setInterstitialRoute,
 } from './interstitial-policy';
 
@@ -71,53 +69,19 @@ export function triggerScreenChange(
 }
 
 /**
- * Fires interstitial check on tab switch (§5.4 #3).
- */
-export function onTabSwitchInterstitial(
-  targetTab?: string,
-  onDone?: () => void
-): boolean {
-  const route = targetTab ? (targetTab.startsWith('/') ? targetTab : `/(tabs)/${targetTab}`) : '/(tabs)';
-  return triggerScreenChange(route, () => {
-    onDone?.();
-  });
-}
-
-/**
- * Fires interstitial check when a core flow (e.g. reading result) completes (§5.4 #1).
- */
-export function onFlowCompleteInterstitial(
-  flowName: string = 'reading_complete',
-  onDone?: () => void
-): boolean {
-  return maybeShowThen('after_core_action', () => {
-    onDone?.();
-  });
-}
-
-/**
  * Trigger 4: Paywall declined (X or back, not after a purchase) (§5.4 #4).
- * Increments decline counter (+1, becoming `adsUser` at 3) and shows interstitial on leaving paywall.
  */
 export function triggerPaywallDeclined(onAfterClose?: () => void): boolean {
-  recordPaywallDecline();
   return maybeShowThen('paywall_declined', () => {
     onAfterClose?.();
   });
 }
 
 /**
- * Trigger 5: Return from background >= `{PAYWALL_RETURN_AFTER}` (10 s) when the paywall cannot open (§5.4 #5).
+ * Trigger 5: Return from background >= `{PAYWALL_RETURN_AFTER}` when the paywall cannot open (§5.4 #5).
+ * paywall-triggers decides both conditions before firing this.
  */
-export function triggerBackgroundReturn(
-  elapsedMs: number,
-  paywallOpened: boolean,
-  onDone?: () => void
-): boolean {
-  if (paywallOpened || elapsedMs < PAYWALL_RETURN_AFTER_MS) {
-    onDone?.();
-    return false;
-  }
+export function triggerBackgroundReturn(onDone?: () => void): boolean {
   return maybeShowThen('background_return', () => {
     onDone?.();
   });

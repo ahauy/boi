@@ -1,51 +1,44 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import HeaderCredits from '../../components/HeaderCredits';
 import Screen, { ScreenHeader } from '../../components/Screen';
 import Text from '../../components/AppText';
-import { Banner, Button, Card, SectionLabel } from '../../components/ui';
-import NativeAdSlot from '../../ads/native-ad-slot';
+import { Button, Card } from '../../components/ui';
 import CheckinCard from '../../earn/checkin-card';
 import LuckyWheel from '../../earn/lucky-wheel';
 import { fetchCurrencyEarn } from '../../earn/earn-api';
+import { CORE_READING_COST_GEM, ECONOMY_DEFAULTS } from '@palmsight/shared';
 import type { CurrencyEarnResponseDto } from '@palmsight/shared';
-import { getRewardedCooldownRemainingMs, watch } from '../../ads/rewarded';
 import { markNoInterstitialTap } from '../../ads/interstitial-policy';
 import { triggerPaywall } from '../../premium/paywall-triggers';
 import { useAuth } from '../../state/auth';
-import { useI18n } from '../../i18n';
+import { t, useI18n } from '../../i18n';
 import { colors, font, radius, shadow, spacing, text as type } from '../../theme';
 import { haptic } from '../../lib/haptics';
 
-export const DOUBLE_TAP_GUARD_MS = 450;
-const WATCH_AD_GEM_REWARD = 5;
+const SEGMENTS = ['checkin', 'wheel'] as const;
+type Segment = (typeof SEGMENTS)[number];
 
 export default function CurrencyScreen() {
   const { user, refreshUser } = useAuth();
-  const { t } = useI18n();
-  const { width } = useWindowDimensions();
+  useI18n();
+  const params = useLocalSearchParams<{ segment?: Segment }>();
 
-  const isVip = Boolean((user as any)?.isVip || user?.vip?.active);
-  const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
+  const isVip = Boolean(user?.vip?.active);
+  const gemBalance = user?.creditBalance ?? 0;
 
   const [earnState, setEarnState] = useState<CurrencyEarnResponseDto | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [adLoading, setAdLoading] = useState(false);
-  const [adMessage, setAdMessage] = useState<string | null>(null);
-  const [cooldownRemainingMs, setCooldownRemainingMs] = useState<number>(0);
+  const [segment, setSegment] = useState<Segment>('checkin');
 
-  const lastTapRef = useRef<number>(0);
+  useFocusEffect(
+    useCallback(() => {
+      if (params.segment && SEGMENTS.includes(params.segment)) setSegment(params.segment);
+    }, [params.segment])
+  );
 
   const loadEarnState = useCallback(async () => {
     try {
@@ -63,59 +56,15 @@ export default function CurrencyScreen() {
     }, [loadEarnState, refreshUser])
   );
 
-  // 10s cooldown timer polling for ad reward (§5.3)
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const rem = getRewardedCooldownRemainingMs();
-      setCooldownRemainingMs(rem);
-    }, 500);
-    return () => clearInterval(timer);
-  }, []);
-
-  const bonusCounter = earnState?.rewarded?.bonus;
-  const usedToday = bonusCounter?.usedToday ?? 0;
-  const maxToday = bonusCounter?.cap ?? 5;
-  const remainingToday = bonusCounter?.remaining ?? Math.max(0, maxToday - usedToday);
-  const isCapReached = remainingToday <= 0;
-  const isCooldownActive = cooldownRemainingMs > 0;
-
-  async function handleWatchAd() {
-    const now = Date.now();
-    if (now - lastTapRef.current < DOUBLE_TAP_GUARD_MS) {
-      return;
-    }
-    lastTapRef.current = now;
-
-    if (adLoading || isCooldownActive || isCapReached) {
-      return;
-    }
-
-    setAdLoading(true);
-    setAdMessage(null);
-    haptic.tap();
-
-    try {
-      const result = await watch('currency_tab', 'ad_reward');
-      if (result.success) {
-        haptic.success();
-        await refreshUser().catch(() => undefined);
-        await loadEarnState().catch(() => undefined);
-        setAdMessage(`+${WATCH_AD_GEM_REWARD} GEM đã được cộng vào tài khoản!`);
-        setTimeout(() => setAdMessage(null), 3000);
-      }
-    } catch (err: any) {
-      haptic.warning();
-      setAdMessage(err?.message ?? 'Không thể tải quảng cáo lúc này. Vui lòng thử lại sau.');
-      setTimeout(() => setAdMessage(null), 3500);
-    } finally {
-      setAdLoading(false);
-    }
-  }
+  const handleEarnUpdated = useCallback(() => {
+    void loadEarnState();
+    void refreshUser().catch(() => undefined);
+  }, [loadEarnState, refreshUser]);
 
   function handleVipPromoPress() {
     haptic.tap();
     markNoInterstitialTap();
-    void triggerPaywall('currency_tab_promo');
+    void triggerPaywall('manual');
   }
 
   return (
@@ -123,8 +72,8 @@ export default function CurrencyScreen() {
       contentStyle={{ paddingBottom: 130 }}
       header={
         <ScreenHeader
-          eyebrow="TÀI NGUYÊN & PHẦN THƯỞNG"
-          title="Ví Gems"
+          eyebrow={t('gems.eyebrow')}
+          title={t('gems.title')}
           right={<HeaderCredits />}
         />
       }
@@ -142,7 +91,7 @@ export default function CurrencyScreen() {
           </View>
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={[type.eyebrow, { color: colors.goldLight, letterSpacing: 2 }]}>
-              SỐ DƯ KHẢ DỤNG
+              {t('gems.balance')}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
               <Text style={[type.displayLg, { color: colors.ink }]}>{gemBalance}</Text>
@@ -158,7 +107,7 @@ export default function CurrencyScreen() {
         </View>
 
         <Text style={[type.caption, { color: colors.mute }]}>
-          Mỗi quẻ đọc bài chỉ tay tiêu thụ 5 GEM. Bạn có thể điểm danh hoặc xem video để tích luỹ thêm.
+          {t('gems.body', { cost: CORE_READING_COST_GEM })}
         </Text>
       </LinearGradient>
 
@@ -171,10 +120,10 @@ export default function CurrencyScreen() {
             </View>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={[type.bodyBold, { color: colors.goldLight }]}>
-                Đặc quyền VIP đang hoạt động
+                {t('gems.vipActive')}
               </Text>
               <Text style={[type.caption, { color: colors.mute }]}>
-                +50 GEM tự động cộng mỗi ngày khi mở ứng dụng. Không quảng cáo chen ngang.
+                {t('gems.vipDaily', { amount: ECONOMY_DEFAULTS.VIP_DAILY })} {t('paywall.benefit.noBannerInterstitial')}.
               </Text>
             </View>
           </View>
@@ -191,15 +140,15 @@ export default function CurrencyScreen() {
               <MaterialCommunityIcons name="star-shooting-outline" size={24} color={colors.goldLight} />
             </View>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={[type.headingSm, { color: colors.ink }]}>Gói Hội Viên VIP</Text>
+              <Text style={[type.headingSm, { color: colors.ink }]}>{t('gems.vipTitle')}</Text>
               <Text style={[type.caption, { color: colors.mute }]}>
-                Nhận +50 GEM mỗi ngày, mở khoá toàn bộ trường phái, không quảng cáo biểu ngữ &amp; xen kẽ.
+                {t('gems.vipBody', { amount: ECONOMY_DEFAULTS.VIP_DAILY })}
               </Text>
             </View>
           </View>
 
           <Button
-            label="Nâng cấp VIP ngay"
+            label={t('gems.upgrade')}
             size="md"
             onPress={handleVipPromoPress}
             icon={<MaterialCommunityIcons name="crown" size={18} color={colors.onGold} />}
@@ -207,97 +156,57 @@ export default function CurrencyScreen() {
         </LinearGradient>
       )}
 
-      {/* 3. Daily Check-in Ladder */}
-      <View style={{ gap: spacing.sm }}>
-        <SectionLabel>ĐIỂM DANH HÀNG NGÀY</SectionLabel>
-        <CheckinCard earnState={earnState} onUpdated={loadEarnState} />
-      </View>
-
-      {/* 4. Lucky Wheel */}
-      <View style={{ gap: spacing.sm }}>
-        <SectionLabel>VÒNG QUAY MAY MẮN</SectionLabel>
-        <LuckyWheel earnState={earnState} onUpdated={loadEarnState} />
-      </View>
-
-      {/* 5. Watch Rewarded Ad Card (+5 GEM, 10s cooldown, daily cap) */}
-      <View style={{ gap: spacing.sm }}>
-        <SectionLabel
-          right={
-            <Text style={[type.code, { color: colors.goldLight }]}>
-              {`${maxToday - remainingToday}/${maxToday} LẦN`}
-            </Text>
-          }
-        >
-          XEM QUẢNG CÁO NHẬN THƯỞNG
-        </SectionLabel>
-
-        <Card style={styles.watchAdCard}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <View style={styles.adRewardIconCircle}>
-              <MaterialCommunityIcons name="play-circle-outline" size={26} color={colors.goldLight} />
-            </View>
-            <View style={{ flex: 1, gap: 3 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                <Text style={[type.bodyBold, { color: colors.ink }]}>Xem video nhận GEM</Text>
-                <View style={styles.bonusTag}>
-                  <Text style={styles.bonusTagText}>{`+${WATCH_AD_GEM_REWARD} GEM`}</Text>
-                </View>
-              </View>
-              <Text style={[type.caption, { color: colors.mute }]}>
-                {isCapReached
-                  ? 'Đã đạt giới hạn hôm nay. Hãy quay lại vào ngày mai!'
-                  : isCooldownActive
-                    ? `Vui lòng chờ ${Math.ceil(cooldownRemainingMs / 1000)}s giữa các lần xem`
-                    : `Còn ${remainingToday} lượt nhận thưởng hôm nay (10s giãn cách)`}
+      {/* 3. Segmented control (§7.4) */}
+      <View style={styles.segmentedControl} accessibilityRole="tablist">
+        {SEGMENTS.map((key) => {
+          const selected = segment === key;
+          return (
+            <Pressable
+              key={key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              onPress={() => {
+                haptic.select();
+                setSegment(key);
+              }}
+              style={[styles.segment, selected && styles.segmentSelected]}
+            >
+              <Text style={[type.captionStrong, { color: selected ? colors.onGold : colors.mute }]}>
+                {t(`earn.segment.${key}`)}
               </Text>
-            </View>
-          </View>
-
-          {adMessage ? (
-            <Banner
-              variant={adMessage.includes('+5') ? 'success' : 'warning'}
-              title={adMessage}
-            />
-          ) : null}
-
-          <Button
-            label={
-              adLoading
-                ? 'Đang tải quảng cáo...'
-                : isCooldownActive
-                  ? `Chờ ${Math.ceil(cooldownRemainingMs / 1000)}s`
-                  : isCapReached
-                    ? 'Hết lượt hôm nay'
-                    : `Xem video (+${WATCH_AD_GEM_REWARD} GEM)`
-            }
-            onPress={() => void handleWatchAd()}
-            disabled={adLoading || isCooldownActive || isCapReached}
-            loading={adLoading}
-            variant={isCapReached ? 'outline' : 'primary'}
-            icon={
-              <MaterialCommunityIcons
-                name="movie-open-play-outline"
-                size={18}
-                color={isCapReached ? colors.mute : colors.onGold}
-              />
-            }
-          />
-        </Card>
+            </Pressable>
+          );
+        })}
       </View>
 
-      {/* 6. Native Ad Slot */}
-      <View style={styles.adSection}>
-        <NativeAdSlot
-          availableHeight={280}
-          availableWidth={Math.max(300, width - spacing.xl * 2)}
-          {...({ placement: 'currency' } as any)}
-        />
-      </View>
+      {segment === 'checkin' ? (
+        <CheckinCard earnState={earnState} onUpdated={handleEarnUpdated} />
+      ) : (
+        <LuckyWheel earnState={earnState} onUpdated={handleEarnUpdated} />
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  segmentedControl: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    padding: spacing.xs,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  segment: {
+    flex: 1,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+  },
+  segmentSelected: {
+    backgroundColor: colors.gold,
+  },
   balanceCard: {
     borderRadius: radius['3xl'],
     borderWidth: 1,

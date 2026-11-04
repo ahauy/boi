@@ -59,6 +59,7 @@ export default function OnboardingScreen() {
 
   // Sync initial language into answers if loaded from storage
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- language arrives async from storage
     setAnswers((prev) => ({ ...prev, language }));
   }, [language]);
 
@@ -67,6 +68,7 @@ export default function OnboardingScreen() {
     let active = true;
     const integrity = checkDeviceIntegrity();
     if (integrity.blocked || isDeviceBlocked()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the integrity check is a device read
       setDeviceBlocked(true);
       setConsentPromiseDone(true);
       return;

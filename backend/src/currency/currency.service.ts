@@ -40,12 +40,20 @@ import {
  * Server-side weights for `[2, 3, 5, 10, 20, 50]` (Playbook §1.1 & §7.3:
  * heavily weighted to small prizes, never exposed to clients).
  */
-const WHEEL_WEIGHTS = [450, 320, 150, 55, 20, 5] as const;
+export const WHEEL_WEIGHTS = [450, 320, 150, 55, 20, 5] as const;
+
+/**
+ * Paid spins are uncapped, so their expected prize must stay below
+ * `CURRENCY_SPIN_COST`, otherwise repeated spins mint GEM without limit.
+ * Expected prize here is 2.79 GEM against a cost of 3. Free and ad spins are
+ * capped per day and keep the richer table above.
+ */
+export const PAID_WHEEL_WEIGHTS = [700, 200, 70, 22, 6, 2] as const;
 
 @Injectable()
 export class CurrencyService {
   private clockFn: () => Date = () => new Date();
-  private prizePickerFn: () => number = () => this.defaultPickWheelPrizeIndex();
+  private prizePickerOverride: (() => number) | null = null;
 
   constructor(
     @InjectModel(User.name)
@@ -74,23 +82,23 @@ export class CurrencyService {
   }
 
   setPrizePicker(fn: () => number): void {
-    this.prizePickerFn = fn;
+    this.prizePickerOverride = fn;
   }
 
   resetPrizePicker(): void {
-    this.prizePickerFn = () => this.defaultPickWheelPrizeIndex();
+    this.prizePickerOverride = null;
   }
 
   private now(): Date {
     return this.clockFn();
   }
 
-  private defaultPickWheelPrizeIndex(): number {
-    const totalWeight = WHEEL_WEIGHTS.reduce((acc, w) => acc + w, 0);
+  private pickWeightedIndex(weights: readonly number[]): number {
+    const totalWeight = weights.reduce((acc, w) => acc + w, 0);
     const roll = crypto.randomInt(0, totalWeight);
     let cumulative = 0;
-    for (let i = 0; i < WHEEL_WEIGHTS.length; i++) {
-      cumulative += WHEEL_WEIGHTS[i];
+    for (let i = 0; i < weights.length; i++) {
+      cumulative += weights[i];
       if (roll < cumulative) {
         return i;
       }
@@ -98,8 +106,10 @@ export class CurrencyService {
     return 0;
   }
 
-  pickWheelPrizeIndex(): number {
-    return this.prizePickerFn();
+  pickWheelPrizeIndex(weights: readonly number[] = WHEEL_WEIGHTS): number {
+    return this.prizePickerOverride
+      ? this.prizePickerOverride()
+      : this.pickWeightedIndex(weights);
   }
 
   getRewardTz(): string {
@@ -936,7 +946,7 @@ export class CurrencyService {
         session,
       );
 
-      const prizeIndex = this.pickWheelPrizeIndex();
+      const prizeIndex = this.pickWheelPrizeIndex(PAID_WHEEL_WEIGHTS);
       const amount = prizes[prizeIndex];
 
       const creditTx = await this.creditLedgerService.credit(

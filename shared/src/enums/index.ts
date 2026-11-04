@@ -58,17 +58,7 @@ export enum LedgerReason {
   OPERATOR = "operator",
 }
 
-export enum RewardedAdClaimStatus {
-  ISSUED = "ISSUED",
-  REDEEMED = "REDEEMED",
-}
-
 /** Nơi app hiện lời đề nghị xem quảng cáo; ghi vào claim để đo chỗ nào hiệu quả. */
-export enum RewardedAdPlacement {
-  WALLET = "wallet",
-  OUT_OF_CREDITS = "out_of_credits",
-}
-
 export enum AdRewardKind {
   CHECKIN = "checkin",
   SPIN = "spin",

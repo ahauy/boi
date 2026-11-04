@@ -13,10 +13,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors, font, radius, spacing } from '../theme';
 import { useI18n } from '../i18n';
-import {
-  finishExternalActivity,
-  recordExternalActivity,
-} from '../lib/external-activity';
+import { ADS_CONFIG } from '../ads/ads-config';
+import { runExternalActivity } from '../lib/external-activity';
 import {
   billingStore,
   getBillingConfig,
@@ -47,15 +45,12 @@ export interface PaywallModalProps {
   onVerified?: (balance: number) => void;
 }
 
-const DEFAULT_TERMS_URL = 'https://palmsight.app/terms';
-const DEFAULT_PRIVACY_URL = 'https://palmsight.app/privacy';
-
 export function PaywallModal({
   billingRef,
   isVip = false,
   vipProductId = null,
-  termsUrl = DEFAULT_TERMS_URL,
-  privacyUrl = DEFAULT_PRIVACY_URL,
+  termsUrl = ADS_CONFIG.urls.terms,
+  privacyUrl = ADS_CONFIG.urls.privacy,
   onVerified,
 }: PaywallModalProps) {
   const { t } = useI18n();
@@ -75,6 +70,7 @@ export function PaywallModal({
   // Reset close delay timer whenever paywall opens (§6.2: X appears after 1.5 s)
   useEffect(() => {
     if (!paywallState.isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the modal when the store closes it
       setCanClose(false);
       setStatusBanner(null);
       return;
@@ -140,6 +136,11 @@ export function PaywallModal({
       useTrialOffer: selectedProduct.hasFreeTrial,
     });
 
+    if (res.pending) {
+      setStatusBanner(t('paywall.pending'));
+      return;
+    }
+
     if (res.ok) {
       if (res.response && onVerified) {
         onVerified(res.response.balance);
@@ -168,6 +169,16 @@ export function PaywallModal({
       upgradeFromProductId: vipProductId,
     });
 
+    if (res.upgradeUnavailable) {
+      setStatusBanner(t('paywall.upgradeUnavailable'));
+      return;
+    }
+
+    if (res.pending) {
+      setStatusBanner(t('paywall.pending'));
+      return;
+    }
+
     if (res.ok) {
       if (res.response && onVerified) {
         onVerified(res.response.balance);
@@ -181,6 +192,7 @@ export function PaywallModal({
     config.yearlyId,
     vipProductId,
     onVerified,
+    t,
   ]);
 
   const handleRestore = useCallback(async () => {
@@ -198,14 +210,7 @@ export function PaywallModal({
   }, [isBusy, onVerified, t]);
 
   const handleOpenLegalUrl = useCallback(async (url: string) => {
-    recordExternalActivity('browser');
-    try {
-      await Linking.openURL(url);
-    } catch {
-      // Ignore if unable to open browser
-    } finally {
-      finishExternalActivity('browser');
-    }
+    await runExternalActivity('browser', () => Linking.openURL(url)).catch(() => undefined);
   }, []);
 
   if (!paywallState.isOpen) {

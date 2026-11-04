@@ -9,7 +9,9 @@ import { canShowAds } from './ads-config';
 import { adsStore } from './ads-store';
 import { isBannerRouteExcluded, shouldCollapseBanner } from './banner-policy';
 import { subscribeAdEvent, dispatchAdEvent, resetAdEvents } from './ad-events';
-import { trackAdRevenue } from './revenue';
+import { setAnalyticsSdkForTesting, trackAdRevenue } from './revenue';
+
+const mockLogEvent = vi.fn();
 
 vi.mock('react-native', () => ({
   Platform: { OS: 'android', select: (objs: any) => objs.android },
@@ -33,7 +35,11 @@ describe('Phase 3 & Phase 4: Ads Core & Banner / Fill-space (Playbook §2.1, §3
     resetExternalActivity();
     resetAdEvents();
     adsStore.reset();
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    setAnalyticsSdkForTesting({
+      getAnalytics: () => 'analytics',
+      logEvent: mockLogEvent,
+    } as never);
   });
 
   describe('1. External Activity Tracker (Playbook §6.3, §11.8)', () => {
@@ -205,25 +211,18 @@ describe('Phase 3 & Phase 4: Ads Core & Banner / Fill-space (Playbook §2.1, §3
 
   describe('6. Ad Revenue Attribution (Playbook §5.6)', () => {
     it('ignores non-positive revenue, NaN, and negative values', () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      for (const revenue of [-1, 0, NaN, Infinity]) {
+        expect(() => trackAdRevenue({ adUnitId: 'unit1', revenue })).not.toThrow();
+      }
+      expect(mockLogEvent).not.toHaveBeenCalled();
+    });
 
-      // Non-positive values: -1, 0, NaN, Infinity
-      trackAdRevenue({ adUnitId: 'unit1', revenue: -1 });
-      trackAdRevenue({ adUnitId: 'unit1', revenue: 0 });
-      trackAdRevenue({ adUnitId: 'unit1', revenue: NaN });
-      trackAdRevenue({ adUnitId: 'unit1', revenue: Infinity });
-
-      expect(consoleSpy).not.toHaveBeenCalled();
-
-      // Valid positive revenue
+    it('sends a positive impression to Firebase as ad_impression', () => {
       trackAdRevenue({ adUnitId: 'unit1', revenue: 0.0025, networkName: 'AppLovin' });
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[Firebase Mock] Event "ad_impression":',
-        expect.objectContaining({
-          value: 0.0025,
-          ad_source: 'AppLovin',
-          currency: 'USD',
-        })
+      expect(mockLogEvent).toHaveBeenCalledWith(
+        'analytics',
+        'ad_impression',
+        expect.objectContaining({ value: 0.0025, ad_source: 'AppLovin', currency: 'USD' })
       );
     });
   });

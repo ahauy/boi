@@ -17,6 +17,7 @@ export const EXCLUDED_BANNER_ROUTE_PREFIXES = [
 export interface ShouldCollapseBannerOptions {
   pathname: string;
   isKeyboardOpen: boolean;
+  paywallOpen?: boolean;
   fullScreenAdShowing: boolean;
   nativeAdsOnScreen: number;
 }
@@ -40,7 +41,7 @@ export function shouldCollapseBanner(options: ShouldCollapseBannerOptions): bool
   if (isBannerRouteExcluded(options.pathname)) {
     return true;
   }
-  if (options.isKeyboardOpen) {
+  if (options.isKeyboardOpen || options.paywallOpen) {
     return true;
   }
   if (options.fullScreenAdShowing) {

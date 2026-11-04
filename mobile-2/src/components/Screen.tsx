@@ -17,13 +17,14 @@ interface ScreenProps {
   footer?: React.ReactNode;
   contentStyle?: StyleProp<ViewStyle>;
   scrollRef?: React.RefObject<ScrollViewInstance | null>;
+  onScroll?: () => void;
   /** Bịt bàn phím khi nhập (iOS; Android dùng softwareKeyboardLayoutMode=resize đã khai báo ở app.json). */
   avoidKeyboard?: boolean;
   /** Tắt nền cho màn có nền riêng. */
   background?: boolean;
 }
 
-export default function Screen({ children, scroll = true, header, footer, contentStyle, scrollRef, avoidKeyboard = true, background = true }: ScreenProps) {
+export default function Screen({ children, scroll = true, header, footer, contentStyle, scrollRef, onScroll, avoidKeyboard = true, background = true }: ScreenProps) {
   const insets = useSafeAreaInsets();
   const adsState = useAdsStore();
   const bottomInset = adsState.bannerVisible ? 0 : insets.bottom;
@@ -31,6 +32,8 @@ export default function Screen({ children, scroll = true, header, footer, conten
   const body = scroll ? (
     <ScrollView
       ref={scrollRef}
+      onScroll={onScroll}
+      scrollEventThrottle={onScroll ? 200 : undefined}
       style={{ flex: 1 }}
       contentContainerStyle={[
         { paddingHorizontal: spacing.xl, paddingTop: insets.top + spacing.md, paddingBottom: bottomInset + spacing.xxl, gap: spacing.lg },

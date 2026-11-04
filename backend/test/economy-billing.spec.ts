@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import * as crypto from 'crypto';
 import sharp from 'sharp';
 import { Types } from 'mongoose';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import {
   BillingVerifyResponseDto,
   HandOrientation,
@@ -310,6 +311,20 @@ describe('Phase 7 Backend: Billing, Subscriptions, RTDN & VIP School Gating (Pla
       });
       expect(verifyRes.status).toBe(200);
 
+      // Google now reports auto-renew off; the RTDN only tells us to look it up.
+      const activeUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+      playVerifier.setVerifier(async (input) => ({
+        productId: input.productId,
+        purchaseToken: input.purchaseToken,
+        orderId: 'GPA.TEST',
+        expiresAt: activeUntil,
+        willRenew: false,
+        isTrial: false,
+        priceAmountMicros: 6_990_000,
+        priceCurrencyCode: 'USD',
+        acknowledged: true,
+      }));
+
       // 1. Send Pub/Sub formatted RTDN notificationType = 3 (SUBSCRIPTION_CANCELED)
       const pubSubData = Buffer.from(
         JSON.stringify({
@@ -325,7 +340,7 @@ describe('Phase 7 Backend: Billing, Subscriptions, RTDN & VIP School Gating (Pla
       ).toString('base64');
 
       const cancelEventId = `msg-cancel-${crypto.randomUUID()}`;
-      const rtdnCancelRes = await fetch(`${testApp.baseUrl}/api/v1/billing/rtdn`, {
+      const rtdnCancelRes = await fetch(`${testApp.baseUrl}/api/v1/billing/rtdn?token=test-rtdn-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -345,7 +360,7 @@ describe('Phase 7 Backend: Billing, Subscriptions, RTDN & VIP School Gating (Pla
       });
 
       // Duplicate delivery of the exact same messageId is ignored idempotently
-      const dupCancelRes = await fetch(`${testApp.baseUrl}/api/v1/billing/rtdn`, {
+      const dupCancelRes = await fetch(`${testApp.baseUrl}/api/v1/billing/rtdn?token=test-rtdn-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -371,7 +386,7 @@ describe('Phase 7 Backend: Billing, Subscriptions, RTDN & VIP School Gating (Pla
 
       // 2. Send RTDN notificationType = 13 (SUBSCRIPTION_EXPIRED)
       const expireEventId = `msg-expire-${crypto.randomUUID()}`;
-      const rtdnExpireRes = await fetch(`${testApp.baseUrl}/api/v1/billing/rtdn`, {
+      const rtdnExpireRes = await fetch(`${testApp.baseUrl}/api/v1/billing/rtdn?token=test-rtdn-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -392,6 +407,281 @@ describe('Phase 7 Backend: Billing, Subscriptions, RTDN & VIP School Gating (Pla
       expect(meAfterExpire.vip?.active).toBe(false);
       expect(meAfterExpire.vip?.productId).toBeNull();
       expect(meAfterExpire.vip?.willRenew).toBe(false);
+    });
+  });
+
+  describe('3b. RTDN authentication (Playbook §2.2)', () => {
+    const activateSubscription = async () => {
+      const user = await createDeviceUser();
+      const token = `rtdn_auth_${crypto.randomUUID()}`;
+      const res = await fetch(`${testApp.baseUrl}/api/v1/billing/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user.accessToken}`,
+        },
+        body: JSON.stringify({
+          productId: 'weeklyid',
+          purchaseToken: token,
+          priceAmountMicros: 6_990_000,
+        }),
+      });
+      expect(res.status).toBe(200);
+      return { user, token };
+    };
+
+    it.each([
+      ['no token', ''],
+      ['a wrong token', '?token=wrong'],
+    ])('rejects a webhook call with %s', async (_label, query) => {
+      const { token } = await activateSubscription();
+      const res = await fetch(
+        `${testApp.baseUrl}/api/v1/billing/rtdn${query}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: `forged-${crypto.randomUUID()}`,
+            purchaseToken: token,
+            notificationType: 13,
+          }),
+        },
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it('takes expiry from Google, never from the notification body', async () => {
+      const { user, token } = await activateSubscription();
+      const googleExpiry = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+      playVerifier.setVerifier(async (input) => ({
+        productId: input.productId,
+        purchaseToken: input.purchaseToken,
+        orderId: 'GPA.TEST',
+        expiresAt: googleExpiry,
+        willRenew: true,
+        isTrial: false,
+        priceAmountMicros: 6_990_000,
+        priceCurrencyCode: 'USD',
+        acknowledged: true,
+      }));
+
+      const res = await fetch(
+        `${testApp.baseUrl}/api/v1/billing/rtdn?token=test-rtdn-token`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: `renew-${crypto.randomUUID()}`,
+            purchaseToken: token,
+            notificationType: 2,
+            expiresAt: '2099-01-01T00:00:00.000Z',
+            willRenew: true,
+          }),
+        },
+      );
+      expect(res.status).toBe(200);
+
+      const me = (await (
+        await fetch(`${testApp.baseUrl}/api/v1/me`, {
+          headers: { Authorization: `Bearer ${user.accessToken}` },
+        })
+      ).json()) as MeResponseDto;
+      expect(me.vip?.expiresAt).toBe(googleExpiry.toISOString());
+    });
+
+    it('leaves no event behind when Google is unavailable, so Pub/Sub can redeliver', async () => {
+      const { token } = await activateSubscription();
+      playVerifier.setVerifier(async () => {
+        throw new ServiceUnavailableException({ code: 'billing_unavailable' });
+      });
+
+      const eventId = `outage-${crypto.randomUUID()}`;
+      const send = () =>
+        fetch(`${testApp.baseUrl}/api/v1/billing/rtdn?token=test-rtdn-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId,
+            purchaseToken: token,
+            notificationType: 2,
+          }),
+        });
+
+      expect((await send()).status).toBe(503);
+
+      playVerifier.resetVerifier();
+      const retried = await send();
+      expect(retried.status).toBe(200);
+      expect(((await retried.json()) as any).duplicate).toBe(false);
+    });
+  });
+
+  describe('3c. Google state over client hints (Playbook §5.6)', () => {
+    const googleSays = (phase: { isTrial: boolean; expiresAt?: Date }) =>
+      playVerifier.setVerifier(async (input) => ({
+        productId: input.productId,
+        purchaseToken: input.purchaseToken,
+        orderId: 'GPA.TEST',
+        expiresAt: phase.expiresAt ?? new Date(currentNow.getTime() + 3 * 24 * 60 * 60 * 1000),
+        willRenew: true,
+        isTrial: phase.isTrial,
+        priceAmountMicros: phase.isTrial ? 0 : 6_990_000,
+        priceCurrencyCode: 'USD',
+        acknowledged: true,
+      }));
+
+    const verify = async (accessToken: string, token: string) => {
+      const res = await fetch(`${testApp.baseUrl}/api/v1/billing/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          productId: 'weeklyid',
+          purchaseToken: token,
+          priceAmountMicros: 6_990_000,
+          isTrial: false,
+        }),
+      });
+      expect(res.status).toBe(200);
+      return (await res.json()) as BillingVerifyResponseDto;
+    };
+
+    const rtdn = (eventId: string, token: string, notificationType: number) =>
+      fetch(`${testApp.baseUrl}/api/v1/billing/rtdn?token=test-rtdn-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId, purchaseToken: token, notificationType }),
+      });
+
+    it('fires firstPurchase once, when a trial turns paid, not when a new process reconciles the trial', async () => {
+      const user = await createDeviceUser();
+      const token = `trial_flow_${crypto.randomUUID()}`;
+
+      googleSays({ isTrial: true });
+      expect((await verify(user.accessToken, token)).firstPurchase).toBe(false);
+      expect((await verify(user.accessToken, token)).firstPurchase).toBe(false);
+
+      googleSays({ isTrial: false });
+      expect((await verify(user.accessToken, token)).firstPurchase).toBe(true);
+      expect((await verify(user.accessToken, token)).firstPurchase).toBe(false);
+    });
+
+    it('does not reopen VIP when a revoked token is verified again', async () => {
+      const user = await createDeviceUser();
+      const token = `revoked_${crypto.randomUUID()}`;
+
+      googleSays({ isTrial: false });
+      expect((await verify(user.accessToken, token)).vip.active).toBe(true);
+
+      googleSays({ isTrial: false, expiresAt: new Date(currentNow.getTime() - 1000) });
+      expect((await rtdn(`revoke-${crypto.randomUUID()}`, token, 12)).status).toBe(200);
+
+      expect((await verify(user.accessToken, token)).vip.active).toBe(false);
+    });
+
+    describe('two tokens on one account', () => {
+      const days = (n: number) => new Date(currentNow.getTime() + n * 24 * 60 * 60 * 1000);
+
+      const verifyAs = (accessToken: string, token: string, expiresAt: Date) => {
+        googleSays({ isTrial: false, expiresAt });
+        return verify(accessToken, token);
+      };
+
+      it.each([
+        ['the live token first', [0, 1]],
+        ['the dead token first', [1, 0]],
+      ])('keeps VIP from the live token with %s, across two reconciles', async (_label, order) => {
+        const user = await createDeviceUser();
+        const tokens = [
+          { token: `live_${crypto.randomUUID()}`, expiresAt: days(300) },
+          { token: `dead_${crypto.randomUUID()}`, expiresAt: days(-1) },
+        ];
+
+        for (const round of [1, 2]) {
+          for (const [position, index] of order.entries()) {
+            const { token, expiresAt } = tokens[index];
+            const body = await verifyAs(user.accessToken, token, expiresAt);
+            if (round === 2 || position === 1) {
+              expect(body.vip.active).toBe(true);
+              expect(body.vip.expiresAt).toBe(days(300).toISOString());
+            }
+          }
+        }
+
+        const me = (await (
+          await fetch(`${testApp.baseUrl}/api/v1/me`, {
+            headers: { Authorization: `Bearer ${user.accessToken}` },
+          })
+        ).json()) as MeResponseDto;
+        expect(me.vip?.active).toBe(true);
+        expect(me.vip?.expiresAt).toBe(days(300).toISOString());
+      });
+
+      it('keeps the longer plan when a shorter live token is verified after it', async () => {
+        const user = await createDeviceUser();
+        const yearly = `yearly_${crypto.randomUUID()}`;
+        const weekly = `weekly_${crypto.randomUUID()}`;
+
+        await verifyAs(user.accessToken, yearly, days(300));
+        const body = await verifyAs(user.accessToken, weekly, days(5));
+
+        expect(body.supersededPurchaseToken).toBeNull();
+        expect(body.vip.expiresAt).toBe(days(300).toISOString());
+      });
+
+      it('leaves a replaced token replaced when it is verified again', async () => {
+        const user = await createDeviceUser();
+        const weekly = `weekly_${crypto.randomUUID()}`;
+        const yearly = `yearly_${crypto.randomUUID()}`;
+
+        await verifyAs(user.accessToken, weekly, days(5));
+        const upgrade = await verifyAs(user.accessToken, yearly, days(300));
+        expect(upgrade.supersededPurchaseToken).toBe(weekly);
+
+        await verifyAs(user.accessToken, weekly, days(5));
+
+        const models = testApp.connection.collection('play_subscriptions');
+        const weeklyDoc = await models.findOne({ purchaseToken: weekly });
+        expect(weeklyDoc?.supersededBy).toBe(yearly);
+      });
+
+      it('grants no VIP daily to an account whose only token is dead', async () => {
+        const user = await createDeviceUser();
+        const body = await verifyAs(
+          user.accessToken,
+          `dead_${crypto.randomUUID()}`,
+          days(-1),
+        );
+
+        expect(body.vip.active).toBe(false);
+        expect(body.grantedNow).toBe(false);
+      });
+    });
+
+    it('records the event for a token Google no longer knows, and still ends access on 13', async () => {
+      const user = await createDeviceUser();
+      const token = `gone_${crypto.randomUUID()}`;
+      googleSays({ isTrial: false });
+      await verify(user.accessToken, token);
+
+      playVerifier.setVerifier(async () => {
+        throw new BadRequestException({ code: 'invalid_purchase' });
+      });
+      const eventId = `gone-${crypto.randomUUID()}`;
+      const first = await rtdn(eventId, token, 13);
+      expect(first.status).toBe(200);
+
+      const again = await rtdn(eventId, token, 13);
+      expect(((await again.json()) as any).duplicate).toBe(true);
+
+      const me = (await (
+        await fetch(`${testApp.baseUrl}/api/v1/me`, {
+          headers: { Authorization: `Bearer ${user.accessToken}` },
+        })
+      ).json()) as MeResponseDto;
+      expect(me.vip?.active).toBe(false);
     });
   });
 

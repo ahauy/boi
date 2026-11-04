@@ -1,21 +1,24 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
+import { ADS_CONFIG } from './ads-config';
+import { dispatchAdEvent } from './ad-events';
+import {
+  DISPLAY_TIMEOUT_MS,
+  isInterstitialShowingSync,
+  maybeShowThen,
+  resetInterstitialManagerForTests,
+  setInterstitialLoadedForTests,
+} from './interstitial';
 import {
   canTriggerInterstitial,
   getInterstitialPolicyState,
   recordInterstitialShown,
-  recordRewardedShown,
   resetInterstitialPolicyForTests,
   setInterstitialRoute,
   setInterstitialVipState,
-  setSessionStartTimeForTests,
   setStartupStep3Done,
   setPaywallDeclineCount,
-  SESSION_WARMUP_MS,
-  FIRST_INTERSTITIAL_GAP_MS,
-  SUBSEQUENT_INTERSTITIAL_GAP_MS,
   ADS_USER_GAP_MS,
-  MAX_INTERSTITIALS_PER_SESSION,
-  POST_REWARDED_COOLDOWN_MS,
+  INTERSTITIAL_GAP_MS,
 } from './interstitial-policy';
 import {
   runGatedTap,
@@ -25,16 +28,17 @@ import {
 import {
   watch,
   watchForAction,
-  getRewardedCooldownRemainingMs,
   resetRewardedForTests,
-  setLastAdRewardCompletedAtForTests,
+  setRewardedBalanceListener,
 } from './rewarded';
 import {
   recordExternalActivity,
   finishExternalActivity,
   resetExternalActivity,
 } from '../lib/external-activity';
-import { adsStore, recordAdShown } from './ads-store';
+import { adsStore } from './ads-store';
+import { AdRewardKind, AdRewardStatus } from '@palmsight/shared';
+import { ApiError } from '../lib/api';
 
 // Mock react-native
 vi.mock('react-native', () => ({
@@ -75,13 +79,12 @@ vi.mock('@react-native-async-storage/async-storage', () => {
 });
 
 // Mock ads-service
-const mockShowMaxRewarded = vi.fn();
-const mockIsMaxRewardedReady = vi.fn();
+const mockEnsureRewardedReady = vi.fn();
+const mockShowRewardedAd = vi.fn();
 
 vi.mock('./ads-service', () => ({
-  showMaxRewarded: (placement?: string) => mockShowMaxRewarded(placement),
-  isMaxRewardedReady: () => mockIsMaxRewardedReady(),
-  isInterstitialReady: vi.fn(async () => true),
+  ensureRewardedReady: () => mockEnsureRewardedReady(),
+  showRewardedAd: (options: unknown) => mockShowRewardedAd(options),
   preloadInterstitial: vi.fn(),
   showInterstitial: vi.fn(),
 }));
@@ -92,11 +95,31 @@ const mockClaimAdReward = vi.fn();
 const mockReleaseAdReward = vi.fn();
 
 vi.mock('../earn/earn-api', () => ({
-  createAdReward: (kind: string, placement?: string) =>
-    mockCreateAdReward(kind, placement),
+  createAdReward: (kind: string) => mockCreateAdReward(kind),
   claimAdReward: (id: string) => mockClaimAdReward(id),
   releaseAdReward: (id: string) => mockReleaseAdReward(id),
 }));
+
+vi.mock('../lib/api', async () => {
+  class MockApiError extends Error {
+    constructor(
+      readonly status: number,
+      readonly code: string,
+      message: string,
+      readonly fields: Record<string, string> = {},
+      readonly details: Record<string, unknown> = {}
+    ) {
+      super(message);
+    }
+  }
+  return { ApiError: MockApiError };
+});
+
+const rewardThen = (result: string) =>
+  mockShowRewardedAd.mockImplementationOnce(async (options: { onReward?: () => void }) => {
+    options.onReward?.();
+    return result;
+  });
 
 describe('Phase 5 & 6: Interstitial, Tap Gate & Rewarded Ads Unit Tests', () => {
   beforeEach(() => {
@@ -112,14 +135,13 @@ describe('Phase 5 & 6: Interstitial, Tap Gate & Rewarded Ads Unit Tests', () => 
     const BASE_TIME = 100_000;
 
     beforeEach(() => {
-      setSessionStartTimeForTests(BASE_TIME);
       setStartupStep3Done(true);
       setInterstitialVipState({ vipKnown: true, isVip: false });
       setInterstitialRoute('/(tabs)/index');
     });
 
     it('VIP false: blocks VIP users and unknown VIP status', () => {
-      const now = BASE_TIME + FIRST_INTERSTITIAL_GAP_MS + 1000;
+      const now = BASE_TIME;
 
       // Non-VIP with known status -> can trigger
       expect(canTriggerInterstitial('screen_change', { now })).toBe(true);
@@ -134,7 +156,7 @@ describe('Phase 5 & 6: Interstitial, Tap Gate & Rewarded Ads Unit Tests', () => 
     });
 
     it('Onboarding false: blocks when target or current route is onboarding or intro', () => {
-      const now = BASE_TIME + FIRST_INTERSTITIAL_GAP_MS + 1000;
+      const now = BASE_TIME;
 
       // Onboarding route -> blocked
       setInterstitialRoute('/onboarding');
@@ -158,49 +180,22 @@ describe('Phase 5 & 6: Interstitial, Tap Gate & Rewarded Ads Unit Tests', () => 
       ).toBe(false);
     });
 
-    it('Warmup <15s false: blocks interstitials during initial 15s session warmup', () => {
-      // 10s elapsed (< 15s) -> blocked
-      const warmupTime = BASE_TIME + 10_000;
-      expect(canTriggerInterstitial('screen_change', { now: warmupTime })).toBe(
-        false
-      );
-    });
-
-    it('First interstitial >=45s: first interstitial must wait >= 45s from session start', () => {
-      // 30s elapsed (> 15s warmup, but < 45s first gap) -> blocked
-      const beforeFirstGap = BASE_TIME + 30_000;
-      expect(
-        canTriggerInterstitial('screen_change', { now: beforeFirstGap })
-      ).toBe(false);
-
-      // 46s elapsed (>= 45s first gap) -> allowed
-      const atFirstGap = BASE_TIME + FIRST_INTERSTITIAL_GAP_MS + 1_000;
-      expect(canTriggerInterstitial('screen_change', { now: atFirstGap })).toBe(
-        true
-      );
-    });
-
-    it('Subsequent >=90s: subsequent interstitials enforce 90s gap (or 30s for adsUser)', () => {
-      const firstShownAt = BASE_TIME + FIRST_INTERSTITIAL_GAP_MS + 1_000;
+    it('Gap: interstitials are 90 s apart, or 30 s for ads users, with no session cap', () => {
+      const firstShownAt = BASE_TIME;
+      expect(canTriggerInterstitial('screen_change', { now: firstShownAt })).toBe(true);
       recordInterstitialShown(firstShownAt);
 
-      // 40s later (< 90s gap) -> blocked
       expect(
         canTriggerInterstitial('screen_change', { now: firstShownAt + 40_000 })
       ).toBe(false);
-
-      // 91s later (>= 90s gap) -> allowed
       expect(
         canTriggerInterstitial('screen_change', {
-          now: firstShownAt + SUBSEQUENT_INTERSTITIAL_GAP_MS + 1_000,
+          now: firstShownAt + INTERSTITIAL_GAP_MS + 1_000,
         })
       ).toBe(true);
 
-      // For Ads User (3 paywall declines), cooldown gap drops to 30s
       setPaywallDeclineCount(3);
       expect(getInterstitialPolicyState().isAdsUser).toBe(true);
-
-      // 31s later (>= 30s gap for ads user) -> allowed
       expect(
         canTriggerInterstitial('screen_change', {
           now: firstShownAt + ADS_USER_GAP_MS + 1_000,
@@ -208,44 +203,17 @@ describe('Phase 5 & 6: Interstitial, Tap Gate & Rewarded Ads Unit Tests', () => 
       ).toBe(true);
     });
 
-    it('Max 6/session: strictly caps interstitials at 6 per session', () => {
-      let t = BASE_TIME + FIRST_INTERSTITIAL_GAP_MS + 1_000;
-
-      for (let i = 0; i < MAX_INTERSTITIALS_PER_SESSION; i++) {
-        expect(canTriggerInterstitial('screen_change', { now: t })).toBe(true);
-        recordInterstitialShown(t);
-        t += SUBSEQUENT_INTERSTITIAL_GAP_MS + 5_000;
+    it('No session cap: a tenth interstitial is still allowed once the gap has passed', () => {
+      let now = BASE_TIME;
+      for (let shown = 0; shown < 10; shown++) {
+        expect(canTriggerInterstitial('screen_change', { now })).toBe(true);
+        recordInterstitialShown(now);
+        now += INTERSTITIAL_GAP_MS + 1_000;
       }
-
-      // 7th interstitial -> blocked even with plenty of elapsed time
-      expect(
-        canTriggerInterstitial('screen_change', {
-          now: t + SUBSEQUENT_INTERSTITIAL_GAP_MS * 10,
-        })
-      ).toBe(false);
-    });
-
-    it('20s post-rewarded cooldown: enforces 20s cooldown after rewarded ad completes', () => {
-      const now = BASE_TIME + FIRST_INTERSTITIAL_GAP_MS + 5_000;
-
-      // Rewarded ad shown at now
-      recordRewardedShown(now);
-
-      // 10s later (< 20s) -> blocked
-      expect(
-        canTriggerInterstitial('screen_change', { now: now + 10_000 })
-      ).toBe(false);
-
-      // 21s later (>= 20s) -> allowed
-      expect(
-        canTriggerInterstitial('screen_change', {
-          now: now + POST_REWARDED_COOLDOWN_MS + 1_000,
-        })
-      ).toBe(true);
     });
 
     it('External activity suppression: suppresses interstitials while external activity active or in grace period', () => {
-      const now = BASE_TIME + FIRST_INTERSTITIAL_GAP_MS + 5_000;
+      const now = Date.now();
 
       expect(canTriggerInterstitial('screen_change', { now })).toBe(true);
 
@@ -256,6 +224,79 @@ describe('Phase 5 & 6: Interstitial, Tap Gate & Rewarded Ads Unit Tests', () => 
       // External activity finishes (2s grace period begins)
       finishExternalActivity('ad');
       expect(canTriggerInterstitial('screen_change', { now })).toBe(false);
+    });
+  });
+
+  describe('1b. Interstitial manager (interstitial.ts)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      resetInterstitialManagerForTests();
+      setStartupStep3Done(true);
+      setInterstitialVipState({ vipKnown: true, isVip: false });
+      setInterstitialRoute('/(tabs)/index');
+      setInterstitialLoadedForTests(true);
+    });
+
+    afterEach(() => {
+      resetInterstitialManagerForTests();
+      vi.useRealTimers();
+    });
+
+    it('runs next and frees the flow when the ad never reports displayed', () => {
+      const next = vi.fn();
+
+      expect(maybeShowThen('after_core_action', next)).toBe(true);
+      expect(next).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(DISPLAY_TIMEOUT_MS);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(isInterstitialShowingSync()).toBe(false);
+      expect(adsStore.getState().fullScreenAdShowing).toBe(false);
+    });
+
+    it('counts the gap from the close, so a long ad does not eat it', () => {
+      setPaywallDeclineCount(3);
+      maybeShowThen('screen_change', vi.fn());
+      dispatchAdEvent('interstitial', ADS_CONFIG.units.interstitial, 'displayed');
+
+      vi.advanceTimersByTime(20_000);
+      dispatchAdEvent('interstitial', ADS_CONFIG.units.interstitial, 'hidden');
+
+      vi.advanceTimersByTime(15_000);
+      expect(canTriggerInterstitial('screen_change')).toBe(false);
+
+      vi.advanceTimersByTime(ADS_USER_GAP_MS - 15_000);
+      expect(canTriggerInterstitial('screen_change')).toBe(true);
+    });
+
+    it('keeps the gap free when the ad never opened', () => {
+      maybeShowThen('screen_change', vi.fn());
+
+      vi.advanceTimersByTime(DISPLAY_TIMEOUT_MS);
+
+      expect(getInterstitialPolicyState().lastInterstitialShownAt).toBe(0);
+      expect(canTriggerInterstitial('screen_change')).toBe(true);
+    });
+
+    it('keeps the gap free when the ad fails to display', () => {
+      maybeShowThen('screen_change', vi.fn());
+
+      dispatchAdEvent('interstitial', ADS_CONFIG.units.interstitial, 'display_failed');
+
+      expect(getInterstitialPolicyState().lastInterstitialShownAt).toBe(0);
+    });
+
+    it('keeps waiting for the close once the ad is displayed', () => {
+      const next = vi.fn();
+      maybeShowThen('after_core_action', next);
+
+      dispatchAdEvent('interstitial', ADS_CONFIG.units.interstitial, 'displayed');
+      vi.advanceTimersByTime(DISPLAY_TIMEOUT_MS * 2);
+      expect(next).not.toHaveBeenCalled();
+
+      dispatchAdEvent('interstitial', ADS_CONFIG.units.interstitial, 'hidden');
+      expect(next).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -335,101 +376,123 @@ describe('Phase 5 & 6: Interstitial, Tap Gate & Rewarded Ads Unit Tests', () => 
   });
 
   describe('3. Rewarded Ads (rewarded.ts)', () => {
-    it('Server nonce create -> claim on completion: completes full rewarded cycle', async () => {
-      mockCreateAdReward.mockResolvedValueOnce({
-        nonceId: 'nonce-abc-123',
-        expiresAt: '2026-11-04T12:00:00Z',
-      });
-      mockShowMaxRewarded.mockResolvedValueOnce({
-        rewarded: true,
-        completed: true,
-      });
-      mockClaimAdReward.mockResolvedValueOnce({
-        id: 'nonce-abc-123',
-        amount: 5,
-        balance: 25,
-      });
+    const claimed = (status: AdRewardStatus, amount = 3, balance = 25) => ({
+      id: 'ticket-1',
+      kind: AdRewardKind.BONUS,
+      status,
+      amount,
+      prizeIndex: null,
+      balance,
+      rewardDay: '2026-11-04',
+    });
 
-      const result = await watch('currency_tab', 'ad_reward');
+    beforeEach(() => {
+      mockEnsureRewardedReady.mockResolvedValue(true);
+      mockCreateAdReward.mockResolvedValue({ id: 'ticket-1' });
+      mockReleaseAdReward.mockResolvedValue({ status: 'released' });
+    });
 
-      expect(result.success).toBe(true);
-      expect(mockCreateAdReward).toHaveBeenCalledWith('ad_reward', 'currency_tab');
-      expect(mockShowMaxRewarded).toHaveBeenCalledWith('currency_tab');
-      expect(mockClaimAdReward).toHaveBeenCalledWith('nonce-abc-123');
+    it('checks for an ad before creating a ticket', async () => {
+      mockEnsureRewardedReady.mockResolvedValue(false);
+
+      const result = await watch('not_enough_sheet', AdRewardKind.BONUS);
+
+      expect(result.status).toBe('no_ad');
+      expect(mockCreateAdReward).not.toHaveBeenCalled();
+      expect(mockShowRewardedAd).not.toHaveBeenCalled();
+    });
+
+    it('shows no ad when the server refuses the ticket', async () => {
+      mockCreateAdReward.mockRejectedValue(new ApiError(429, 'ad_limit_reached', 'Limit'));
+
+      const result = await watch('not_enough_sheet', AdRewardKind.BONUS);
+
+      expect(result).toMatchObject({ status: 'refused', errorCode: 'ad_limit_reached' });
+      expect(mockShowRewardedAd).not.toHaveBeenCalled();
+    });
+
+    it('passes the ticket to the ad and claims inside the reward callback, before the ad closes', async () => {
+      const order: string[] = [];
+      mockClaimAdReward.mockImplementation(async () => {
+        order.push('claim');
+        return claimed(AdRewardStatus.REWARDED);
+      });
+      mockShowRewardedAd.mockImplementationOnce(async (options) => {
+        options.onReward();
+        order.push('ad closed');
+        return 'rewarded';
+      });
+      const balances: number[] = [];
+      setRewardedBalanceListener((balance) => balances.push(balance));
+
+      const result = await watch('not_enough_sheet', AdRewardKind.BONUS);
+
+      expect(result.status).toBe('rewarded');
+      expect(mockShowRewardedAd.mock.calls[0][0]).toMatchObject({
+        placement: 'not_enough_sheet',
+        customData: 'ticket-1',
+      });
+      expect(order).toEqual(['claim', 'ad closed']);
+      expect(balances).toEqual([25]);
       expect(mockReleaseAdReward).not.toHaveBeenCalled();
     });
 
-    it('Cancel on early close: deletes server nonce ticket when user closes early', async () => {
-      mockCreateAdReward.mockResolvedValueOnce({
-        nonceId: 'nonce-closed-early',
-      });
-      mockShowMaxRewarded.mockResolvedValueOnce({
-        rewarded: false,
-        completed: false,
-      });
-      mockReleaseAdReward.mockResolvedValueOnce({ status: 'released' });
+    it('retries ad_not_finished once after retryAfter', async () => {
+      mockClaimAdReward
+        .mockRejectedValueOnce(new ApiError(409, 'ad_not_finished', 'Wait', {}, { retryAfter: 0 }))
+        .mockResolvedValueOnce(claimed(AdRewardStatus.REWARDED));
+      rewardThen('rewarded');
 
-      const result = await watch('currency_tab', 'ad_reward');
+      const result = await watch('not_enough_sheet', AdRewardKind.BONUS);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('ad_closed_early');
-      expect(mockClaimAdReward).not.toHaveBeenCalled();
-      expect(mockReleaseAdReward).toHaveBeenCalledWith('nonce-closed-early');
+      expect(result.status).toBe('rewarded');
+      expect(mockClaimAdReward).toHaveBeenCalledTimes(2);
     });
 
-    it('Cancel on ad failure: deletes server nonce ticket when ad display throws', async () => {
-      mockCreateAdReward.mockResolvedValueOnce({
-        nonceId: 'nonce-failed-display',
-      });
-      mockShowMaxRewarded.mockRejectedValueOnce(new Error('Display failed'));
-      mockReleaseAdReward.mockResolvedValueOnce({ status: 'released' });
+    it('reports capped when the server caps the claim', async () => {
+      mockClaimAdReward.mockResolvedValue(claimed(AdRewardStatus.CAPPED, 0));
+      rewardThen('rewarded');
 
-      await expect(watch('currency_tab', 'ad_reward')).rejects.toThrow(
-        'Display failed'
+      const result = await watch('not_enough_sheet', AdRewardKind.BONUS);
+
+      expect(result.status).toBe('capped');
+    });
+
+    it('releases the ticket when the ad closes early, and reports no ad when it fails', async () => {
+      mockShowRewardedAd.mockResolvedValueOnce('closed');
+      expect((await watch('placement', AdRewardKind.BONUS)).status).toBe('closed');
+
+      mockShowRewardedAd.mockResolvedValueOnce('failed');
+      expect((await watch('placement', AdRewardKind.BONUS)).status).toBe('no_ad');
+
+      expect(mockReleaseAdReward).toHaveBeenCalledTimes(2);
+      expect(mockClaimAdReward).not.toHaveBeenCalled();
+    });
+
+    it('allows one rewarded at a time', async () => {
+      let finishAd: (result: string) => void = () => undefined;
+      mockShowRewardedAd.mockImplementationOnce(
+        () => new Promise((resolve) => (finishAd = resolve))
       );
 
-      expect(mockClaimAdReward).not.toHaveBeenCalled();
-      expect(mockReleaseAdReward).toHaveBeenCalledWith('nonce-failed-display');
+      const first = watch('a', AdRewardKind.BONUS);
+      await vi.waitFor(() => expect(mockShowRewardedAd).toHaveBeenCalled());
+
+      expect((await watch('b', AdRewardKind.BONUS)).status).toBe('no_ad');
+      expect(await watchForAction('save_share')).toBe('no_ad');
+
+      finishAd('closed');
+      await first;
     });
 
-    it('10s cooldown: enforces 10-second client cooldown between ad_reward watches', async () => {
-      const now = Date.now();
-      setLastAdRewardCompletedAtForTests(now);
-
-      // Remaining cooldown > 0
-      expect(getRewardedCooldownRemainingMs(now + 2000)).toBe(8000);
-
-      // Attempting to watch within cooldown throws error
-      await expect(watch('currency_tab', 'ad_reward')).rejects.toThrow(
-        /cooldown active/i
-      );
-
-      // After 10s cooldown expires -> can watch again
-      setLastAdRewardCompletedAtForTests(now - 10_001);
-      expect(getRewardedCooldownRemainingMs(now)).toBe(0);
-
-      mockCreateAdReward.mockResolvedValueOnce({ nonceId: 'nonce-after-cd' });
-      mockShowMaxRewarded.mockResolvedValueOnce({
-        rewarded: true,
-        completed: true,
-      });
-      mockClaimAdReward.mockResolvedValueOnce({ amount: 5, balance: 30 });
-
-      const res = await watch('currency_tab', 'ad_reward');
-      expect(res.success).toBe(true);
-    });
-
-    it('watchForAction: resolves completed state for action gates without currency nonce', async () => {
-      mockShowMaxRewarded.mockResolvedValueOnce({
-        rewarded: true,
-        completed: true,
-      });
-
-      const res = await watchForAction('lucky_wheel');
-
-      expect(res.completed).toBe(true);
-      expect(mockShowMaxRewarded).toHaveBeenCalledWith('lucky_wheel');
+    it('watchForAction: uses no ticket, and skips the ad when the screen has gone', async () => {
+      mockShowRewardedAd.mockResolvedValueOnce('rewarded');
+      expect(await watchForAction('save_share')).toBe('completed');
       expect(mockCreateAdReward).not.toHaveBeenCalled();
+
+      mockShowRewardedAd.mockClear();
+      expect(await watchForAction('save_share', () => false)).toBe('unmounted');
+      expect(mockShowRewardedAd).not.toHaveBeenCalled();
     });
   });
 });

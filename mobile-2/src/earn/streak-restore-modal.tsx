@@ -1,61 +1,83 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import type { CheckinRestoreOfferDto } from '@palmsight/shared';
 
 import Text from '../components/AppText';
 import { Button } from '../components/ui';
-import { watch } from '../ads/rewarded';
 import { restoreCheckin } from './earn-api';
+import { registerOpenSheet, triggerPaywall } from '../premium/paywall-triggers';
+import { useBillingStore } from '../billing';
+import { useAuth } from '../state/auth';
+import { useI18n } from '../i18n';
 import { colors, radius, shadow, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
 
 export interface StreakRestoreModalProps {
   visible: boolean;
-  brokenStreak: number;
-  restoreRemaining: number;
+  offer: CheckinRestoreOfferDto | null | undefined;
   onClose: () => void;
-  onRestored: (state?: any) => void;
-  onReset: () => void;
+  /** The streak was kept and today is claimed. */
+  onRestored: () => void;
+  /** The user gave up the streak: run the normal claim. */
+  onStartAgain: () => void;
+  /** Non-VIP tapped "Get VIP": the popup reopens in its VIP form if the purchase lands (§7.2). */
+  onGetVip: () => void;
 }
 
 export function StreakRestoreModal({
   visible,
-  brokenStreak,
-  restoreRemaining,
+  offer,
   onClose,
   onRestored,
-  onReset,
+  onStartAgain,
+  onGetVip,
 }: StreakRestoreModalProps) {
+  const { user, setCreditBalance } = useAuth();
+  const { billingEnabled } = useBillingStore();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!visible) return null;
+  useEffect(() => {
+    if (visible) return registerOpenSheet();
+  }, [visible]);
 
-  async function handleWatchAd() {
+  if (!visible || !offer) return null;
+
+  const isVip = Boolean(user?.vip?.active);
+  const balance = user?.creditBalance ?? 0;
+  const canAfford = balance >= offer.cost;
+  const days = offer.streakToKeep;
+
+  async function handleRestore() {
     setLoading(true);
     setError(null);
     try {
-      const adResult = await watch('streak_restore', 'streak_restore');
-      if (adResult.success) {
-        const restored = await restoreCheckin();
-        haptic.success();
-        onRestored(restored);
-        onClose();
-      } else {
-        setError('Xem hết quảng cáo để khôi phục chuỗi điểm danh.');
-      }
-    } catch (err: any) {
-      setError(err?.message ?? 'Không thể khôi phục chuỗi lúc này. Vui lòng thử lại.');
+      const restored = await restoreCheckin();
+      setCreditBalance(restored.balance);
+      haptic.success();
+      onRestored();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : null);
     } finally {
       setLoading(false);
     }
   }
 
+  function handleGetVip() {
+    haptic.select();
+    onGetVip();
+    onClose();
+    void triggerPaywall('streak_restore_popup');
+  }
+
   function handleStartAgain() {
     haptic.tap();
-    onReset();
     onClose();
+    onStartAgain();
   }
 
   return (
@@ -75,15 +97,9 @@ export function StreakRestoreModal({
               <MaterialCommunityIcons name="fire-alert" size={36} color={colors.goldLight} />
             </View>
 
-            <View style={styles.header}>
-              <Text style={[type.eyebrow, { color: colors.goldLight }]}>CHUỖI ĐÃ BỊ GIÁN ĐOẠN</Text>
-              <Text style={[type.headingLg, { color: colors.ink, textAlign: 'center' }]}>
-                Giữ chuỗi {brokenStreak} ngày?
-              </Text>
-              <Text style={[type.caption, { color: colors.stone, textAlign: 'center' }]}>
-                Xem 1 quảng cáo để phục hồi chuỗi điểm danh của bạn (còn {restoreRemaining} lượt phục hồi).
-              </Text>
-            </View>
+            <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>
+              {isVip ? t('earn.restore.cardTitle', { days }) : t('earn.restore.nonVipBody', { days })}
+            </Text>
 
             {error ? (
               <Text style={[type.caption, { color: colors.danger, textAlign: 'center' }]}>
@@ -92,17 +108,30 @@ export function StreakRestoreModal({
             ) : null}
 
             <View style={styles.actions}>
-              <Button
-                label={loading ? 'Đang mở quảng cáo…' : 'Xem quảng cáo để giữ chuỗi'}
-                onPress={() => void handleWatchAd()}
-                disabled={loading || restoreRemaining <= 0}
-                loading={loading}
-                noInterstitial
-                icon={<MaterialCommunityIcons name="play-circle" size={18} color={colors.onGold} />}
-              />
+              {isVip ? (
+                <Button
+                  label={
+                    canAfford
+                      ? t('earn.restore.vipBtn', { days, cost: offer.cost })
+                      : t('earn.restore.needGems', { cost: offer.cost })
+                  }
+                  onPress={() => void handleRestore()}
+                  disabled={loading || !canAfford}
+                  loading={loading}
+                  noInterstitial
+                />
+              ) : billingEnabled ? (
+                <Button
+                  label={t('earn.restore.getVipBtn')}
+                  onPress={handleGetVip}
+                  disabled={loading}
+                  noInterstitial
+                  icon={<MaterialCommunityIcons name="crown" size={18} color={colors.onGold} />}
+                />
+              ) : null}
 
               <Button
-                label="Bắt đầu lại từ Ngày 1"
+                label={t('earn.restore.startAgainBtn')}
                 variant="ghost"
                 onPress={handleStartAgain}
                 disabled={loading}
@@ -144,10 +173,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.hairlineStrong,
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    gap: spacing.xs,
     alignItems: 'center',
   },
   actions: {

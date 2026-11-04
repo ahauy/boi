@@ -22,6 +22,7 @@ import {
   setBillingSdkForTesting,
   verifyAndFinishPurchase,
   billingStore,
+  initializeBilling,
   purchaseSubscription,
 } from './index';
 import {
@@ -87,6 +88,37 @@ vi.mock('@react-native-async-storage/async-storage', () => {
   };
 });
 
+const phase = (priceAmountMicros: string, formattedPrice: string, billingPeriod: string) => ({
+  priceAmountMicros,
+  formattedPrice,
+  billingPeriod,
+  priceCurrencyCode: 'USD',
+  billingCycleCount: 1,
+  recurrenceMode: 1,
+});
+
+const subscriptionProduct = (id: string, subscriptionOffers: unknown[]) =>
+  ({ id, currency: 'USD', displayPrice: '', title: id, subscriptionOffers }) as any;
+
+const playPurchase = (productId: string, purchaseToken: string, extra: object = {}) =>
+  ({ id: `GPA.${purchaseToken}`, productId, purchaseToken, purchaseState: 'purchased', ...extra }) as any;
+
+const yearlyProducts = () =>
+  normalizePlaySubscriptions([
+    subscriptionProduct('yearlyid', [
+      {
+        offerTokenAndroid: 'offer-yearly-base',
+        pricingPhasesAndroid: { pricingPhaseList: [phase('99000000', '$99.00', 'P1Y')] },
+      },
+    ]),
+    subscriptionProduct('weeklyid', [
+      {
+        offerTokenAndroid: 'offer-weekly-base',
+        pricingPhasesAndroid: { pricingPhaseList: [phase('6990000', '$6.99', 'P1W')] },
+      },
+    ]),
+  ]);
+
 describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers (Playbook §1.1, §6, §9, §11)', () => {
   beforeEach(() => {
     resetExternalActivity();
@@ -146,47 +178,25 @@ describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers
       expect(parseIsoDurationDays('P1Y')).toBe(365);
 
       const normalized = normalizePlaySubscriptions([
-        {
-          productId: 'weeklyid',
-          subscriptionOfferDetails: [
-            {
-              offerToken: 'offer-weekly-trial',
-              pricingPhases: {
-                pricingPhaseList: [
-                  {
-                    priceAmountMicros: 0,
-                    formattedPrice: 'Free',
-                    billingPeriod: 'P3D',
-                  },
-                  {
-                    priceAmountMicros: 6_990_000,
-                    formattedPrice: '$6.99',
-                    priceCurrencyCode: 'USD',
-                    billingPeriod: 'P1W',
-                  },
-                ],
-              },
+        subscriptionProduct('weeklyid', [
+          {
+            offerTokenAndroid: 'offer-weekly-trial',
+            pricingPhasesAndroid: {
+              pricingPhaseList: [
+                phase('0', 'Free', 'P3D'),
+                phase('6990000', '$6.99', 'P1W'),
+              ],
             },
-          ],
-        },
-        {
-          productId: 'yearlyid',
-          subscriptionOfferDetails: [
-            {
-              offerToken: 'offer-yearly-base',
-              pricingPhases: {
-                pricingPhaseList: [
-                  {
-                    priceAmountMicros: 99_000_000,
-                    formattedPrice: '$99.00',
-                    priceCurrencyCode: 'USD',
-                    billingPeriod: 'P1Y',
-                  },
-                ],
-              },
+          },
+        ]),
+        subscriptionProduct('yearlyid', [
+          {
+            offerTokenAndroid: 'offer-yearly-base',
+            pricingPhasesAndroid: {
+              pricingPhaseList: [phase('99000000', '$99.00', 'P1Y')],
             },
-          ],
-        },
+          },
+        ]),
       ]);
 
       expect(normalized.weeklyid.hasFreeTrial).toBe(true);
@@ -199,39 +209,29 @@ describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers
 
     it('refuses to verify when price is unknown (§11.10), verifies BEFORE finishTransaction, and does NOT finish on server error', async () => {
       const finishTransactionMock = vi.fn(async () => undefined);
-      setBillingSdkForTesting({
-        finishTransaction: finishTransactionMock,
-      });
+      setBillingSdkForTesting({ finishTransaction: finishTransactionMock } as any);
 
       // 1. Unknown price -> do NOT verify and do NOT finishTransaction (§11.10)
       const postSpy = vi.spyOn(api, 'post');
-      const resUnknown = await verifyAndFinishPurchase({
-        productId: 'yearlyid',
-        purchaseToken: 'tok-unknown-price',
-      });
+      const resUnknown = await verifyAndFinishPurchase(playPurchase('yearlyid', 'tok-unknown-price'));
       expect(resUnknown).toBeNull();
       expect(postSpy).not.toHaveBeenCalled();
       expect(finishTransactionMock).not.toHaveBeenCalled();
 
       // Load product prices into store
-      billingStore.setProducts(
-        normalizePlaySubscriptions([
-          {
-            productId: 'yearlyid',
-            priceAmountMicros: 99_000_000,
-            localizedPrice: '$99.00',
-            currency: 'USD',
-          },
-        ]),
+      billingStore.setProducts(yearlyProducts());
+
+      // A pending order is not verified: it has not been paid yet.
+      const resPending = await verifyAndFinishPurchase(
+        playPurchase('yearlyid', 'tok-pending', { purchaseState: 'pending' }),
       );
+      expect(resPending).toBeNull();
+      expect(postSpy).not.toHaveBeenCalled();
 
       // 2. Network / 5xx failure -> do NOT finishTransaction so it retries next launch (§6.5, §11.10)
       postSpy.mockRejectedValueOnce(new Error('503 Service Unavailable'));
       await expect(
-        verifyAndFinishPurchase({
-          productId: 'yearlyid',
-          purchaseToken: 'tok-net-fail',
-        }),
+        verifyAndFinishPurchase(playPurchase('yearlyid', 'tok-net-fail')),
       ).rejects.toThrow('503 Service Unavailable');
       expect(finishTransactionMock).not.toHaveBeenCalled();
 
@@ -257,30 +257,20 @@ describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers
         callOrder.push('finishTransaction');
       });
 
-      const verified = await verifyAndFinishPurchase({
-        productId: 'yearlyid',
-        purchaseToken: 'tok-ok',
-        orderId: 'GPA.1234',
-      });
+      const verified = await verifyAndFinishPurchase(playPurchase('yearlyid', 'tok-ok'));
       expect(verified?.vip.active).toBe(true);
       expect(callOrder).toEqual(['verify', 'finishTransaction']);
       expect(billingStore.getState().vipGiftBannerAmount).toBe(50);
     });
 
     it('pre-purchase check (§6.5): if Play already holds an active VIP purchase, restores it without selling a second plan', async () => {
-      const requestSubscriptionMock = vi.fn();
+      const requestPurchaseMock = vi.fn();
+      billingStore.setProducts(yearlyProducts());
       setBillingSdkForTesting({
-        getAvailablePurchases: vi.fn(async () => [
-          {
-            productId: 'weeklyid',
-            purchaseToken: 'existing-active-tok',
-            priceAmountMicros: 6_990_000,
-            priceCurrencyCode: 'USD',
-          },
-        ]),
+        getAvailablePurchases: vi.fn(async () => [playPurchase('weeklyid', 'existing-active-tok')]),
         finishTransaction: vi.fn(async () => undefined),
-        requestSubscription: requestSubscriptionMock,
-      });
+        requestPurchase: requestPurchaseMock,
+      } as any);
 
       vi.spyOn(api, 'post').mockResolvedValueOnce({
         vip: {
@@ -302,7 +292,117 @@ describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers
       expect(result.ok).toBe(true);
       expect(result.restored).toBe(true);
       // Did NOT open Play payment sheet to sell a second plan!
-      expect(requestSubscriptionMock).not.toHaveBeenCalled();
+      expect(requestPurchaseMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('2b. Purchase flow always settles (Playbook §6.2, §6.5)', () => {
+    function fakeIap(overrides: object = {}) {
+      let onPurchase: (purchase: any) => void = () => undefined;
+      const requestPurchase = vi.fn(async () => undefined);
+      const sdk = {
+        ErrorCode: { AlreadyOwned: 'already-owned', UserCancelled: 'user-cancelled' },
+        initConnection: vi.fn(async () => true),
+        fetchProducts: vi.fn(async () => [
+          subscriptionProduct('yearlyid', [
+            {
+              offerTokenAndroid: 'offer-yearly-base',
+              pricingPhasesAndroid: { pricingPhaseList: [phase('99000000', '$99.00', 'P1Y')] },
+            },
+          ]),
+        ]),
+        purchaseUpdatedListener: vi.fn((listener) => {
+          onPurchase = listener;
+          return { remove: vi.fn() };
+        }),
+        purchaseErrorListener: vi.fn(() => ({ remove: vi.fn() })),
+        getAvailablePurchases: vi.fn(async () => []),
+        finishTransaction: vi.fn(async () => undefined),
+        requestPurchase,
+        ...overrides,
+      };
+      setBillingSdkForTesting(sdk as any);
+      return { requestPurchase, emit: (purchase: any) => onPurchase(purchase) };
+    }
+
+    it.each([
+      ['an unknown purchase state', { purchaseState: 'unknown' }, 99_000_000],
+      ['an unknown price', {}, 0],
+    ])('finishes the purchase on %s', async (_label, extra, priceAmountMicros) => {
+      const { emit } = fakeIap();
+      await initializeBilling();
+      const products = billingStore.getState().products;
+      billingStore.setProducts({
+        yearlyid: { ...products.yearlyid, priceAmountMicros },
+      });
+
+      const purchase = purchaseSubscription('yearlyid', { billingRef: 'ref-1' });
+      await vi.waitFor(() => expect(billingStore.getState().isPurchasing).toBe(true));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      emit(playPurchase('yearlyid', 'tok-unconfirmed', extra));
+
+      await expect(purchase).resolves.toMatchObject({ ok: false, pending: true });
+      expect(billingStore.getState().isPurchasing).toBe(false);
+    });
+
+    it('turns billing off when Play returns no products, but still reconciles', async () => {
+      const getAvailablePurchases = vi.fn(async () => []);
+      fakeIap({ fetchProducts: vi.fn(async () => []), getAvailablePurchases });
+
+      await expect(initializeBilling()).resolves.toBe(false);
+
+      expect(billingStore.getState().billingEnabled).toBe(false);
+      expect(getAvailablePurchases).toHaveBeenCalled();
+    }, 10_000);
+
+    it('never opens Play for an upgrade without the old token', async () => {
+      const { requestPurchase } = fakeIap();
+      billingStore.setProducts(yearlyProducts());
+
+      const result = await purchaseSubscription('yearlyid', {
+        billingRef: 'ref-1',
+        upgradeFromProductId: 'weeklyid',
+      });
+
+      expect(result).toMatchObject({ ok: false, upgradeUnavailable: true });
+      expect(requestPurchase).not.toHaveBeenCalled();
+    });
+
+    it('recovers the old token through reconcile, then replaces it', async () => {
+      const { requestPurchase, emit } = fakeIap({
+        getAvailablePurchases: vi.fn(async () => [playPurchase('weeklyid', 'old-token')]),
+      });
+      await initializeBilling();
+      billingStore.setProducts(yearlyProducts());
+      vi.spyOn(api, 'post').mockResolvedValue({
+        vip: { active: true, productId: 'weeklyid', expiresAt: '2027-01-01T00:00:00.000Z', willRenew: true },
+        firstPurchase: false,
+        balance: 5,
+        billingRef: 'ref-1',
+      });
+
+      const purchase = purchaseSubscription('yearlyid', {
+        billingRef: 'ref-1',
+        upgradeFromProductId: 'weeklyid',
+      });
+      await vi.waitFor(() => expect(requestPurchase).toHaveBeenCalled());
+
+      expect(requestPurchase.mock.calls[0]).toMatchObject([
+        {
+          request: {
+            google: {
+              purchaseToken: 'old-token',
+              subscriptionProductReplacementParams: {
+                oldProductId: 'weeklyid',
+                replacementMode: 'charge-full-price',
+              },
+            },
+          },
+        },
+      ]);
+
+      emit(playPurchase('yearlyid', 'new-token'));
+      await expect(purchase).resolves.toMatchObject({ ok: true });
     });
   });
 
@@ -376,22 +476,24 @@ describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers
       setCurrentPaywallRoute('/(tabs)');
       setBillingSdkForTesting({
         initConnection: vi.fn(async () => true),
-        getSubscriptions: vi.fn(async () => [
-          {
-            productId: 'yearlyid',
-            priceAmountMicros: 99_000_000,
-            localizedPrice: '$99.00',
-          },
+        fetchProducts: vi.fn(async () => [
+          subscriptionProduct('yearlyid', [
+            {
+              offerTokenAndroid: 'offer-yearly-base',
+              pricingPhasesAndroid: { pricingPhaseList: [phase('99000000', '$99.00', 'P1Y')] },
+            },
+          ]),
         ]),
+        purchaseUpdatedListener: vi.fn(() => ({ remove: vi.fn() })),
+        purchaseErrorListener: vi.fn(() => ({ remove: vi.fn() })),
         getAvailablePurchases: vi.fn(async () => []),
-      });
+      } as any);
 
       expect(isStartupPaywallStepDone()).toBe(false);
 
       const seqPromise = runStartupSequence({
         vipKnown: true,
         isVip: false,
-        billingOn: true,
       });
 
       // Wait briefly for Step 3 to open the paywall

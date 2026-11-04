@@ -1,12 +1,15 @@
+import type * as AdjustModule from 'react-native-adjust';
+import type * as AnalyticsModule from '@react-native-firebase/analytics';
+import type * as CrashlyticsModule from '@react-native-firebase/crashlytics';
 import { ADS_CONFIG } from './ads-config';
-import { AdInfo } from './ad-events';
 
 /**
- * Ad Revenue & Attribution Module (Playbook §5.6)
+ * Ad Revenue & Attribution Module (Playbook §5.6, §8)
  *
- * Tracks every impression with revenue > 0 to Firebase Analytics (`ad_impression`)
- * and Adjust attribution (`trackAdRevenue('applovin_max_sdk')`).
- * Manages GDPR DMA consent status and first-purchase event tracking.
+ * Tracks every impression with revenue > 0 to Firebase Analytics (`ad_impression`) and Adjust
+ * (`trackAdRevenue('applovin_max_sdk')`). Manages DMA consent and the first-purchase event.
+ * Each SDK is optional at runtime: Expo Go has none of them, and Firebase needs
+ * `google-services.json`, so a missing one disables only its own signal.
  */
 
 export interface TrackRevenuePayload {
@@ -22,60 +25,78 @@ export interface FirstPurchasePayload {
   orderId: string;
 }
 
-const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+export interface AttributionIds {
+  adjustAdid: string | null;
+  gaid: string | null;
+}
+
+const ATTRIBUTION_ID_TIMEOUT_MS = 2_000;
 
 let adjustInitialized = false;
+let analyticsOverride: typeof AnalyticsModule | null = null;
+
+export function setAnalyticsSdkForTesting(sdk: typeof AnalyticsModule | null): void {
+  analyticsOverride = sdk;
+}
+
+function loadAdjust(): typeof AdjustModule | null {
+  try {
+    return require('react-native-adjust') as typeof AdjustModule;
+  } catch {
+    return null;
+  }
+}
+
+function loadAnalytics(): typeof AnalyticsModule | null {
+  if (analyticsOverride) return analyticsOverride;
+  try {
+    return require('@react-native-firebase/analytics') as typeof AnalyticsModule;
+  } catch {
+    return null;
+  }
+}
+
+function loadCrashlytics(): typeof CrashlyticsModule | null {
+  try {
+    return require('@react-native-firebase/crashlytics') as typeof CrashlyticsModule;
+  } catch {
+    return null;
+  }
+}
 
 /**
- * Initializes Adjust attribution SDK after MAX consent flow completes (§5.6).
+ * Starts Adjust after the MAX consent flow (§5.6). GDPR or unknown region: third-party sharing
+ * off, Google DMA `eea=1`, no ad personalization, no GAID read.
  */
 export async function initializeAdjust(consentRegion: 'GDPR' | 'OTHER' | 'UNKNOWN'): Promise<void> {
-  if (adjustInitialized) return;
-
   const appToken = ADS_CONFIG.adjust.appToken;
-  if (!appToken) {
-    if (isDev) console.log('[Adjust] Skipped: no app token configured');
-    return;
-  }
+  if (adjustInitialized || !appToken) return;
 
-  const isGdprOrUnknown = consentRegion === 'GDPR' || consentRegion === 'UNKNOWN';
+  const sdk = loadAdjust();
+  if (!sdk) return;
 
   try {
-    // Dynamically attempt to load Adjust native module if present in build
-    const AdjustPackage = await safeRequire('react-native-adjust');
-    if (AdjustPackage?.Adjust && AdjustPackage?.AdjustConfig) {
-      const { Adjust, AdjustConfig } = AdjustPackage;
-      const env =
-        ADS_CONFIG.adjust.environment === 'production'
-          ? AdjustConfig.EnvironmentProduction
-          : AdjustConfig.EnvironmentSandbox;
+    const { Adjust, AdjustConfig, AdjustThirdPartySharing } = sdk;
+    const environment =
+      ADS_CONFIG.adjust.environment === 'production'
+        ? AdjustConfig.EnvironmentProduction
+        : AdjustConfig.EnvironmentSandbox;
+    const config = new AdjustConfig(appToken, environment);
 
-      const config = new AdjustConfig(appToken, env);
+    if (consentRegion !== 'OTHER') {
+      config.disableGoogleAdIdReading();
 
-      if (isGdprOrUnknown) {
-        // Playbook §5.6: Third-party sharing off, DMA eea=1, no personalization
-        try {
-          if (typeof Adjust.trackThirdPartySharing === 'function' && AdjustPackage.AdjustThirdPartySharing) {
-            const sharing = new AdjustPackage.AdjustThirdPartySharing(false);
-            sharing.addGranularOption('google_dma', 'eea', '1');
-            sharing.addGranularOption('google_dma', 'ad_personalization', '0');
-            sharing.addGranularOption('google_dma', 'ad_user_data', '0');
-            Adjust.trackThirdPartySharing(sharing);
-          }
-        } catch (e) {
-          if (isDev) console.warn('[Adjust] Consent granular option note:', e);
-        }
-      }
-
-      Adjust.initSdk(config);
-      adjustInitialized = true;
-      if (isDev) console.log('[Adjust] Initialized successfully');
-    } else {
-      if (isDev) console.log('[Adjust] Native module not bundled (Expo Go / mock environment)');
-      adjustInitialized = true;
+      const sharing = new AdjustThirdPartySharing(false);
+      sharing.addGranularOption('google_dma', 'eea', '1');
+      sharing.addGranularOption('google_dma', 'ad_personalization', '0');
+      sharing.addGranularOption('google_dma', 'ad_user_data', '0');
+      Adjust.trackThirdPartySharing(sharing);
     }
+
+    Adjust.initSdk(config);
+    adjustInitialized = true;
   } catch (err) {
-    if (isDev) console.warn('[Adjust] Init failed:', err);
+    if (__DEV__) console.warn('[Adjust] Init failed:', err);
   }
 }
 
@@ -83,107 +104,114 @@ export async function initializeAdjust(consentRegion: 'GDPR' | 'OTHER' | 'UNKNOW
  * Records impression revenue to Firebase and Adjust (§5.6).
  * Ignores revenue <= 0, NaN, or non-finite values (MAX sends -1 when unknown).
  */
-export function trackAdRevenue(info: AdInfo | TrackRevenuePayload): void {
-  const rev = info.revenue;
-  if (typeof rev !== 'number' || !Number.isFinite(rev) || rev <= 0) {
+export function trackAdRevenue(info: TrackRevenuePayload): void {
+  const revenue = info.revenue;
+  if (typeof revenue !== 'number' || !Number.isFinite(revenue) || revenue <= 0) {
     return;
   }
 
-  const payload = {
+  sendToFirebaseAnalytics({
     ad_platform: 'appLovin',
     ad_source: info.networkName ?? 'unknown',
     ad_format: info.adFormat ?? 'unknown',
     ad_unit_name: info.adUnitId,
-    value: rev,
+    value: revenue,
     currency: 'USD',
-  };
-
-  // 1. Firebase Analytics `ad_impression`
-  sendToFirebaseAnalytics('ad_impression', payload);
-
-  // 2. Adjust trackAdRevenue
-  sendToAdjustRevenue(rev, info.networkName);
+  });
+  sendToAdjustRevenue(revenue, info.networkName);
 }
 
-/**
- * Tracks first subscription purchase to Adjust with paid price and order ID (§5.6).
- * Never called on trial start.
- */
-export function trackFirstPurchase(purchase: FirstPurchasePayload): void {
-  const token = ADS_CONFIG.adjust.purchaseEventToken;
-  if (!token) return;
-
+function sendToFirebaseAnalytics(params: Record<string, string | number>): void {
+  const sdk = loadAnalytics();
+  if (!sdk) return;
   try {
-    const AdjustPackage = safeRequireSync('react-native-adjust');
-    if (AdjustPackage?.Adjust && AdjustPackage?.AdjustEvent) {
-      const event = new AdjustPackage.AdjustEvent(token);
-      event.setRevenue(purchase.price, purchase.currency || 'USD');
-      if (purchase.orderId) {
-        event.setOrderId(purchase.orderId);
-      }
-      AdjustPackage.Adjust.trackEvent(event);
-      if (isDev) console.log('[Adjust] Tracked first purchase event:', purchase.orderId);
-    }
+    sdk.logEvent(sdk.getAnalytics(), 'ad_impression', params);
   } catch (err) {
-    if (isDev) console.warn('[Adjust] Purchase event failed:', err);
-  }
-}
-
-// Helpers for safe native dispatch
-function sendToFirebaseAnalytics(eventName: string, params: Record<string, unknown>): void {
-  try {
-    const firebase = safeRequireSync('@react-native-firebase/analytics');
-    if (typeof firebase?.default === 'function') {
-      firebase.default().logEvent(eventName, params);
-      return;
-    }
-  } catch {
-    // Non-native / development fallback
-  }
-
-  if (isDev) {
-    console.log(`[Firebase Mock] Event "${eventName}":`, params);
+    if (__DEV__) console.warn('[Firebase] ad_impression failed:', err);
   }
 }
 
 function sendToAdjustRevenue(revenue: number, networkName?: string): void {
+  const sdk = adjustInitialized ? loadAdjust() : null;
+  if (!sdk) return;
   try {
-    const AdjustPackage = safeRequireSync('react-native-adjust');
-    if (AdjustPackage?.Adjust && AdjustPackage?.AdjustAppStoreSubscription) {
-      const adRevenue = new AdjustPackage.AdjustAdRevenue('applovin_max_sdk');
-      adRevenue.setRevenue(revenue, 'USD');
-      if (networkName) {
-        adRevenue.setAdRevenueNetwork(networkName);
-      }
-      AdjustPackage.Adjust.trackAdRevenue(adRevenue);
-      return;
+    const adRevenue = new sdk.AdjustAdRevenue('applovin_max_sdk');
+    adRevenue.setRevenue(revenue, 'USD');
+    if (networkName) {
+      adRevenue.setAdRevenueNetwork(networkName);
     }
-  } catch {
-    // Fallback
-  }
-
-  if (isDev) {
-    console.log(`[Adjust Mock] Ad revenue tracked: $${revenue} (network: ${networkName ?? 'unknown'})`);
+    sdk.Adjust.trackAdRevenue(adRevenue);
+  } catch (err) {
+    if (__DEV__) console.warn('[Adjust] Ad revenue failed:', err);
   }
 }
 
-async function safeRequire(pkgName: string): Promise<any> {
-  return safeRequireSync(pkgName);
-}
+/**
+ * First subscription purchase to Adjust with the paid price and order ID (§5.6).
+ * Never called at trial start.
+ */
+export function trackFirstPurchase(purchase: FirstPurchasePayload): void {
+  const token = ADS_CONFIG.adjust.purchaseEventToken;
+  const sdk = adjustInitialized ? loadAdjust() : null;
+  if (!token || !sdk) return;
 
-function safeRequireSync(pkgName: string): any {
-  // In Metro runtime (`globalThis.__r`), calling `require(pkgName)` with an unbundled string module ID
-  // triggers `ErrorUtils.reportFatalError` (RedBox) inside `@expo/cli/build/metro-require/require.js`
-  // even inside a try/catch block.
-  const injected = (globalThis as any).__PALMSIGHT_NATIVE_MODULES__?.[pkgName];
-  if (injected) return injected;
-  if (typeof (globalThis as any).__r === 'function') {
-    return null;
-  }
   try {
-    const dynamicRequire = typeof require === 'function' ? require : null;
-    return dynamicRequire ? dynamicRequire(pkgName) : null;
-  } catch {
-    return null;
+    const event = new sdk.AdjustEvent(token);
+    event.setRevenue(purchase.price, purchase.currency || 'USD');
+    if (purchase.orderId) {
+      event.setDeduplicationId(purchase.orderId);
+    }
+    sdk.Adjust.trackEvent(event);
+  } catch (err) {
+    if (__DEV__) console.warn('[Adjust] Purchase event failed:', err);
   }
+}
+
+function readId(read: (done: (id: string | null) => void) => void): Promise<string | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ATTRIBUTION_ID_TIMEOUT_MS);
+    try {
+      read((id) => {
+        clearTimeout(timer);
+        resolve(id || null);
+      });
+    } catch {
+      clearTimeout(timer);
+      resolve(null);
+    }
+  });
+}
+
+/** Adjust ADID and GAID for `/billing/verify`, only where consent allows them (§5.6, §6.5). */
+export async function getAttributionIds(
+  consentRegion: 'GDPR' | 'OTHER' | 'UNKNOWN'
+): Promise<AttributionIds> {
+  const sdk = adjustInitialized ? loadAdjust() : null;
+  if (!sdk || consentRegion !== 'OTHER') {
+    return { adjustAdid: null, gaid: null };
+  }
+  const { Adjust } = sdk;
+  const [adjustAdid, gaid] = await Promise.all([
+    readId((done) => Adjust.getAdidWithTimeout(ATTRIBUTION_ID_TIMEOUT_MS, done)),
+    readId((done) => Adjust.getGoogleAdId(done)),
+  ]);
+  return { adjustAdid, gaid };
+}
+
+/** Crashlytics non-fatal for an ad that never reported `hidden`: format and network only (§8). */
+export function reportMissingHiddenEvent(format: string, networkName?: string): void {
+  const sdk = loadCrashlytics();
+  if (!sdk) return;
+  try {
+    sdk.recordError(
+      sdk.getCrashlytics(),
+      new Error(`Ad never reported hidden: ${format} / ${networkName ?? 'unknown'}`)
+    );
+  } catch (err) {
+    if (__DEV__) console.warn('[Crashlytics] Non-fatal failed:', err);
+  }
+}
+
+export function resetRevenueForTesting(): void {
+  adjustInitialized = false;
 }

@@ -7,6 +7,8 @@ import { fetchMe } from '../lib/users';
 import { billingStore } from '../billing/billing-store';
 import { onVerifiedPurchase, setCurrentBillingRef } from '../billing/billing-service';
 import { loadPaywallDeclines, syncPaywallVipState } from '../premium/paywall-triggers';
+import { setInterstitialVipState } from '../ads/interstitial-policy';
+import { setRewardedBalanceListener } from '../ads/rewarded';
 
 type AuthStatus = 'loading' | 'ready' | 'error';
 
@@ -65,6 +67,11 @@ async function resolveSession(): Promise<SessionResult> {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function syncVipGates(vipKnown: boolean, isVip: boolean): void {
+  syncPaywallVipState({ vipKnown, isVip });
+  setInterstitialVipState({ vipKnown, isVip });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<UserDto | null>(null);
@@ -73,15 +80,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const syncUserMonetizationState = useCallback((nextUser: UserDto | null) => {
     if (!nextUser) {
       setCurrentBillingRef(null);
-      syncPaywallVipState({ vipKnown: false, isVip: false });
+      syncVipGates(false, false);
       return;
     }
 
     setCurrentBillingRef(nextUser.billingRef ?? null);
-    syncPaywallVipState({
-      vipKnown: true,
-      isVip: Boolean(nextUser.vip?.active),
-    });
+    syncVipGates(true, Boolean(nextUser.vip?.active));
 
     if (nextUser.grantedNow && nextUser.vipDailyGranted) {
       billingStore.setState({ vipGiftBannerAmount: nextUser.vipDailyGranted });
@@ -128,10 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () =>
       onVerifiedPurchase((res) => {
         setCurrentBillingRef(res.billingRef);
-        syncPaywallVipState({
-          vipKnown: true,
-          isVip: Boolean(res.vip?.active),
-        });
+        syncVipGates(true, Boolean(res.vip?.active));
         setUser((current) =>
           current
             ? {
@@ -173,6 +174,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       current ? { ...current, creditBalance: balance, balance } : current
     );
   }, []);
+
+  useEffect(() => {
+    setRewardedBalanceListener(setCreditBalance);
+    return () => setRewardedBalanceListener(null);
+  }, [setCreditBalance]);
 
   const value = useMemo<AuthContextValue>(
     () => ({ status, user, error, retry, refreshUser, setCreditBalance }),

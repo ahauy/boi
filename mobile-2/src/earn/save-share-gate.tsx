@@ -1,20 +1,21 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { ECONOMY_DEFAULTS } from '@palmsight/shared';
 
 import Text from '../components/AppText';
 import { Button } from '../components/ui';
-import { isMaxRewardedReady } from '../ads/ads-service';
+import { isRewardedReady, rewardedAvailable } from '../ads/ads-service';
 import { watchForAction } from '../ads/rewarded';
-import { triggerPaywall } from '../premium/paywall-triggers';
+import { registerOpenSheet, triggerPaywall } from '../premium/paywall-triggers';
+import { useBillingStore } from '../billing';
 import { useAuth } from '../state/auth';
-import { t } from '../i18n';
+import { useI18n } from '../i18n';
 import { colors, radius, shadow, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
 
-export const WAIT_AD_TIMEOUT_SECONDS = 15;
+export const NO_AD_WAIT_SECONDS = ECONOMY_DEFAULTS.NO_AD_WAIT_SECONDS;
 
 export interface SaveShareGateProps {
   visible: boolean;
@@ -24,101 +25,112 @@ export interface SaveShareGateProps {
 
 export function SaveShareGate({ visible, onClose, onProceed }: SaveShareGateProps) {
   const { user } = useAuth();
-  const isVip = Boolean((user as any)?.isVip || user?.vip?.active);
+  const { billingEnabled } = useBillingStore();
+  const { t } = useI18n();
+  const isVip = Boolean(user?.vip?.active);
 
   const [waitingAd, setWaitingAd] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(WAIT_AD_TIMEOUT_SECONDS);
+  const [adBusy, setAdBusy] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState<number>(NO_AD_WAIT_SECONDS);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
-  // If VIP user opens this gate, immediately proceed (§6.3)
-  useEffect(() => {
-    if (visible && isVip) {
-      onProceed();
-      onClose();
-    }
-  }, [visible, isVip, onProceed, onClose]);
+  // Cleared as soon as the sheet resolves, so a late-loading ad cannot play over the action.
+  const attemptActiveRef = useRef(false);
 
-  // Wait sheet countdown and ad polling up to 15s (§6.3)
+  const proceed = useCallback(() => {
+    attemptActiveRef.current = false;
+    setWaitingAd(false);
+    setAdBusy(false);
+    onProceed();
+    onClose();
+  }, [onClose, onProceed]);
+
+  const skipGate = visible && (isVip || !rewardedAvailable());
+
+  // VIP saves without ads (§6.6); with no rewarded unit the action runs directly (§1.2).
+  useEffect(() => {
+    if (!skipGate) return;
+    onProceed();
+    onClose();
+  }, [skipGate, onProceed, onClose]);
+
+  useEffect(() => {
+    if (visible && !skipGate) return registerOpenSheet();
+  }, [visible, skipGate]);
+
+  useEffect(() => {
+    if (!visible) attemptActiveRef.current = false;
+  }, [visible]);
+
+  useEffect(
+    () => () => {
+      attemptActiveRef.current = false;
+    },
+    []
+  );
+
+  // At 0 the action runs anyway (§5.5).
   useEffect(() => {
     if (!waitingAd) return;
-
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
-
-    setSecondsLeft(WAIT_AD_TIMEOUT_SECONDS);
-
-    // 1-second countdown
-    timer = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          if (timer) clearInterval(timer);
-          if (pollTimer) clearInterval(pollTimer);
-          setWaitingAd(false);
-          // Unavailable after 15s: show adUnavailable and cancel without granting
-          setErrorNotice(t('saveShare.adUnavailable'));
-          return 0;
-        }
-        return prev - 1;
-      });
+    const timer = setTimeout(() => {
+      if (secondsLeft <= 1) proceed();
+      else setSecondsLeft(secondsLeft - 1);
     }, 1000);
+    return () => clearTimeout(timer);
+  }, [waitingAd, secondsLeft, proceed]);
 
-    // Poll isMaxRewardedReady every 1.5s
-    pollTimer = setInterval(async () => {
-      try {
-        const ready = await isMaxRewardedReady();
-        if (ready) {
-          if (timer) clearInterval(timer);
-          if (pollTimer) clearInterval(pollTimer);
-          setWaitingAd(false);
-          // Show the ad
-          await executeAdWatch();
-        }
-      } catch {
-        // Continue waiting
-      }
-    }, 1500);
+  async function handleWatchAd() {
+    if (adBusy) return;
+    setErrorNotice(null);
+    setAdBusy(true);
+    haptic.tap();
+    attemptActiveRef.current = true;
 
-    return () => {
-      if (timer) clearInterval(timer);
-      if (pollTimer) clearInterval(pollTimer);
+    let waiting = false;
+    const startWaiting = () => {
+      waiting = true;
+      setSecondsLeft(NO_AD_WAIT_SECONDS);
+      setWaitingAd(true);
     };
-  }, [waitingAd]);
 
-  async function executeAdWatch() {
-    try {
-      const res = await watchForAction('save_share');
-      if (res.completed) {
-        haptic.success();
-        onProceed();
-        onClose();
-      } else {
-        setErrorNotice('Xem hết quảng cáo để thực hiện thao tác.');
-      }
-    } catch (err: any) {
-      setErrorNotice(err?.message ?? t('saveShare.adUnavailable'));
+    if (!(await isRewardedReady())) startWaiting();
+
+    const status = await watchForAction('save_share', () => {
+      if (!attemptActiveRef.current) return false;
+      // The ad is opening: the countdown must not run the action underneath it.
+      waiting = false;
+      setWaitingAd(false);
+      return true;
+    });
+    if (!attemptActiveRef.current) return;
+
+    if (status === 'completed') {
+      haptic.success();
+      proceed();
+    } else if (status === 'no_ad') {
+      if (!waiting) startWaiting();
+    } else {
+      attemptActiveRef.current = false;
+      setWaitingAd(false);
+      setAdBusy(false);
+      setErrorNotice(t('earn.reward.watchFull'));
     }
   }
 
-  async function handleWatchAd() {
-    setErrorNotice(null);
-    haptic.tap();
-
-    const ready = await isMaxRewardedReady();
-    if (ready) {
-      await executeAdWatch();
-    } else {
-      // Ad not ready: start 15s wait sheet with polling
-      setWaitingAd(true);
-    }
+  function handleClose() {
+    attemptActiveRef.current = false;
+    setWaitingAd(false);
+    setAdBusy(false);
+    onClose();
   }
 
   function handleGetVip() {
     haptic.select();
-    onClose();
-    void triggerPaywall('locked_feature');
+    handleClose();
+    void triggerPaywall('no_ad_wait_sheet');
   }
 
-  if (!visible || isVip) return null;
+  if (!visible || skipGate) return null;
 
   return (
     <Modal
@@ -126,46 +138,38 @@ export function SaveShareGate({ visible, onClose, onProceed }: SaveShareGateProp
       transparent
       animationType="fade"
       statusBarTranslucent
-      onRequestClose={onClose}>
+      onRequestClose={handleClose}>
       <View style={styles.scrim}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
         <View style={styles.card}>
           <LinearGradient
             colors={['rgba(28,38,76,0.98)', 'rgba(8,13,30,0.98)']}
             style={styles.cardContent}>
             {waitingAd ? (
-              // Wait sheet polling for ad (up to 15s)
               <View style={styles.waitContent}>
                 <ActivityIndicator size="large" color={colors.goldLight} />
                 <Text style={[type.headingSm, { color: colors.ink, textAlign: 'center' }]}>
-                  {`Đang tải quảng cáo (${secondsLeft}s)…`}
+                  {t('earn.actionGate.waitTitle', { seconds: secondsLeft })}
                 </Text>
-                <Text style={[type.caption, { color: colors.stone, textAlign: 'center' }]}>
-                  Thao tác sẽ tự động tiếp tục khi quảng cáo sẵn sàng.
-                </Text>
-                <Button
-                  label="Mở VIP để bỏ qua quảng cáo"
-                  variant="outline"
-                  onPress={handleGetVip}
-                  noInterstitial
-                  icon={<MaterialCommunityIcons name="crown-outline" size={16} color={colors.goldLight} />}
-                />
+                {billingEnabled ? (
+                  <Button
+                    label={t('earn.notEnough.getVip')}
+                    variant="outline"
+                    onPress={handleGetVip}
+                    noInterstitial
+                    icon={<MaterialCommunityIcons name="crown-outline" size={16} color={colors.goldLight} />}
+                  />
+                ) : null}
               </View>
             ) : (
-              // Prompt sheet
               <>
                 <View style={styles.iconContainer}>
                   <MaterialCommunityIcons name="share-variant-outline" size={32} color={colors.goldLight} />
                 </View>
 
-                <View style={styles.header}>
-                  <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>
-                    Xem quảng cáo để tiếp tục
-                  </Text>
-                  <Text style={[type.caption, { color: colors.stone, textAlign: 'center' }]}>
-                    Xem 1 video quảng cáo ngắn để Lưu hoặc Chia sẻ kết quả xem bói.
-                  </Text>
-                </View>
+                <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>
+                  {t('earn.actionGate.title')}
+                </Text>
 
                 {errorNotice ? (
                   <Text style={[type.caption, { color: colors.danger, textAlign: 'center' }]}>
@@ -175,8 +179,10 @@ export function SaveShareGate({ visible, onClose, onProceed }: SaveShareGateProp
 
                 <View style={styles.actions}>
                   <Button
-                    label="Xem quảng cáo"
+                    label={t('earn.actionGate.watchBtn')}
                     onPress={() => void handleWatchAd()}
+                    loading={adBusy}
+                    disabled={adBusy}
                     noInterstitial
                     icon={
                       <MaterialCommunityIcons name="play-circle-outline" size={18} color={colors.onGold} />
@@ -184,17 +190,9 @@ export function SaveShareGate({ visible, onClose, onProceed }: SaveShareGateProp
                   />
 
                   <Button
-                    label={`${t('saveShare.getVip')} — ${t('paywall.benefit3')}`}
-                    variant="outline"
-                    onPress={handleGetVip}
-                    noInterstitial
-                    icon={<MaterialCommunityIcons name="crown-outline" size={16} color={colors.goldLight} />}
-                  />
-
-                  <Button
-                    label="Để sau"
+                    label={t('common.cancel')}
                     variant="ghost"
-                    onPress={onClose}
+                    onPress={handleClose}
                     noInterstitial
                   />
                 </View>
@@ -282,10 +280,6 @@ const styles = StyleSheet.create({
     borderColor: colors.hairlineStrong,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  header: {
-    alignItems: 'center',
-    gap: spacing.xs,
   },
   actions: {
     width: '100%',

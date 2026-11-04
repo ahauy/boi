@@ -10,7 +10,6 @@ import HeaderCredits from '../../components/HeaderCredits';
 import Screen, { ScreenHeader } from '../../components/Screen';
 import Text from '../../components/AppText';
 import { Banner, Button, Card, SectionLabel, TextLink } from '../../components/ui';
-import NativeAdSlot from '../../ads/native-ad-slot';
 import {
   isMediationDebuggerEnabled,
   openMediationDebugger,
@@ -18,14 +17,15 @@ import {
 } from '../../ads/ads-service';
 import { markNoInterstitialTap } from '../../ads/interstitial-policy';
 import { triggerPaywall } from '../../premium/paywall-triggers';
-import { SUPPORTED_LANGUAGES, SupportedLanguage, useI18n } from '../../i18n';
+import { billingStore } from '../../billing';
+import { SUPPORTED_LANGUAGES, SupportedLanguage, t, useI18n } from '../../i18n';
 import { useAuth } from '../../state/auth';
 import { colors, font, radius, shadow, spacing, text as type } from '../../theme';
 import { haptic } from '../../lib/haptics';
 
 export default function ProfileScreen() {
   const { user, refreshUser } = useAuth();
-  const { language, setLanguage, t } = useI18n();
+  const { language, setLanguage } = useI18n();
   const { width } = useWindowDimensions();
 
   const [copiedId, setCopiedId] = useState(false);
@@ -38,8 +38,8 @@ export default function ProfileScreen() {
 
   if (!user) {
     return (
-      <Screen header={<ScreenHeader compact title="Hồ sơ" right={<HeaderCredits />} />} avoidKeyboard={false}>
-        <Banner variant="error" title="Không tải được thông tin." action={{ label: 'Thử lại', onPress: () => void refreshUser() }} />
+      <Screen header={<ScreenHeader compact title={t('profile.title')} right={<HeaderCredits />} />} avoidKeyboard={false}>
+        <Banner variant="error" title={t('profile.loadFailed')} action={{ label: t('screen.retry'), onPress: () => void refreshUser() }} />
       </Screen>
     );
   }
@@ -74,14 +74,14 @@ export default function ProfileScreen() {
 
   return (
     <>
-      <Screen contentStyle={{ paddingBottom: 130 }} header={<ScreenHeader eyebrow="Thiên cơ của bạn" title="Hồ sơ" right={<HeaderCredits />} />}>
+      <Screen contentStyle={{ paddingBottom: 130 }} header={<ScreenHeader eyebrow={t('profile.eyebrow')} title={t('profile.title')} right={<HeaderCredits />} />}>
         {/* User Card */}
         <LinearGradient colors={['rgba(124,108,246,0.3)', 'rgba(22,32,66,0.9)', 'rgba(8,13,30,0.96)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.userCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
             <Avatar name={user.displayName} />
             <View style={{ flex: 1, gap: 3 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                <Text style={[type.headingMd, { color: colors.ink }]} numberOfLines={1}>{user.isAnonymous ? 'Nhà chiêm tinh' : user.displayName}</Text>
+                <Text style={[type.headingMd, { color: colors.ink }]} numberOfLines={1}>{user.isAnonymous ? t('profile.anonymousName') : user.displayName}</Text>
                 {isVip ? (
                   <View style={styles.vipTagSmall}>
                     <MaterialCommunityIcons name="crown" size={12} color={colors.onGold} />
@@ -90,7 +90,7 @@ export default function ProfileScreen() {
                 ) : null}
               </View>
               <Text style={[type.caption, { color: colors.mute }]}>
-                {user.isAnonymous ? 'Phiên ẩn danh theo thiết bị' : user.email ?? 'Tài khoản PalmSight'}
+                {user.isAnonymous ? t('profile.anonymousSession') : user.email ?? t('profile.account')}
               </Text>
             </View>
           </View>
@@ -99,27 +99,27 @@ export default function ProfileScreen() {
 
           <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'flex-end' }}>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={[type.caption, { color: colors.stone }]}>{`Mã tài khoản · ${user.id.slice(0, 12)}...`}</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Sao chép mã tài khoản" onPress={() => void copy(user.id, 'id')} hitSlop={8} style={{ minHeight: 34, justifyContent: 'center', alignSelf: 'flex-start' }}>
-                <Text style={[type.captionStrong, { color: colors.goldLight, textDecorationLine: 'underline' }]}>{copiedId ? 'Đã chép!' : 'Sao chép mã'}</Text>
+              <Text style={[type.caption, { color: colors.stone }]}>{t('profile.accountId', { id: user.id.slice(0, 12) })}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={t('profile.copyAccountId')} onPress={() => void copy(user.id, 'id')} hitSlop={8} style={{ minHeight: 34, justifyContent: 'center', alignSelf: 'flex-start' }}>
+                <Text style={[type.captionStrong, { color: colors.goldLight, textDecorationLine: 'underline' }]}>{copiedId ? t('profile.copied') : t('profile.copyId')}</Text>
               </Pressable>
             </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Sao chép mã giới thiệu"
+              accessibilityLabel={t('profile.copyReferral')}
               onPress={() => void copy(user.referralCode, 'code')}
               style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}>
               <View style={{ borderWidth: 1, borderColor: colors.hairline, borderRadius: radius.lg, backgroundColor: colors.goldWash, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, alignItems: 'flex-end', gap: 1 }}>
-                <Text style={[type.code, { color: colors.stone, fontSize: 9 }]}>MÃ GIỚI THIỆU</Text>
-                <Text style={[type.code, { color: colors.goldLight, letterSpacing: 1.2 }]}>{copiedCode ? 'ĐÃ CHÉP' : user.referralCode}</Text>
+                <Text style={[type.code, { color: colors.stone, fontSize: 9 }]}>{t('profile.referralCode')}</Text>
+                <Text style={[type.code, { color: colors.goldLight, letterSpacing: 1.2 }]}>{copiedCode ? t('profile.copiedUpper') : user.referralCode}</Text>
               </View>
             </Pressable>
           </View>
 
           <Text style={[type.caption, { color: colors.mute }]}>
             {user.isAnonymous
-              ? 'Bài bói, gems và lịch sử gắn với thiết bị này. Cài lại app hoặc đổi máy có thể mất dữ liệu.'
-              : 'Bài bói, gems và lịch sử được lưu cùng tài khoản của bạn.'}
+              ? t('profile.dataDevice')
+              : t('profile.dataAccount')}
           </Text>
         </LinearGradient>
 
@@ -140,18 +140,18 @@ export default function ProfileScreen() {
             </View>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={[type.bodyBold, { color: colors.goldLight }]}>
-                {isVip ? 'Hội viên VIP PalmSight' : 'Nâng cấp Hội Viên VIP'}
+                {isVip ? t('profile.vipMember') : t('profile.vipUpgrade')}
               </Text>
               <Text style={[type.caption, { color: colors.mute }]}>
                 {isVip
-                  ? 'Đang hoạt động: +50 GEM/ngày, mở khoá mọi trường phái, không quảng cáo biểu ngữ & xen kẽ'
-                  : '50 GEM mỗi ngày, mở khoá trường phái Phương Đông & Vedic, không quảng cáo biểu ngữ & xen kẽ'}
+                  ? t('profile.vipActiveBody')
+                  : t('profile.vipOfferBody')}
               </Text>
             </View>
           </View>
 
           <Button
-            label={isVip ? 'Quản lý gói VIP' : 'Nhận VIP ngay'}
+            label={isVip ? t('profile.manageVip') : t('profile.getVip')}
             size="md"
             variant={isVip ? 'outline' : 'primary'}
             onPress={handleOpenPaywall}
@@ -161,23 +161,29 @@ export default function ProfileScreen() {
 
         {/* Resources & Connections */}
         <View style={{ gap: spacing.sm }}>
-          <SectionLabel>TÀI NGUYÊN &amp; KẾT NỐI</SectionLabel>
+          <SectionLabel>{t('profile.sectionResources')}</SectionLabel>
           <Card style={{ gap: 0, padding: 0 }}>
             {/* Currency Tab Row */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Ví Gems, số dư và nhiệm vụ nhận thưởng"
+              accessibilityLabel={t('profile.walletA11y')}
               onPress={() => {
                 haptic.select();
-                router.push('/(tabs)/currency');
+                if (user?.vip?.active) {
+                  router.push({ pathname: '/(tabs)/currency', params: { segment: 'wheel' } });
+                } else if (billingStore.getState().billingEnabled) {
+                  void triggerPaywall('settings_currency_row');
+                } else {
+                  router.push('/(tabs)/currency');
+                }
               }}
               style={({ pressed }) => [styles.menuRow, { borderTopWidth: 0, opacity: pressed ? 0.75 : 1 }]}>
               <View style={styles.menuIconCircle}>
                 <MaterialCommunityIcons name="diamond-stone" size={19} color={colors.goldLight} />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[type.bodyBold, { color: colors.ink }]}>Ví Gems &amp; Nhiệm vụ</Text>
-                <Text style={[type.caption, { color: colors.mute }]}>Điểm danh, vòng quay và video nhận GEM</Text>
+                <Text style={[type.bodyBold, { color: colors.ink }]}>{t('profile.walletTitle')}</Text>
+                <Text style={[type.caption, { color: colors.mute }]}>{t('profile.walletBody')}</Text>
               </View>
               <Text style={[type.bodyBold, { color: colors.goldLight }]}>{`${gemBalance} GEM`}</Text>
               <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
@@ -186,7 +192,7 @@ export default function ProfileScreen() {
             {/* Referral Row */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Giới thiệu bạn bè, nhận +2 credits"
+              accessibilityLabel={t('profile.referA11y')}
               onPress={() => {
                 haptic.select();
                 router.push('/referral');
@@ -196,8 +202,8 @@ export default function ProfileScreen() {
                 <MaterialCommunityIcons name="gift-outline" size={19} color={colors.goldLight} />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[type.bodyBold, { color: colors.ink }]}>Giới thiệu bạn bè</Text>
-                <Text style={[type.caption, { color: colors.mute }]}>Mời bạn bè, nhận thêm phần thưởng</Text>
+                <Text style={[type.bodyBold, { color: colors.ink }]}>{t('profile.referTitle')}</Text>
+                <Text style={[type.caption, { color: colors.mute }]}>{t('profile.referBody')}</Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
             </Pressable>
@@ -205,7 +211,7 @@ export default function ProfileScreen() {
             {user.referral.canEnterCode ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Nhập mã giới thiệu, nhận thêm 1 credit"
+                accessibilityLabel={t('profile.enterCodeA11y')}
                 onPress={() => {
                   haptic.select();
                   router.push('/enter-referral');
@@ -215,15 +221,15 @@ export default function ProfileScreen() {
                   <MaterialCommunityIcons name="ticket-percent-outline" size={19} color={colors.goldLight} />
                 </View>
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={[type.bodyBold, { color: colors.goldLight }]}>Nhập mã giới thiệu</Text>
-                  <Text style={[type.caption, { color: colors.mute }]}>Bạn nhận +1 credit, bạn bè nhận +2</Text>
+                  <Text style={[type.bodyBold, { color: colors.goldLight }]}>{t('profile.enterCodeTitle')}</Text>
+                  <Text style={[type.caption, { color: colors.mute }]}>{t('profile.enterCodeBody')}</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
               </Pressable>
             ) : user.referral.enteredCode ? (
               <View style={[styles.menuRow, { opacity: 1 }]}>
                 <MaterialCommunityIcons name="check-circle-outline" size={17} color={colors.success} />
-                <Text style={[type.caption, { color: colors.success, flex: 1 }]}>{`Đã nhận mã: ${user.referral.enteredCode}`}</Text>
+                <Text style={[type.caption, { color: colors.success, flex: 1 }]}>{t('profile.codeEntered', { code: user.referral.enteredCode ?? '' })}</Text>
               </View>
             ) : null}
           </Card>
@@ -231,12 +237,12 @@ export default function ProfileScreen() {
 
         {/* Preferences & Settings */}
         <View style={{ gap: spacing.sm }}>
-          <SectionLabel>CÀI ĐẶT &amp; QUYỀN RIÊNG TƯ</SectionLabel>
+          <SectionLabel>{t('profile.sectionSettings')}</SectionLabel>
           <Card style={{ gap: 0, padding: 0 }}>
             {/* Language Selector */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Ngôn ngữ: ${currentLangSpec.nativeName}. Bấm để thay đổi.`}
+              accessibilityLabel={t('profile.languageA11y', { language: currentLangSpec.nativeName })}
               onPress={() => {
                 haptic.select();
                 setLangModalVisible(true);
@@ -246,7 +252,7 @@ export default function ProfileScreen() {
                 <MaterialCommunityIcons name="translate" size={19} color={colors.goldLight} />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[type.bodyBold, { color: colors.ink }]}>Ngôn ngữ ứng dụng</Text>
+                <Text style={[type.bodyBold, { color: colors.ink }]}>{t('profile.language')}</Text>
                 <Text style={[type.caption, { color: colors.mute }]}>{`${currentLangSpec.flag} ${currentLangSpec.nativeName}`}</Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
@@ -255,15 +261,15 @@ export default function ProfileScreen() {
             {/* Ad Privacy Choices */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Tùy chọn quyền riêng tư quảng cáo"
+              accessibilityLabel={t('profile.adPrivacyA11y')}
               onPress={handlePrivacyChoices}
               style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.75 : 1 }]}>
               <View style={styles.menuIconCircle}>
                 <MaterialCommunityIcons name="shield-account-outline" size={19} color={colors.goldLight} />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[type.bodyBold, { color: colors.ink }]}>Quyền riêng tư quảng cáo</Text>
-                <Text style={[type.caption, { color: colors.mute }]}>Quản lý đồng ý Google UMP &amp; MAX SDK</Text>
+                <Text style={[type.bodyBold, { color: colors.ink }]}>{t('profile.adPrivacy')}</Text>
+                <Text style={[type.caption, { color: colors.mute }]}>{t('profile.adPrivacyBody')}</Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
             </Pressable>
@@ -272,7 +278,7 @@ export default function ProfileScreen() {
             {isMediationDebuggerEnabled() ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Mở MAX Mediation Debugger"
+                accessibilityLabel={t('profile.debuggerA11y')}
                 onPress={handleMediationDebugger}
                 style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.75 : 1 }]}>
                 <View style={[styles.menuIconCircle, { borderColor: colors.goldLight }]}>
@@ -280,7 +286,7 @@ export default function ProfileScreen() {
                 </View>
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={[type.bodyBold, { color: colors.goldLight }]}>Mediation Debugger</Text>
-                  <Text style={[type.caption, { color: colors.mute }]}>Chẩn đoán mạng quảng cáo AppLovin MAX</Text>
+                  <Text style={[type.caption, { color: colors.mute }]}>{t('profile.debuggerBody')}</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
               </Pressable>
@@ -288,23 +294,14 @@ export default function ProfileScreen() {
           </Card>
         </View>
 
-        {/* Native Ad Slot */}
-        <View style={styles.adSection}>
-          <NativeAdSlot
-            availableHeight={260}
-            availableWidth={Math.max(300, width - spacing.xl * 2)}
-            {...({ placement: 'profile' } as any)}
-          />
-        </View>
-
         {/* Data Deletion */}
         <View style={{ gap: spacing.sm }}>
-          <SectionLabel>DỮ LIỆU CỦA BẠN</SectionLabel>
+          <SectionLabel>{t('profile.sectionData')}</SectionLabel>
           <Card style={{ gap: spacing.sm }}>
             <Text style={[type.caption, { color: colors.mute }]}>
-              Yêu cầu xoá ảnh và dữ liệu được xử lý thủ công qua email, hoàn tất trong 30 ngày. Gửi kèm mã tài khoản để được hỗ trợ nhanh hơn.
+              {t('profile.dataDeletionBody')}
             </Text>
-            <TextLink label="Hướng dẫn xoá dữ liệu" onPress={() => void openDataDeletion()} />
+            <TextLink label={t('profile.dataDeletionLink')} onPress={() => void openDataDeletion()} />
           </Card>
         </View>
 
@@ -315,7 +312,7 @@ export default function ProfileScreen() {
             <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.gold }} />
           </View>
           <Text style={[type.caption, { color: colors.stone, textAlign: 'center', maxWidth: 300 }]}>
-            Kết quả bói chỉ mang tính giải trí, không thay thế tư vấn y tế, tài chính hay pháp lý.
+            {t('profile.disclaimer')}
           </Text>
         </View>
       </Screen>
@@ -333,7 +330,7 @@ export default function ProfileScreen() {
         >
           <Pressable style={styles.langModalContainer} onPress={(e) => e.stopPropagation()}>
             <View style={styles.langModalHeader}>
-              <Text style={[type.headingSm, { color: colors.ink }]}>Chọn ngôn ngữ</Text>
+              <Text style={[type.headingSm, { color: colors.ink }]}>{t('profile.chooseLanguage')}</Text>
               <Pressable
                 hitSlop={8}
                 onPress={() => setLangModalVisible(false)}

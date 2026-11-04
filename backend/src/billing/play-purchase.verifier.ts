@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
@@ -45,6 +46,31 @@ export interface VerifiedPlayPurchase {
 export type PlayPurchaseVerifierFn = (
   input: PlayPurchaseVerifyInput,
 ) => Promise<VerifiedPlayPurchase>;
+
+/**
+ * States that entitle the user, per the Play subscription lifecycle docs: CANCELED keeps access
+ * until expiryTime, IN_GRACE_PERIOD retains access. ON_HOLD and PAUSED must block access, a
+ * revoked subscription reports EXPIRED, and PENDING has not been paid.
+ */
+const ENTITLED_SUBSCRIPTION_STATES = new Set([
+  'SUBSCRIPTION_STATE_ACTIVE',
+  'SUBSCRIPTION_STATE_IN_GRACE_PERIOD',
+  'SUBSCRIPTION_STATE_CANCELED',
+]);
+
+/** 400, 404 and 410 describe the token. Every other failure says nothing about it. */
+const INVALID_TOKEN_STATUSES = new Set([400, 404, 410]);
+
+function moneyToMicros(money?: {
+  units?: string;
+  nanos?: number;
+}): number | null {
+  if (!money) return null;
+  const micros =
+    Number(money.units ?? 0) * 1_000_000 +
+    Math.round((money.nanos ?? 0) / 1_000);
+  return Number.isFinite(micros) ? micros : null;
+}
 
 interface ServiceAccountCredentials {
   client_email: string;
@@ -106,22 +132,33 @@ export class PlayPurchaseVerifier {
       return this.customVerifierFn({ ...input, productId, purchaseToken });
     }
 
+    // The deterministic verifier accepts almost any token, so it runs only under
+    // an explicit NODE_ENV=test. An unset NODE_ENV must never reach it.
+    if (this.configService.get<string>('NODE_ENV') === 'test') {
+      return this.verifyDeterministic({ ...input, productId, purchaseToken });
+    }
+
     const serviceAccountJson = this.configService.get<string>(
       'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON',
       '',
     );
-    const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
 
-    if (serviceAccountJson && serviceAccountJson.trim().length > 0 && nodeEnv !== 'test') {
-      return this.verifyWithGooglePlayApi({
-        ...input,
-        productId,
-        purchaseToken,
-        serviceAccountJson,
+    if (!serviceAccountJson.trim()) {
+      this.logger.error(
+        'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is not set; refusing to verify purchases.',
+      );
+      throw new ServiceUnavailableException({
+        code: 'billing_unavailable',
+        message: 'Chưa thể xác minh giao dịch. Vui lòng thử lại sau.',
       });
     }
 
-    return this.verifyDeterministic({ ...input, productId, purchaseToken });
+    return this.verifyWithGooglePlayApi({
+      ...input,
+      productId,
+      purchaseToken,
+      serviceAccountJson,
+    });
   }
 
   private async verifyDeterministic(
@@ -238,12 +275,10 @@ export class PlayPurchaseVerifier {
       });
     }
 
-    const packageName =
-      input.packageName ||
-      this.configService.get<string>(
-        'GOOGLE_PLAY_PACKAGE_NAME',
-        'com.palmsight.app',
-      );
+    const packageName = this.configService.get<string>(
+      'GOOGLE_PLAY_PACKAGE_NAME',
+      'com.palmsight.mobile2',
+    );
 
     const accessToken = await this.fetchGoogleAccessToken(credentials);
 
@@ -260,6 +295,16 @@ export class PlayPurchaseVerifier {
       },
     });
 
+    if (!res.ok && !INVALID_TOKEN_STATUSES.has(res.status)) {
+      this.logger.error(
+        `Google Play subscriptionsv2 lookup is unavailable (status ${res.status})`,
+      );
+      throw new ServiceUnavailableException({
+        code: 'billing_unavailable',
+        message: 'Chưa thể xác minh giao dịch. Vui lòng thử lại sau.',
+      });
+    }
+
     if (!res.ok) {
       this.logger.warn(
         `Google Play subscriptionsv2 lookup failed with status ${res.status}`,
@@ -272,7 +317,18 @@ export class PlayPurchaseVerifier {
 
     const data = (await res.json()) as Record<string, any>;
     const lineItem = Array.isArray(data.lineItems) ? data.lineItems[0] : null;
-    const verifiedProductId = lineItem?.productId || input.productId;
+    const entitled = ENTITLED_SUBSCRIPTION_STATES.has(data.subscriptionState);
+    const reportedExpiry = new Date(lineItem?.expiryTime ?? NaN);
+    const hasExpiry = !Number.isNaN(reportedExpiry.getTime());
+
+    if (!lineItem?.productId || (entitled && !hasExpiry)) {
+      throw new BadRequestException({
+        code: 'invalid_purchase',
+        message: 'Giao dịch Google Play không có thông tin thời hạn hợp lệ.',
+      });
+    }
+
+    const verifiedProductId: string = lineItem.productId;
 
     if (verifiedProductId !== input.productId) {
       throw new BadRequestException({
@@ -281,32 +337,36 @@ export class PlayPurchaseVerifier {
       });
     }
 
-    const expiryTimeStr = lineItem?.expiryTime;
-    const expiresAt = expiryTimeStr
-      ? new Date(expiryTimeStr)
-      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    // Outside the allow-list the expiry says nothing: Google does not document it for PENDING
+    // or for a revoked subscription, so access ends now whatever date it reports.
+    const expiredNow = new Date((input.now ?? new Date()).getTime() - 1000);
+    const expiresAt = entitled
+      ? reportedExpiry
+      : new Date(
+          Math.min(
+            hasExpiry ? reportedExpiry.getTime() : Infinity,
+            expiredNow.getTime(),
+          ),
+        );
 
-    const willRenew = Boolean(lineItem?.autoRenewingPlan?.autoRenewEnabled);
-    const offerTags: string[] = lineItem?.offerDetails?.offerTags ?? [];
-    const offerId: string = lineItem?.offerDetails?.offerId ?? '';
-    const isTrial = Boolean(
-      input.isTrial ||
-        offerTags.some((t) => t.toLowerCase().includes('trial')) ||
-        offerId.toLowerCase().includes('trial') ||
-        input.priceAmountMicros === 0,
-    );
+    const autoRenewingPlan = lineItem.autoRenewingPlan;
+    const willRenew = entitled && Boolean(autoRenewingPlan?.autoRenewEnabled);
 
-    const acknowledged =
+    // Only a confirmed paid phase counts: a missed attribution event is cheaper than fake revenue.
+    const offerPhase = lineItem.offerPhase;
+    const isTrial = !(offerPhase?.basePrice || offerPhase?.introductoryPrice);
+
+    let acknowledged =
       data.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED';
 
-    if (!acknowledged) {
+    if (!acknowledged && entitled) {
       try {
         const ackUrl = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(
           packageName,
         )}/purchases/subscriptions/${encodeURIComponent(
           input.productId,
         )}/tokens/${encodeURIComponent(input.purchaseToken)}:acknowledge`;
-        await fetch(ackUrl, {
+        const ackRes = await fetch(ackUrl, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -314,6 +374,12 @@ export class PlayPurchaseVerifier {
           },
           body: JSON.stringify({}),
         });
+        acknowledged = ackRes.ok;
+        if (!ackRes.ok) {
+          this.logger.warn(
+            `Google Play rejected the acknowledgement (status ${ackRes.status})`,
+          );
+        }
       } catch (err) {
         this.logger.warn(
           `Failed to acknowledge subscription on Google Play: ${(err as Error).message}`,
@@ -324,13 +390,24 @@ export class PlayPurchaseVerifier {
     return {
       productId: verifiedProductId,
       purchaseToken: input.purchaseToken,
-      orderId: data.latestOrderId ?? input.orderId ?? null,
+      orderId:
+        lineItem.latestSuccessfulOrderId ??
+        data.latestOrderId ??
+        input.orderId ??
+        null,
       expiresAt,
       willRenew,
       isTrial,
-      priceAmountMicros: isTrial ? 0 : (input.priceAmountMicros ?? 0),
-      priceCurrencyCode: input.priceCurrencyCode ?? 'USD',
-      acknowledged: true,
+      priceAmountMicros: isTrial
+        ? 0
+        : (moneyToMicros(autoRenewingPlan?.recurringPrice) ??
+          input.priceAmountMicros ??
+          0),
+      priceCurrencyCode:
+        autoRenewingPlan?.recurringPrice?.currencyCode ??
+        input.priceCurrencyCode ??
+        'USD',
+      acknowledged,
       obfuscatedAccountId:
         data.externalAccountIdentifiers?.obfuscatedExternalAccountId ??
         input.obfuscatedAccountId ??

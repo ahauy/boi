@@ -28,26 +28,9 @@ let consentRegion: ConsentRegion = 'UNKNOWN';
 const activeFullScreenAds = new Set<string>();
 let nativeAdsOnScreen = 0;
 let bannerVisible = false;
-let lastAdShownAt = 0;
-const onAdShownListeners = new Set<(now: number) => void>();
-
-export function addOnAdShownListener(listener: (now: number) => void): () => void {
-  onAdShownListeners.add(listener);
-  return () => onAdShownListeners.delete(listener);
-}
-
-export function recordAdShown(now: number = Date.now()): void {
-  lastAdShownAt = now;
-  for (const fn of onAdShownListeners) {
-    try {
-      fn(now);
-    } catch {
-      // Ignore listener error
-    }
-  }
-}
 
 const listeners = new Set<() => void>();
+let staleAdListener: ((adKey: string) => void) | null = null;
 let appStateTimer: ReturnType<typeof setTimeout> | null = null;
 
 function notify(): void {
@@ -72,8 +55,8 @@ function handleAppStateChange(nextState: AppStateStatus): void {
     if (appStateTimer) clearTimeout(appStateTimer);
     appStateTimer = setTimeout(() => {
       if (activeFullScreenAds.size > 0) {
-        if (typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production') {
-          console.log('[AdsStore] Cleared stale full-screen ad state 1s after app became active');
+        for (const adKey of activeFullScreenAds) {
+          staleAdListener?.(adKey);
         }
         activeFullScreenAds.clear();
         notify();
@@ -176,8 +159,9 @@ export const adsStore = {
     return () => listeners.delete(listener);
   },
 
-  recordAdShown(now: number = Date.now()): void {
-    recordAdShown(now);
+  /** Called for each ad that was treated as closed because `hidden` never arrived. */
+  onStaleFullScreenAd(listener: (adKey: string) => void): void {
+    staleAdListener = listener;
   },
 
   reset(): void {
@@ -186,7 +170,7 @@ export const adsStore = {
     activeFullScreenAds.clear();
     nativeAdsOnScreen = 0;
     bannerVisible = false;
-    lastAdShownAt = 0;
+    staleAdListener = null;
     if (appStateTimer) clearTimeout(appStateTimer);
     appStateTimer = null;
     notify();

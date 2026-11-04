@@ -13,6 +13,7 @@ import HandGuide from '../components/mystic/HandGuide';
 import CosmicBackground from '../components/CosmicBackground';
 import CosmicHand from '../components/CosmicHand';
 import { colors, radius, spacing, text as type } from '../theme';
+import { runExternalActivity } from '../lib/external-activity';
 import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { useReduceMotion } from '../lib/motion';
@@ -68,12 +69,14 @@ export default function CameraScreen() {
   async function pickFromGallery() {
     haptic.select();
     setError(null);
-    const libraryPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const libraryPermission = await runExternalActivity('permission', () => ImagePicker.requestMediaLibraryPermissionsAsync());
     if (!libraryPermission.granted) {
       setError('Không thể truy cập thư viện ảnh. Vui lòng cấp quyền trong Cài đặt.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsEditing: false });
+    const result = await runExternalActivity('photo_picker', () =>
+      ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsEditing: false })
+    );
     if (result.canceled || result.assets.length === 0) return;
     submitPhoto({ uri: result.assets[0].uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
     router.back();
@@ -124,9 +127,9 @@ export default function CameraScreen() {
             </Text>
           </View>
           {permission.canAskAgain ? (
-            <Button label="Cấp quyền camera" onPress={() => void requestPermission()} style={{ minWidth: 240 }} />
+            <Button label="Cấp quyền camera" onPress={() => void runExternalActivity('permission', requestPermission)} style={{ minWidth: 240 }} noInterstitial />
           ) : (
-            <Button label="Mở Cài đặt" onPress={() => void Linking.openSettings()} style={{ minWidth: 240 }} />
+            <Button label="Mở Cài đặt" onPress={() => void runExternalActivity('browser', () => Linking.openSettings())} style={{ minWidth: 240 }} noInterstitial />
           )}
           {!permission.canAskAgain ? (
             <Text style={[type.caption, { color: colors.mute, textAlign: 'center', maxWidth: 300 }]}>

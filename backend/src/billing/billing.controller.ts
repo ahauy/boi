@@ -4,6 +4,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -36,8 +37,10 @@ export class BillingController {
   @Post('rtdn')
   @HttpCode(HttpStatus.OK)
   handleRtdnWebhook(
+    @Query('token') token: string | undefined,
     @Body() body: RtdnWebhookPayload,
   ): Promise<RtdnWebhookResult> {
+    this.billingService.assertRtdnToken(token);
     return this.billingService.handleRtdnWebhook(body);
   }
 }

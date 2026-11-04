@@ -36,47 +36,47 @@ const ADMOB_APP_ID = 'ca-app-pub-7441372574696038~4265117368';
 const MEDIATION_ADAPTERS = [
   {
     name: 'Google AdMob',
-    coordinate: 'com.applovin.mediation:google-adapter:23.6.0.0',
+    coordinate: 'com.applovin.mediation:google-adapter:25.5.0.0',
     group: 'com.applovin.mediation:google-adapter',
   },
   {
     name: 'Meta Audience Network',
-    coordinate: 'com.applovin.mediation:facebook-adapter:6.18.0.0',
+    coordinate: 'com.applovin.mediation:facebook-adapter:6.22.0.1',
     group: 'com.applovin.mediation:facebook-adapter',
   },
   {
     name: 'Mintegral',
-    coordinate: 'com.applovin.mediation:mintegral-adapter:16.8.61.0',
+    coordinate: 'com.applovin.mediation:mintegral-adapter:17.2.21.0',
     group: 'com.applovin.mediation:mintegral-adapter',
   },
   {
     name: 'Unity Ads',
-    coordinate: 'com.applovin.mediation:unityads-adapter:4.12.5.0',
+    coordinate: 'com.applovin.mediation:unityads-adapter:4.21.0.1',
     group: 'com.applovin.mediation:unityads-adapter',
   },
   {
     name: 'Liftoff / Vungle',
-    coordinate: 'com.applovin.mediation:vungle-adapter:7.4.2.1',
+    coordinate: 'com.applovin.mediation:vungle-adapter:7.7.9.1',
     group: 'com.applovin.mediation:vungle-adapter',
   },
   {
     name: 'DT Exchange / Fyber',
-    coordinate: 'com.applovin.mediation:fyber-adapter:8.3.5.0',
+    coordinate: 'com.applovin.mediation:fyber-adapter:8.5.1.0',
     group: 'com.applovin.mediation:fyber-adapter',
   },
   {
     name: 'Yandex',
-    coordinate: 'com.applovin.mediation:yandex-adapter:7.7.0.0',
+    coordinate: 'com.applovin.mediation:yandex-adapter:8.6.0.0',
     group: 'com.applovin.mediation:yandex-adapter',
   },
   {
     name: 'Bigo Ads',
-    coordinate: 'com.applovin.mediation:bigoads-adapter:5.1.0.0',
+    coordinate: 'com.applovin.mediation:bigoads-adapter:6.2.0.0',
     group: 'com.applovin.mediation:bigoads-adapter',
   },
   {
     name: 'Pangle',
-    coordinate: 'com.applovin.mediation:bytedance-adapter:6.4.0.5.0',
+    coordinate: 'com.applovin.mediation:bytedance-adapter:8.4.0.5.0',
     group: 'com.applovin.mediation:bytedance-adapter',
   },
 ];
