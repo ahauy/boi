@@ -18,7 +18,9 @@ import { runExternalActivity } from '../lib/external-activity';
 import {
   billingStore,
   getBillingConfig,
+  purchaseNoticeKey,
   purchaseSubscription,
+  restoreNoticeKey,
   restorePurchases,
   setCurrentBillingRef,
   useBillingStore,
@@ -136,17 +138,15 @@ export function PaywallModal({
       useTrialOffer: selectedProduct.hasFreeTrial,
     });
 
-    if (res.pending) {
-      setStatusBanner(t('paywall.pending'));
-      return;
-    }
+    const notice = purchaseNoticeKey(res);
+    if (notice) setStatusBanner(t(notice));
 
     if (res.ok) {
       if (res.response && onVerified) {
         onVerified(res.response.balance);
       }
       if (res.restored) {
-        setStatusBanner(t('paywall.restored'));
+        billingStore.setState({ vipRestoredNotice: true });
       }
       closePaywallAfterSuccess();
     }
@@ -169,15 +169,8 @@ export function PaywallModal({
       upgradeFromProductId: vipProductId,
     });
 
-    if (res.upgradeUnavailable) {
-      setStatusBanner(t('paywall.upgradeUnavailable'));
-      return;
-    }
-
-    if (res.pending) {
-      setStatusBanner(t('paywall.pending'));
-      return;
-    }
+    const notice = purchaseNoticeKey(res);
+    if (notice) setStatusBanner(t(notice));
 
     if (res.ok) {
       if (res.response && onVerified) {
@@ -200,8 +193,11 @@ export function PaywallModal({
     setStatusBanner(null);
 
     const res = await restorePurchases();
+    const notice = restoreNoticeKey(res);
+    if (notice) setStatusBanner(t(notice));
+
     if (res.ok && res.restored) {
-      setStatusBanner(t('paywall.restored'));
+      billingStore.setState({ vipRestoredNotice: true });
       if (res.response && onVerified) {
         onVerified(res.response.balance);
       }
@@ -504,24 +500,32 @@ export function PaywallModal({
  */
 export function VipDailyGiftBanner() {
   const { t } = useI18n();
-  const { vipGiftBannerAmount } = useBillingStore();
+  const { vipGiftBannerAmount, vipRestoredNotice } = useBillingStore();
 
-  if (!vipGiftBannerAmount) return null;
+  // Shown here because the paywall closes as soon as VIP is restored (§6.5).
+  if (!vipGiftBannerAmount && !vipRestoredNotice) return null;
 
   return (
     <View style={styles.giftBanner}>
       <View style={styles.giftBannerLeft}>
-        <Ionicons name="gift-outline" size={18} color={colors.gold} />
+        <Ionicons
+          name={vipRestoredNotice ? 'checkmark-circle-outline' : 'gift-outline'}
+          size={18}
+          color={colors.gold}
+        />
         <Text style={styles.giftBannerText}>
-          {t('paywall.vipGiftToday')}
+          {t(vipRestoredNotice ? 'paywall.restored' : 'paywall.vipGiftToday')}
         </Text>
       </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t('common.close')}
         onPress={() => {
-          // Dismiss banner
-          billingStore.dismissVipGiftBanner();
+          if (vipRestoredNotice) {
+            billingStore.setState({ vipRestoredNotice: false });
+          } else {
+            billingStore.dismissVipGiftBanner();
+          }
         }}
         hitSlop={8}
       >

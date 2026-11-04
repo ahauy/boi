@@ -46,9 +46,9 @@ describe("DataDeletion Page and Static Info Pages", () => {
     // No image storage notice (ADR-0010)
     expect(screen.getByText(/hoàn toàn không lưu trữ ảnh chụp lòng bàn tay/i)).toBeInTheDocument();
 
-    // Warning when re-registering (0 credit & cannot enter referral code)
+    // Warning when re-registering (0 GEM & cannot enter referral code)
     expect(
-      screen.getByText(/tài khoản sẽ bắt đầu với 0 credit/i)
+      screen.getByText(/tài khoản sẽ bắt đầu với 0 GEM/i)
     ).toBeInTheDocument();
     expect(
       screen.getByText(/không được quyền nhập mã giới thiệu/i)
@@ -63,7 +63,7 @@ describe("DataDeletion Page and Static Info Pages", () => {
     expect(
       screen.getByText(/không có giá trị thay thế cho các lời khuyên, chẩn đoán hay tư vấn chuyên môn/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Mỗi lượt luận giải chỉ tay tiêu tốn chính xác 1 credit/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mỗi lượt luận giải chỉ tay tiêu tốn 5 GEM/i)).toBeInTheDocument();
   });
 
   it("should render Privacy Policy content when visiting /privacy", () => {

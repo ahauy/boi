@@ -106,7 +106,7 @@ export function LuckyWheel({ earnState, onUpdated }: LuckyWheelProps) {
     if (result.status === 'capped') setError(t('earn.reward.limitReached'));
     else if (result.status === 'no_ad') setError(t('earn.reward.noAd'));
     else if (result.status === 'closed') setError(t('earn.reward.watchFull'));
-    else setError(result.errorMessage ?? t('earn.reward.noAd'));
+    else setError(result.errorMessage ?? t('scan.unexpected'));
     onUpdated?.();
   }
 

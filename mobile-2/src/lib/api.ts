@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import type { ApiErrorResponse, RefreshTokenResponseDto } from '@palmsight/shared';
+import { t } from '../i18n';
 import * as tokenStore from './tokenStore';
 import { getDeviceId } from './deviceId';
 
@@ -172,9 +173,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
     throw new ApiError(
       0,
       aborted ? TIMEOUT_ERROR : NETWORK_ERROR,
-      aborted
-        ? 'Yêu cầu quá thời gian chờ. Vui lòng thử lại.'
-        : 'Không thể kết nối đến máy chủ. Vui lòng thử lại.',
+      t(aborted ? 'error.timeout' : 'error.network'),
       {},
       {},
       error
@@ -186,7 +185,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
 
 async function toApiError(response: Response): Promise<ApiError> {
   let code = 'UNKNOWN';
-  let message = 'Đã có lỗi xảy ra. Vui lòng thử lại.';
+  let message = t('error.generic');
   const fields: Record<string, string> = {};
   let details: Record<string, unknown> = {};
   try {

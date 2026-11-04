@@ -9,6 +9,7 @@ out/
 .next/
 .turbo/
 coverage/
+backend/.test-tmp/
 *.tsbuildinfo
 
 # Expo local state (mobile has its own .gitignore too)

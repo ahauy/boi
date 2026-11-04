@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Post,
@@ -10,6 +11,7 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { changePasswordSchema } from "@palmsight/shared";
 import type {
   MeResponseDto,
@@ -19,6 +21,7 @@ import type {
   EnterReferralResponseDto,
   ReferralListResponseDto,
 } from "@palmsight/shared";
+import { resolveClientIp } from "../common/client-ip.util";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import type { AuthenticatedRequest } from "../auth/guards/jwt-auth.guard";
 import { UserRateLimit, UserRateLimitGuard } from "../auth/guards/user-rate-limit.guard";
@@ -37,7 +40,8 @@ export class UsersController {
     private readonly usersService: UsersService,
     private readonly creditLedgerService: CreditLedgerService,
     private readonly passwordService: PasswordService,
-    private readonly referralsService: ReferralsService
+    private readonly referralsService: ReferralsService,
+    private readonly configService: ConfigService
   ) {}
 
   @Get()
@@ -75,12 +79,19 @@ export class UsersController {
   @UserRateLimit({ limit: 5, windowMs: 60 * 60 * 1000 })
   async enterReferral(
     @CurrentUser() user: UserDocument,
-    @Body() body: EnterReferralRequestDto
+    @Body() body: EnterReferralRequestDto,
+    @Req() req: AuthenticatedRequest,
+    @Headers("x-device-id") deviceId?: string
   ): Promise<EnterReferralResponseDto> {
     const validated = await enterReferralBodySchema.validate(body, {
       abortEarly: false,
     });
-    return this.referralsService.enterReferral(user, validated.code);
+    return this.referralsService.enterReferral(
+      user,
+      validated.code,
+      deviceId,
+      resolveClientIp(req, this.configService)
+    );
   }
 
   @Put("password")

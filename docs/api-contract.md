@@ -229,6 +229,7 @@ Danh sách trường phái và các mục bói không có endpoint riêng: web �
 - `isNewUser = true` chỉ khi request này **tạo** user mới. Khi đó client chuyển tới `/referral/enter`, trừ khi `GET /me` trả `referral.canEnterCode = false`.
 - User tạo lại từ email/Google/Facebook đã bị xoá vẫn là user mới (`isNewUser = true`), nhưng có `creditBalance = 0` và không được nhập mã. Xem [ADR-0009](adr/0009-manual-account-deletion.md).
 - Gộp vào user có sẵn thì `isNewUser = false`.
+- `POST /auth/verify-email` có thêm `referralApplied: true` khi mã giới thiệu nhập lúc đăng ký thực sự được áp dụng, kể cả `CAPPED`. Không áp dụng thì không có field này.
 - `username` là `null` với user chỉ đăng nhập bằng Google/Facebook.
 - Request gửi kèm cookie `rt` của một phiên cũ trên trình duyệt này: server thu hồi phiên cũ trước khi cấp phiên mới.
 
@@ -355,7 +356,7 @@ Lỗi: `VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `EMAIL_NOT_VERIFIED`, `RATE_LI
 
 ### POST /auth/device
 
-Mobile không có đăng ký/đăng nhập: mỗi thiết bị tự đổi `deviceId` (UUID lưu trong SecureStore) lấy phiên khách.
+Mobile không có đăng ký/đăng nhập: mỗi thiết bị tự đổi `deviceId` lấy phiên khách. Android dùng `android-<Android ID>` để giữ được qua lần cài lại; iOS và bản Android đã có mã lưu sẵn dùng mã trong SecureStore.
 
 | Vị trí | Trường | Kiểu | Bắt buộc | Ràng buộc |
 | --- | --- | --- | --- | --- |
@@ -373,11 +374,11 @@ X-Client: native
 | --- | --- |
 | Thiết bị mới | `200`, [Response đăng nhập](#response-đăng-nhập-dùng-chung), `isNewUser = true`; tạo user `isAnonymous: true`, tặng 3 credits, lưu `deviceIdHash` + `signupIpHash` |
 | Thiết bị đã có tài khoản khách | `200`, `isNewUser = false`, mở phiên mới cho đúng user đó |
-| Tài khoản của thiết bị đã bị xoá (`deletedAt`) | `403 DEVICE_SESSION_BLOCKED` |
+| Tài khoản của thiết bị đã bị xoá (`deletedAt`) | `200`, `isNewUser = true`; tạo guest mới, 0 GEM, `referralBlocked = true`, không nhận lại dữ liệu cũ. Ngoại lệ: gói Google Play còn hạn vẫn chuyển sang guest mới khi `/billing/verify` khôi phục cùng `purchaseToken`. Gọi lại cùng `deviceId` mở đúng guest mới này |
 | Vượt `ANONYMOUS_SIGNUP_DAILY_CAP` tài khoản khách/IP/24h | `429 DEVICE_SESSION_LIMIT_REACHED` |
 | `deviceId` sai định dạng | `400 VALIDATION_ERROR` |
 
-`deviceId` chỉ lưu dạng HMAC-SHA256 (`deviceIdHash`), không lưu bản rõ. App gọi lại cùng `deviceId` sẽ mở lại đúng tài khoản; cài lại app trên Android tạo `deviceId` mới nên là tài khoản khách mới.
+`deviceId` chỉ lưu dạng HMAC-SHA256 (`deviceIdHash`), không lưu bản rõ. App gọi lại cùng `deviceId` sẽ mở lại đúng tài khoản, kể cả sau khi cài lại app trên Android. Android ID đổi khi factory reset hoặc khi app ký bằng khoá khác; khi đó là tài khoản khách mới.
 
 ### POST /auth/forgot-password
 
@@ -556,19 +557,21 @@ Content-Type: application/json
 {
   "accepted": true,
   "referrer": { "displayName": "Trần B" },
-  "creditsEarned": 1,
-  "creditBalance": 4
+  "creditsEarned": 5,
+  "creditBalance": 10
 }
 ```
 
 | Trường | Ghi chú |
 | --- | --- |
-| `creditsEarned` | Credits **người nhập** vừa nhận (`REFEREE_REWARD_CREDITS`, mặc định 1). Luôn có, kể cả khi chủ mã đã hết lượt thưởng trong ngày |
+| `creditsEarned` | Credits **người nhập** vừa nhận (`CREDIT_AMOUNTS.REFEREE_REWARD`, hiện là 5). Luôn có, kể cả khi chủ mã đã hết lượt thưởng trong ngày |
 | `creditBalance` | Số dư của người nhập sau khi cộng; client dùng để cập nhật số credits trên màn hình |
 
 Server trả `201` khi mã được ghi nhận, kể cả khi chủ mã đã hết lượt thưởng trong ngày (`CAPPED`). Response không cho người nhập biết chủ mã có được cộng hay không. Thứ tự kiểm tra theo [business-rules.md](business-rules.md#kiểm-tra-khi-nhập-mã-giới-thiệu). Mã của tài khoản đã xoá được coi là không tồn tại.
 
-Lỗi: `VALIDATION_ERROR` (thiếu `code` hoặc `code` không phải chuỗi), `REFERRAL_NOT_ALLOWED`, `REFERRAL_CODE_NOT_FOUND`, `REFERRAL_SELF`, `REFERRAL_ALREADY_USED`, `REFERRAL_CYCLE`, `RATE_LIMITED`.
+Lỗi: `VALIDATION_ERROR` (thiếu `code` hoặc `code` không phải chuỗi), `REFERRAL_NOT_ALLOWED`, `REFERRAL_CODE_NOT_FOUND`, `REFERRAL_SELF`, `REFERRAL_ALREADY_USED`, `REFERRAL_CYCLE`, `REFERRAL_DEVICE_USED`, `REFERRAL_NETWORK_LIMIT` (429), `RATE_LIMITED`.
+
+Header tuỳ chọn `x-device-id`: mobile gửi để giới hạn mỗi thiết bị một lần nhập; web không gửi.
 
 ### GET /me/referrals
 
@@ -576,16 +579,17 @@ Query: `cursor`, `limit` (xem [Phân trang](#phân-trang)).
 
 ```json
 {
-  "totalRewarded": 3,
-  "totalCreditsEarned": 6,
+  "totalRewarded": 1,
+  "totalCreditsEarned": 3,
   "items": [
-    { "displayName": "Lê C***", "status": "REWARDED", "creditsEarned": 2, "createdAt": "2026-10-12T02:10:00Z" },
+    { "displayName": "Lê C***", "status": "REWARDED", "creditsEarned": 3, "createdAt": "2026-10-12T02:10:00Z" },
     { "displayName": "Phạm D***", "status": "CAPPED", "creditsEarned": 0, "createdAt": "2026-10-13T09:00:00Z" }
   ],
   "nextCursor": null
 }
 ```
 
+- `creditsEarned` là số GEM thực nhận lúc đó; bản ghi trước khi đổi mức thưởng vẫn là 2.
 - Tên người được giới thiệu bị che một phần.
 - Người được giới thiệu đã xoá tài khoản (có `deletedAt`), hoặc không còn document user, hiện là `"Người dùng đã xoá"`. Không bao giờ trả `500` vì thiếu user.
 - `totalRewarded` và `totalCreditsEarned` tính trên toàn bộ danh sách, không chỉ trang hiện tại.

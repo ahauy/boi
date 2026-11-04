@@ -29,6 +29,12 @@ export class Device {
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   freeSpinUserId?: Types.ObjectId | null;
 
+  @Prop({ type: Date, default: null })
+  referralRedeemedAt?: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  referralRedeemedUserId?: Types.ObjectId | null;
+
   createdAt: Date;
   updatedAt: Date;
 }

@@ -3,6 +3,7 @@ export * from './pending-registration.schema';
 export * from './password-reset.schema';
 export * from './session.schema';
 export * from './referral.schema';
+export * from './referral-network-counter.schema';
 export * from './reading.schema';
 export * from './credit-transaction.schema';
 export * from './deleted-identity.schema';

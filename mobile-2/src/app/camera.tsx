@@ -13,15 +13,17 @@ import HandGuide from '../components/mystic/HandGuide';
 import CosmicBackground from '../components/CosmicBackground';
 import CosmicHand from '../components/CosmicHand';
 import { colors, radius, spacing, text as type } from '../theme';
+import { t, useI18n } from '../i18n';
 import { runExternalActivity } from '../lib/external-activity';
 import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { useReduceMotion } from '../lib/motion';
 import { useCapture } from '../state/capture';
 
-const HINTS = ['ĐỦ SÁNG', 'XOÈ NGÓN', 'HƯỚNG CAMERA'] as const;
+const HINTS = ['scan.hintLight', 'scan.hintFingers', 'scan.hintCamera'] as const;
 
 export default function CameraScreen() {
+  useI18n();
   const insets = useSafeAreaInsets();
   const { submitPhoto } = useCapture();
   const cameraRef = useRef<CameraViewHandle>(null);
@@ -53,14 +55,14 @@ export default function CameraScreen() {
     try {
       const shot = await cameraRef.current?.takePictureAsync({ quality: 0.9, exif: false });
       if (!shot?.uri) {
-        setError('Không chụp được ảnh. Hãy thử lại.');
+        setError(t('camera.captureFailed'));
         return;
       }
       submitPhoto({ uri: shot.uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
       setTimeout(() => router.back(), 120);
     } catch {
       // Android throw khi preview chưa sẵn sàng
-      setError('Không thể chụp ảnh, vui lòng thử lại.');
+      setError(t('camera.captureError'));
     } finally {
       setCapturing(false);
     }
@@ -71,7 +73,7 @@ export default function CameraScreen() {
     setError(null);
     const libraryPermission = await runExternalActivity('permission', () => ImagePicker.requestMediaLibraryPermissionsAsync());
     if (!libraryPermission.granted) {
-      setError('Không thể truy cập thư viện ảnh. Vui lòng cấp quyền trong Cài đặt.');
+      setError(t('camera.libraryDenied'));
       return;
     }
     const result = await runExternalActivity('photo_picker', () =>
@@ -99,7 +101,7 @@ export default function CameraScreen() {
       <View style={[styles.root, { alignItems: 'center', justifyContent: 'center', gap: spacing.md }]}>
         <CosmicBackground />
         <ActivityIndicator size="large" color={colors.gold} />
-        <Text style={[type.bodyMd, { color: colors.mute }]}>Đang kiểm tra quyền camera...</Text>
+        <Text style={[type.bodyMd, { color: colors.mute }]}>{t('camera.checking')}</Text>
       </View>
     );
   }
@@ -120,23 +122,23 @@ export default function CameraScreen() {
           }}>
           <CosmicHand size={210} scan={false} />
           <View style={{ alignItems: 'center', gap: spacing.sm }}>
-            <Text style={[type.eyebrow, { color: colors.gold }]}>ẤN TƯỢNG THẤU THỊ</Text>
-            <Text style={[type.headingLg, { color: colors.ink, textAlign: 'center' }]}>PalmSight cần quyền camera</Text>
+            <Text style={[type.eyebrow, { color: colors.gold }]}>{t('camera.eyebrow')}</Text>
+            <Text style={[type.headingLg, { color: colors.ink, textAlign: 'center' }]}>{t('camera.permTitle')}</Text>
             <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center', maxWidth: 320 }]}>
-              Ảnh được lưu cùng quẻ trong Lịch sử để bạn xem lại. Bạn có thể xoá bất cứ lúc nào.
+              {t('camera.permBody')}
             </Text>
           </View>
           {permission.canAskAgain ? (
-            <Button label="Cấp quyền camera" onPress={() => void runExternalActivity('permission', requestPermission)} style={{ minWidth: 240 }} noInterstitial />
+            <Button label={t('camera.grant')} onPress={() => void runExternalActivity('permission', requestPermission)} style={{ minWidth: 240 }} noInterstitial />
           ) : (
-            <Button label="Mở Cài đặt" onPress={() => void runExternalActivity('browser', () => Linking.openSettings())} style={{ minWidth: 240 }} noInterstitial />
+            <Button label={t('camera.openSettings')} onPress={() => void runExternalActivity('browser', () => Linking.openSettings())} style={{ minWidth: 240 }} noInterstitial />
           )}
           {!permission.canAskAgain ? (
             <Text style={[type.caption, { color: colors.mute, textAlign: 'center', maxWidth: 300 }]}>
-              Quyền camera đã bị tắt trước đó. Bật lại trong Cài đặt ứng dụng rồi quay lại đây.
+              {t('camera.permDenied')}
             </Text>
           ) : null}
-          <Button label="Quay lại" variant="ghost" onPress={() => router.back()} />
+          <Button label={t('reading.back')} variant="ghost" onPress={() => router.back()} />
         </View>
       </View>
     );
@@ -153,14 +155,14 @@ export default function CameraScreen() {
 
       <View style={{ flex: 1, paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + spacing.lg }}>
         <View style={styles.topBar}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Đóng camera" onPress={() => router.back()} style={({ pressed }) => [styles.sideButton, pressed && { opacity: 0.72 }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('camera.close')} onPress={() => router.back()} style={({ pressed }) => [styles.sideButton, pressed && { opacity: 0.72 }]}>
             <MaterialCommunityIcons name="close" size={23} color={colors.ink} />
           </Pressable>
 
           <View style={{ alignItems: 'center', gap: 2, flex: 1 }}>
-            <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 2.3 }]}>QUÉT LÒNG BÀN TAY</Text>
+            <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 2.3 }]}>{t('camera.title')}</Text>
             <Text style={[type.displaySm, { color: colors.ink }]} numberOfLines={2}>
-              Căn khung bàn tay
+              {t('camera.align')}
             </Text>
           </View>
 
@@ -169,7 +171,7 @@ export default function CameraScreen() {
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={torch ? 'Tắt đèn pin' : 'Bật đèn pin'}
+              accessibilityLabel={torch ? t('camera.torchOff') : t('camera.torchOn')}
               accessibilityState={{ selected: torch }}
               onPress={() => {
                 haptic.select();
@@ -183,7 +185,7 @@ export default function CameraScreen() {
 
         <View style={styles.guideArea} onLayout={measureGuideArea}>
           <Text pointerEvents="none" style={[type.eyebrow, { color: colors.goldLight, textAlign: 'center', marginBottom: spacing.sm, fontSize: 10 }]}>
-            ✦ ĐẶT LÒNG BÀN TAY TRONG KHUNG ✦
+            {t('camera.frameLabel')}
           </Text>
           {guideAreaHeight > 0 ? <HandGuide height={guideHeight} /> : null}
         </View>
@@ -192,13 +194,13 @@ export default function CameraScreen() {
           <View style={styles.hints}>
             {HINTS.map((hint) => (
               <View key={hint} style={styles.hintPill}>
-                <Text style={[type.monoStrong, { color: colors.goldLight, fontSize: 10 }]}>{hint}</Text>
+                <Text style={[type.monoStrong, { color: colors.goldLight, fontSize: 10 }]}>{t(hint).toUpperCase()}</Text>
               </View>
             ))}
           </View>
 
           <Text pointerEvents="none" style={[type.caption, { color: colors.body, textAlign: 'center' }]}>
-            Giữ yên trong khung rồi bấm nút vàng.
+            {t('camera.holdStill')}
           </Text>
 
           {error ? (
@@ -208,13 +210,13 @@ export default function CameraScreen() {
           ) : null}
 
           <View style={styles.controls}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Chọn ảnh từ thư viện" onPress={() => void pickFromGallery()} style={({ pressed }) => [styles.sideButton, pressed && { opacity: 0.72 }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={t('camera.pickGallery')} onPress={() => void pickFromGallery()} style={({ pressed }) => [styles.sideButton, pressed && { opacity: 0.72 }]}>
               <MaterialCommunityIcons name="image-multiple-outline" size={21} color={colors.goldLight} />
             </Pressable>
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Chụp ảnh"
+              accessibilityLabel={t('camera.capture')}
               accessibilityState={{ disabled: !ready || capturing, busy: capturing }}
               onPress={() => void capture()}
               disabled={!ready || capturing}
@@ -224,7 +226,7 @@ export default function CameraScreen() {
               </LinearGradient>
             </Pressable>
 
-            <Pressable accessibilityRole="button" accessibilityLabel="Đổi camera trước sau" onPress={toggleSelfie} style={({ pressed }) => [styles.sideButton, pressed && { opacity: 0.72 }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={t('camera.flip')} onPress={toggleSelfie} style={({ pressed }) => [styles.sideButton, pressed && { opacity: 0.72 }]}>
               <MaterialCommunityIcons name="camera-flip-outline" size={23} color={colors.ink} />
             </Pressable>
           </View>

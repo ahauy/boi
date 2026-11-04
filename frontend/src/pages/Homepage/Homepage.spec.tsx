@@ -54,7 +54,7 @@ describe("Homepage (Landing Page)", () => {
     renderHomepage();
 
     // Badge
-    expect(screen.getByText("Miễn phí 3 credits")).toBeInTheDocument();
+    expect(screen.getByText("Miễn phí 5 GEM")).toBeInTheDocument();
 
     // H1
     expect(
@@ -245,12 +245,12 @@ describe("Homepage (Landing Page)", () => {
     renderHomepage();
 
     expect(
-      screen.getByRole("heading", { name: "Credits", level: 2 })
+      screen.getByRole("heading", { name: "GEM", level: 2 })
     ).toBeInTheDocument();
 
-    expect(screen.getByText("[+] 3 credits")).toBeInTheDocument();
-    expect(screen.getByText("[+] +2 credits")).toBeInTheDocument();
-    expect(screen.getByText("[+] 1 lần xem = 1 credit")).toBeInTheDocument();
+    expect(screen.getByText("[+] 5 GEM")).toBeInTheDocument();
+    expect(screen.getByText("[+] +3 GEM")).toBeInTheDocument();
+    expect(screen.getByText("[+] 1 lần xem = 5 GEM")).toBeInTheDocument();
   });
 
   it("should render FaqSection and handle accordion open/close interactions", () => {
@@ -303,7 +303,7 @@ describe("Homepage (Landing Page)", () => {
     expect(screen.getByTestId("faq-answer-2")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Hệ thống tự động hoàn trả 1 credit vào ví của bạn nếu ảnh không đạt yêu cầu hoặc xảy ra lỗi."
+        "Hệ thống tự động hoàn trả số GEM đã trừ vào ví của bạn nếu ảnh không đạt yêu cầu hoặc xảy ra lỗi."
       )
     ).toBeInTheDocument();
   });

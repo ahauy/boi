@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { isBillingConfigured } from './billing-config';
 
 export type PlanKind = 'weekly' | 'yearly' | 'monthly';
 
@@ -27,18 +26,20 @@ export interface BillingStoreState {
   isRestoring: boolean;
   lastReconciledAt: number;
   vipGiftBannerAmount: number | null;
+  vipRestoredNotice: boolean;
   lastError: string | null;
 }
 
 let state: BillingStoreState = {
   connected: false,
-  billingEnabled: isBillingConfigured(),
+  billingEnabled: false,
   products: {},
   activePurchaseTokens: {},
   isPurchasing: false,
   isRestoring: false,
   lastReconciledAt: 0,
   vipGiftBannerAmount: null,
+  vipRestoredNotice: false,
   lastError: null,
 };
 
@@ -99,13 +100,14 @@ export const billingStore = {
   reset(): void {
     state = {
       connected: false,
-      billingEnabled: isBillingConfigured(),
+      billingEnabled: false,
       products: {},
       activePurchaseTokens: {},
       isPurchasing: false,
       isRestoring: false,
       lastReconciledAt: 0,
       vipGiftBannerAmount: null,
+      vipRestoredNotice: false,
       lastError: null,
     };
     notify();

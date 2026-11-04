@@ -40,6 +40,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
 } from "@palmsight/shared";
+import { resolveClientIp } from "../common/client-ip.util";
 import { AuthService } from "./auth.service";
 import { PasswordService } from "./password.service";
 import { AuthRateLimitGuard } from "./guards/auth-rate-limit.guard";
@@ -63,12 +64,16 @@ export class AuthController {
   @HttpCode(HttpStatus.ACCEPTED)
   @UseGuards(AuthRateLimitGuard)
   async register(
-    @Body() body: RegisterRequestDto
+    @Body() body: RegisterRequestDto,
+    @Req() req: Request
   ): Promise<RegisterResponseDto> {
     const validated = await registerSchema.validate(body, {
       abortEarly: false,
     });
-    return this.authService.register(validated);
+    return this.authService.register(
+      validated,
+      resolveClientIp(req, this.configService)
+    );
   }
 
   @Post("resend-verification")
@@ -97,6 +102,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async verifyEmail(
     @Body() body: VerifyEmailRequestDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response
   ): Promise<AuthResponseDto> {
     if (
@@ -119,7 +125,11 @@ export class AuthController {
       ? String(body.claimToken).trim()
       : undefined;
     const { authResponse, rawRefreshToken } =
-      await this.authService.verifyEmail(body.token.trim(), claimToken);
+      await this.authService.verifyEmail(
+        body.token.trim(),
+        claimToken,
+        resolveClientIp(req, this.configService)
+      );
 
     this.setRefreshCookie(res, rawRefreshToken);
     return authResponse;

@@ -7,7 +7,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import Text from '../components/AppText';
@@ -15,6 +15,7 @@ import CosmicBackground from '../components/CosmicBackground';
 import CosmicHand from '../components/CosmicHand';
 import { Button, ProgressBar } from '../components/ui';
 import NativeAdSlot from '../ads/native-ad-slot';
+import { useAdsStore } from '../ads/ads-store';
 import { colors, radius, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
 import {
@@ -72,6 +73,8 @@ export default function FunnelView({
   onBack,
 }: FunnelViewProps) {
   const insets = useSafeAreaInsets();
+  const frame = useSafeAreaFrame();
+  const { bannerHeight } = useAdsStore();
   const { width, height, fontScale } = useWindowDimensions();
   const { t } = useI18n();
 
@@ -127,9 +130,16 @@ export default function FunnelView({
 
   const selectedValue = getSelectedSingleChoice();
 
+  // The root screen shrinks and grows with the banner below it. Sizing the content from the
+  // frame keeps Continue in place whether the ad loads, fails or the banner collapses (§4.2).
+  const contentStyle = showFillSpaceAd
+    ? { height: frame.height - bannerHeight - insets.bottom }
+    : styles.flexContent;
+
   return (
     <View style={styles.root}>
       <CosmicBackground />
+      <View style={contentStyle}>
 
       {/* Header with back button, step progress bar, and optional Skip button (§4.2) */}
       <View
@@ -140,7 +150,7 @@ export default function FunnelView({
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('reading.back')}
           onPress={() => {
             haptic.tap();
             onBack();
@@ -458,7 +468,7 @@ export default function FunnelView({
             styles.reservedAdContainer,
             {
               height: reservedAdHeight,
-              paddingBottom: Math.max(insets.bottom, spacing.xs),
+              paddingBottom: spacing.xs,
             },
           ]}
         >
@@ -469,6 +479,7 @@ export default function FunnelView({
           />
         </View>
       ) : null}
+      </View>
     </View>
   );
 }
@@ -477,6 +488,10 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.canvas,
+    overflow: 'hidden',
+  },
+  flexContent: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

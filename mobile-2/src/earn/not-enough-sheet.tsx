@@ -54,6 +54,10 @@ export function NotEnoughSheet({
     return Date.now() - openedAtRef.current < DOUBLE_TAP_GUARD_MS;
   }
 
+  function handleDismiss() {
+    if (!isGuardActive()) onClose();
+  }
+
   async function handleWatchAd() {
     if (isGuardActive() || adLoading) return;
     setAdLoading(true);
@@ -91,9 +95,9 @@ export function NotEnoughSheet({
       transparent
       animationType="slide"
       statusBarTranslucent
-      onRequestClose={onClose}>
+      onRequestClose={handleDismiss}>
       <View style={styles.scrim}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleDismiss} />
         <View style={styles.sheetContainer}>
           <LinearGradient
             colors={['rgba(28,38,76,0.98)', 'rgba(8,13,30,0.98)']}
@@ -146,9 +150,7 @@ export function NotEnoughSheet({
               <Button
                 label={t('common.close')}
                 variant="ghost"
-                onPress={() => {
-                  if (!isGuardActive()) onClose();
-                }}
+                onPress={handleDismiss}
                 noInterstitial
               />
             </View>

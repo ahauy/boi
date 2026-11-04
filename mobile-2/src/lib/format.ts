@@ -1,4 +1,6 @@
+import { t } from '../i18n';
 import {
+  CREDIT_AMOUNTS,
   CreditTransactionType,
   HandOrientation,
   ReadingSchool,
@@ -75,5 +77,11 @@ export function transactionLabel(type: CreditTransactionType, note?: string): st
   }
 }
 
+export const REFERRAL_AMOUNTS = {
+  inviter: CREDIT_AMOUNTS.REFERRAL_REWARD,
+  invitee: CREDIT_AMOUNTS.REFEREE_REWARD,
+  cap: CREDIT_AMOUNTS.REFERRAL_DAILY_CAP,
+};
+
 export const SHARE_TEXT_INTRO = (code: string) =>
-  `Nhập mã ${code} trên PalmSight: bạn được thêm 1 credit xem bói miễn phí`;
+  t('referral.shareText', { code, invitee: REFERRAL_AMOUNTS.invitee });

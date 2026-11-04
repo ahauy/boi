@@ -108,7 +108,7 @@ export const DataDeletionContent = () => {
         <div className="p-4 bg-[#241842]/80 border border-[#d4af37]/40 text-sm text-ink rounded-xl">
           <p className="font-bold text-[#f5d77f] mb-1.5 font-rune">[!] Cảnh báo khi tạo lại tài khoản:</p>
           <p className="text-body leading-relaxed m-0">
-            Nếu bạn đăng ký lại bằng địa chỉ email hoặc tài khoản Google/Facebook đã từng bị xoá, bạn vẫn có thể sử dụng bình thường nhưng <strong className="text-[#f7e7b4]">tài khoản sẽ bắt đầu với 0 credit</strong> (không nhận 3 credits quà tặng ban đầu) và <strong className="text-[#f7e7b4]">không được quyền nhập mã giới thiệu</strong> của người khác (theo ADR-0009).
+            Nếu bạn đăng ký lại bằng địa chỉ email hoặc tài khoản Google/Facebook đã từng bị xoá, bạn vẫn có thể sử dụng bình thường nhưng <strong className="text-[#f7e7b4]">tài khoản sẽ bắt đầu với 0 GEM</strong> (không nhận quà tặng ban đầu) và <strong className="text-[#f7e7b4]">không được quyền nhập mã giới thiệu</strong> của người khác (theo ADR-0009).
           </p>
         </div>
       </section>

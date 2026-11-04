@@ -47,10 +47,10 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
 
     // Display title & subtitle
     expect(screen.getByRole('heading', { name: 'Tạo tài khoản' })).toBeInTheDocument();
-    expect(screen.getByText('Xác thực email để nhận 3 credits.')).toBeInTheDocument();
+    expect(screen.getByText('Xác thực email để nhận 5 GEM.')).toBeInTheDocument();
 
     // Value propositions with [+] terminal markers
-    expect(screen.getByText('1 lần xem bói = 1 credit')).toBeInTheDocument();
+    expect(screen.getByText('1 lần xem bói = 5 GEM')).toBeInTheDocument();
     expect(screen.getByText('Chọn phương Tây, phương Đông hoặc Ấn Độ')).toBeInTheDocument();
     expect(screen.getByText('Xoá ảnh và dữ liệu bất cứ lúc nào')).toBeInTheDocument();
 

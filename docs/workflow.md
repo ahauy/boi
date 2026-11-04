@@ -123,12 +123,12 @@ Chỉ nhánh tạo user mới mới cộng 3 credits. Gộp theo email chỉ áp
 ```mermaid
 flowchart TB
     submit["POST /me/referral<br/>body code + Bearer token"]
-    validate["Kiểm tra hợp lệ<br/>tài khoản được phép nhập mã<br/>mã tồn tại, không tự nhập<br/>chưa từng nhập mã<br/>không nhập mã của người mình đã mời"]
+    validate["Kiểm tra hợp lệ<br/>tài khoản được phép nhập mã<br/>mã tồn tại, không tự nhập<br/>chưa từng nhập mã<br/>không nhập mã của người mình đã mời<br/>thiết bị chưa từng nhập mã"]
     reject["Từ chối 4xx<br/>mã lỗi REFERRAL_*<br/>không ghi dữ liệu"]
-    cap{"Chủ mã đã nhận<br/>10 lượt hôm nay?"}
-    capped["CAPPED<br/>người nhập +1 REFEREE_BONUS<br/>chủ mã không được cộng"]
-    rewarded["REWARDED<br/>người nhập +1 REFEREE_BONUS<br/>chủ mã +2 REFERRAL_BONUS"]
-    done["201 { accepted, creditsEarned: 1, creditBalance }"]
+    cap{"Chủ mã đã nhận<br/>5 lượt hôm nay?"}
+    capped["CAPPED<br/>người nhập +5 REFEREE_BONUS<br/>chủ mã không được cộng"]
+    rewarded["REWARDED<br/>người nhập +5 REFEREE_BONUS<br/>chủ mã +3 REFERRAL_BONUS"]
+    done["201 { accepted, creditsEarned: 5, creditBalance }"]
 
     submit --> validate
     validate -->|sai| reject

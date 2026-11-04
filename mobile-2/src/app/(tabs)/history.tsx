@@ -12,8 +12,10 @@ import { Banner, Button, SectionLabel } from '../../components/ui';
 import { errorMessageOf } from '../../lib/forms';
 import { fetchReadings } from '../../lib/readings';
 import { colors, radius, spacing, text as type } from '../../theme';
+import { t, useI18n } from '../../i18n';
 
 export default function HistoryScreen() {
+  useI18n();
   const [items, setItems] = useState<ReadingListItemDto[]>([]);
   const [cursor, setCursor] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -30,7 +32,7 @@ export default function HistoryScreen() {
       setFailure(null);
       setFailureMore(false);
     } catch (error) {
-      setFailure(errorMessageOf(error, 'Không thể tải lịch sử xem bói. Vui lòng thử lại sau.'));
+      setFailure(errorMessageOf(error, t('history.loadFailed')));
       setFailureMore(false);
     } finally {
       setLoading(false);
@@ -47,7 +49,7 @@ export default function HistoryScreen() {
       setFailure(null);
       setFailureMore(false);
     } catch (error) {
-      setFailure(errorMessageOf(error, 'Không thể tải thêm lịch sử xem bói. Vui lòng thử lại sau.'));
+      setFailure(errorMessageOf(error, t('history.loadMoreFailed')));
       setFailureMore(true);
     } finally {
       setLoadingMore(false);
@@ -61,7 +63,7 @@ export default function HistoryScreen() {
   );
 
   return (
-    <Screen scroll={false} header={<ScreenHeader eyebrow="Sổ thiên mệnh" title="Lịch sử xem bói" right={<HeaderCredits />} />}>
+    <Screen scroll={false} header={<ScreenHeader eyebrow={t('history.eyebrow')} title={t('history.title')} right={<HeaderCredits />} />}>
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
@@ -74,10 +76,10 @@ export default function HistoryScreen() {
         ListHeaderComponent={
           <View style={{ gap: spacing.md, paddingBottom: spacing.xs }}>
             {failure && !failureMore && items.length > 0 ? (
-              <Banner variant="error" title={failure} action={{ label: 'Thử lại', onPress: () => void loadFirst() }} />
+              <Banner variant="error" title={failure} action={{ label: t('screen.retry'), onPress: () => void loadFirst() }} />
             ) : null}
             {items.length > 0 ? (
-              <SectionLabel right={<Text style={[type.code, { color: colors.goldLight }]}>{`${items.length} QUẺ`}</Text>}>TẤT CẢ QUẺ</SectionLabel>
+              <SectionLabel right={<Text style={[type.code, { color: colors.goldLight }]}>{t('history.count', { count: items.length })}</Text>}>{t('history.all')}</SectionLabel>
             ) : null}
           </View>
         }
@@ -87,19 +89,19 @@ export default function HistoryScreen() {
               {[0, 1, 2].map((key) => (
                 <View key={key} style={{ height: 112, borderRadius: radius.xl, backgroundColor: colors.glassFill, borderWidth: 1, borderColor: colors.glassBorder }} />
               ))}
-              <Text style={[type.caption, { color: colors.mute, textAlign: 'center', paddingTop: spacing.md }]}>Đang mở sổ thiên mệnh...</Text>
+              <Text style={[type.caption, { color: colors.mute, textAlign: 'center', paddingTop: spacing.md }]}>{t('history.opening')}</Text>
             </View>
           ) : failure ? (
-            <Banner variant="error" title={failure} action={{ label: 'Thử lại', onPress: () => void loadFirst() }} />
+            <Banner variant="error" title={failure} action={{ label: t('screen.retry'), onPress: () => void loadFirst() }} />
           ) : (
             <View style={{ alignItems: 'center', gap: spacing.md, paddingTop: spacing.sm }}>
               <CosmicHand size={210} scan={false} />
-              <Text style={[type.eyebrow, { color: colors.gold }]}>SỔ THIÊN MỆNH</Text>
-              <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>Chưa có quẻ nào được lưu</Text>
+              <Text style={[type.eyebrow, { color: colors.gold }]}>{t('history.eyebrowUpper')}</Text>
+              <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>{t('history.emptyTitle')}</Text>
               <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center', maxWidth: 300 }]}>
-                Mỗi lần xem bói sẽ được ghi vào đây, kèm ảnh chỉ tay và bài luận giải.
+                {t('history.emptyBody')}
               </Text>
-              <Button label="Bắt đầu xem bói" onPress={() => router.navigate('/scan')} />
+              <Button label={t('home.start')} onPress={() => router.navigate('/scan')} />
             </View>
           )
         }
@@ -107,7 +109,7 @@ export default function HistoryScreen() {
         ListFooterComponent={
           <View style={{ gap: spacing.md, paddingTop: spacing.md }}>
             {loadingMore ? <ActivityIndicator color={colors.gold} /> : null}
-            {failureMore && failure ? <Banner variant="error" title={failure} action={{ label: 'Thử lại', onPress: () => void loadMore() }} /> : null}
+            {failureMore && failure ? <Banner variant="error" title={failure} action={{ label: t('screen.retry'), onPress: () => void loadMore() }} /> : null}
           </View>
         }
       />

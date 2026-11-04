@@ -15,7 +15,7 @@ export const FAQ_DATA: FaqItem[] = [
   {
     question: "Nếu AI bị lỗi thì sao?",
     answer:
-      "Hệ thống tự động hoàn trả 1 credit vào ví của bạn nếu ảnh không đạt yêu cầu hoặc xảy ra lỗi.",
+      "Hệ thống tự động hoàn trả số GEM đã trừ vào ví của bạn nếu ảnh không đạt yêu cầu hoặc xảy ra lỗi.",
   },
 ];
 

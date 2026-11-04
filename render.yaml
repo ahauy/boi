@@ -72,14 +72,14 @@ services:
         value: 0.7
       - key: STARTER_GRANT
         value: 5
-      - key: REFERRAL_REWARD_CREDITS
-        value: 2
-      - key: REFEREE_REWARD_CREDITS
-        value: 1
       - key: PRICE_PER_ACTION
         value: 5
       - key: REFERRAL_DAILY_CAP
-        value: 10
+        value: 5
+      - key: REFERRAL_NETWORK_DAILY_CAP
+        value: 5
+      - key: CLIENT_IP_HEADER
+        value: x-forwarded-for
       - key: IMAGE_MAX_BYTES
         value: 8388608
       - key: IMAGE_MAX_DIMENSION

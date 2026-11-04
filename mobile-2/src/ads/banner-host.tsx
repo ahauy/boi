@@ -21,8 +21,6 @@ import { colors } from '../theme';
  * - Unmount only when non-eligible (VIP or ads off).
  */
 
-const DEFAULT_BANNER_HEIGHT = 50;
-
 export default function BannerHost() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -34,7 +32,6 @@ export default function BannerHost() {
 
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
-  const [bannerHeight, setBannerHeight] = useState(DEFAULT_BANNER_HEIGHT);
 
   const sdk = getMaxSdk();
   const sdkReady = Boolean(sdk) && adsState.status === 'ready';
@@ -53,7 +50,7 @@ export default function BannerHost() {
     let cancelled = false;
     sdk.BannerAd.getAdaptiveHeightForWidth(width)
       .then((height) => {
-        if (!cancelled && height > 0) setBannerHeight(height);
+        if (!cancelled) adsStore.setBannerHeight(height);
       })
       .catch(() => undefined);
     return () => {
@@ -61,6 +58,7 @@ export default function BannerHost() {
     };
   }, [sdk, sdkReady, width]);
 
+  const { bannerHeight } = adsState;
   const vipKnown = authStatus === 'ready';
   const isVip = Boolean(user?.vip?.active);
   const isOnboarding = onboardingStatus === 'pending' || pathname === '/onboarding';

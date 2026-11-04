@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { CREDIT_AMOUNTS } from "@palmsight/shared";
 import BaseUrl from "@/consts/baseUrl";
 import { showSuccess } from "@/helpers/toast";
 import type { UserDto } from "../types";
@@ -20,7 +21,7 @@ export const ReferralSection = ({ user }: ReferralSectionProps) => {
       : "https://palmsight.app";
   const shareLink = user?.referralLink || `${domain}/r/${referralCode}`;
   const sampleMessage = referralCode
-    ? `Nhập mã ${referralCode} trên PalmSight: bạn được thêm 1 credit xem bói miễn phí`
+    ? `Nhập mã ${referralCode} trên PalmSight: bạn được thêm ${CREDIT_AMOUNTS.REFEREE_REWARD} GEM xem bói miễn phí`
     : "";
 
   const handleCopyCode = () => {
@@ -124,7 +125,7 @@ export const ReferralSection = ({ user }: ReferralSectionProps) => {
             to={BaseUrl.Referral}
             className="text-xs sm:text-sm font-medium text-gold-light underline underline-offset-4 hover:text-gold transition-colors inline-flex items-center gap-1"
           >
-            Mời bạn bè nhận credit (Xem chi tiết danh sách người đã mời) &rarr;
+            Mời bạn bè nhận GEM (Xem chi tiết danh sách người đã mời) &rarr;
           </Link>
         </div>
       </div>

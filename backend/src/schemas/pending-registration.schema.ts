@@ -43,6 +43,10 @@ export class PendingRegistration {
   })
   claimToken?: string | null;
 
+  // IP lúc đăng ký, dùng cho giới hạn thưởng giới thiệu theo mạng khi xác minh email.
+  @Prop({ type: String, default: null })
+  signupIpHash?: string | null;
+
   @Prop({ type: String, required: true, trim: true })
   tokenHash: string;
 

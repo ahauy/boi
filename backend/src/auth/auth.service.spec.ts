@@ -29,9 +29,7 @@ describe('AuthService Unit Logic (TC-004, TC-005, TC-006)', () => {
           EMAIL_VERIFY_TTL_HOURS: 24,
           IDENTITY_HASH_SECRET: 'test-identity-secret-minimum-32-chars',
           SIGNUP_BONUS_CREDITS: 3,
-          REFERRAL_REWARD_CREDITS: 2,
-          REFEREE_REWARD_CREDITS: 1,
-          REFERRAL_DAILY_CAP: 10,
+          REFERRAL_DAILY_CAP: 5,
         };
         return map[key] ?? def;
       }),
@@ -49,7 +47,7 @@ describe('AuthService Unit Logic (TC-004, TC-005, TC-006)', () => {
     } as unknown as MailService;
     creditLedgerService = {
       recordWithSession: vi.fn().mockResolvedValue(undefined),
-      spendForReading: vi.fn().mockResolvedValue(undefined),
+      spendForReading: vi.fn().mockResolvedValue({ balanceAfter: 2 }),
       grantSignupBonus: vi.fn().mockResolvedValue({ balanceAfter: 3, amount: 3, type: 'SIGNUP_BONUS' }),
       credit: vi.fn().mockResolvedValue({ balanceAfter: 3, amount: 3 }),
       debit: vi.fn().mockResolvedValue({ balanceAfter: 2, amount: -1 }),
@@ -111,6 +109,7 @@ describe('AuthService Unit Logic (TC-004, TC-005, TC-006)', () => {
       jwtService,
       configService,
       connection,
+      { prepare: vi.fn().mockResolvedValue(null), take: vi.fn() } as any,
     );
   });
 
@@ -245,9 +244,7 @@ describe('AuthService Unit Logic (TC-004, TC-005, TC-006)', () => {
 
     it('should catch E11000 on username in verifyEmail and throw ConflictException with USERNAME_TAKEN', async () => {
       const mockSession = {
-        startTransaction: vi.fn(),
-        commitTransaction: vi.fn(),
-        abortTransaction: vi.fn(),
+        withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
         endSession: vi.fn(),
       };
       connection.startSession.mockResolvedValue(mockSession);
@@ -291,7 +288,7 @@ describe('AuthService Unit Logic (TC-004, TC-005, TC-006)', () => {
         },
       });
 
-      expect(mockSession.abortTransaction).toHaveBeenCalled();
+      expect(mockSession.withTransaction).toHaveBeenCalled();
       expect(mockSession.endSession).toHaveBeenCalled();
     });
   });
@@ -449,9 +446,7 @@ describe('AuthService Unit Logic (TC-004, TC-005, TC-006)', () => {
 
     it('TC-012: verifyEmail with valid claimToken deducts 1 credit, marks reading DONE and returns balance 2', async () => {
       const mockSession = {
-        startTransaction: vi.fn(),
-        commitTransaction: vi.fn(),
-        abortTransaction: vi.fn(),
+        withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
         endSession: vi.fn(),
       };
       connection.startSession.mockResolvedValue(mockSession);
@@ -519,9 +514,7 @@ describe('AuthService Unit Logic (TC-004, TC-005, TC-006)', () => {
 
     it('TC-013: verifyEmail with expired/non-existent claimToken preserves 3 credits and sets claimFailed = true', async () => {
       const mockSession = {
-        startTransaction: vi.fn(),
-        commitTransaction: vi.fn(),
-        abortTransaction: vi.fn(),
+        withTransaction: vi.fn(async (fn: () => Promise<unknown>) => fn()),
         endSession: vi.fn(),
       };
       connection.startSession.mockResolvedValue(mockSession);

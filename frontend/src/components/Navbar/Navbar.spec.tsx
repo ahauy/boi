@@ -114,7 +114,7 @@ describe("Navbar Component", () => {
     expect(screen.getByRole("link", { name: "Tài khoản" })).toBeInTheDocument();
 
     const creditBadge = screen.getByTestId("credit-balance-badge");
-    expect(creditBadge).toHaveTextContent("[5 CREDITS]");
+    expect(creditBadge).toHaveTextContent("[5 GEM]");
 
     const userMenuButton = screen.getByRole("button", { name: "User menu" });
     expect(userMenuButton).toHaveTextContent("L");
@@ -195,7 +195,7 @@ describe("Navbar Component", () => {
 
     expect(screen.getByRole("link", { name: "Xem bói" })).toBeInTheDocument();
     expect(screen.getByTestId("credit-balance-badge")).toHaveTextContent(
-      "[7 CREDITS]"
+      "[7 GEM]"
     );
     expect(
       screen.getByRole("button", { name: "User menu" })

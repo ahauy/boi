@@ -391,20 +391,22 @@ schema-version: "1.2"
   - **Priority:** Should-Have (P1)
   - **Depends-on:** `US-REF-001`, `US-WALLET-001`
   - **Blocks:** `US-ACCT-001`
-  - **Mô tả:** Người dùng nhập mã giới thiệu của bạn bè để nhận +1 credit và tặng người mời +2 credits. Hệ thống áp dụng nghiêm ngặt 6 tầng kiểm tra nghiệp vụ và xử lý cộng thưởng nguyên tử trong một MongoDB transaction.
+  - **Mô tả:** Người dùng nhập mã giới thiệu của bạn bè để nhận +5 GEM và tặng người mời +3 GEM. Hệ thống áp dụng nghiêm ngặt 8 tầng kiểm tra nghiệp vụ và xử lý cộng thưởng nguyên tử trong một MongoDB transaction.
   - **Acceptance Criteria (AC):**
-    - [ ] Endpoint `POST /me/referral` thực hiện tuần tự 6 tầng kiểm tra:
+    - [ ] Endpoint `POST /me/referral` thực hiện tuần tự 8 tầng kiểm tra:
       1. Kiểm tra tài khoản được phép nhập mã: không phải tài khoản tạo lại từ email/identities đã xóa (`REFERRAL_NOT_ALLOWED` - 403).
       2. Kiểm tra mã tồn tại trong hệ thống (`REFERRAL_CODE_NOT_FOUND` - 404).
       3. Kiểm tra không được tự nhập mã của chính mình (`REFERRAL_SELF` - 422).
       4. Kiểm tra tài khoản chưa từng nhập mã trước đây (ràng buộc unique `referrals.refereeId` - 409 `REFERRAL_ALREADY_USED`).
       5. Chống chu trình giới thiệu chéo: chủ mã không phải là người do chính mình giới thiệu (`REFERRAL_CYCLE` - 422).
-      6. Kiểm tra trần thưởng ngày của chủ mã: nếu chủ mã đã đạt trần `REFERRAL_DAILY_CAP` (10 lượt/ngày theo múi giờ Việt Nam), bản ghi được lưu với `status = CAPPED` (người nhập vẫn nhận +1 credit `REFEREE_BONUS`, chủ mã không được cộng thêm).
-    - [ ] Nếu vượt qua cả 6 kiểm tra: lưu bản ghi với `status = REWARDED`; người nhập nhận +1 credit (`REFEREE_BONUS`), chủ mã nhận +2 credits (`REFERRAL_BONUS`) trong cùng một MongoDB transaction.
+      6. Kiểm tra thiết bị chưa từng nhập mã khi xác định được thiết bị (`REFERRAL_DEVICE_USED` - 409).
+      7. Kiểm tra giới hạn theo mạng trong ngày (`REFERRAL_NETWORK_LIMIT` - 429).
+      8. Kiểm tra trần thưởng ngày của chủ mã: nếu chủ mã đã đạt trần `REFERRAL_DAILY_CAP` (5 lượt/ngày theo múi giờ Việt Nam), bản ghi được lưu với `status = CAPPED` (người nhập vẫn nhận +5 GEM `REFEREE_BONUS`, chủ mã không được cộng thêm).
+    - [ ] Nếu vượt qua cả 8 kiểm tra: lưu bản ghi với `status = REWARDED`; người nhập nhận +5 GEM (`REFEREE_BONUS`), chủ mã nhận +3 GEM (`REFERRAL_BONUS`) trong cùng một MongoDB transaction.
     - [ ] Hỗ trợ áp dụng mã tự động ngay lúc xác minh email đăng ký (nếu người dùng đã điền mã trong form đăng ký).
     - [ ] Màn hình `/referral/enter` hỗ trợ người dùng nhập mã bổ sung bất kỳ lúc nào sau khi đăng nhập (miễn là trường `canEnterCode == true`).
   - **Tasks (Phân rã kỹ thuật cho Subagents):**
-    - [ ] **Backend:** Xây dựng `ReferralsService` và controller `POST /me/referral`; tích hợp transaction liên thông với `CreditLedgerService`; viết kịch bản test đầy đủ cho 6 ca từ chối và ca trần ngày CAPPED.
+    - [ ] **Backend:** Xây dựng `ReferralsService` và controller `POST /me/referral`; tích hợp transaction liên thông với `CreditLedgerService`; viết kịch bản test đầy đủ cho các ca từ chối và ca trần ngày CAPPED.
     - [ ] **Frontend:**
       - Tích hợp và đối soát độ tương đồng (Fidelity Check) qua `get_screen` Stitch MCP:
         - Stitch Screen: `PalmSight - Nhập mã giới thiệu` (`f5d217aa5f13413fafe761311d74aec1`)
@@ -644,10 +646,9 @@ AI_TIMEOUT_MS=40000
 
 # ── Quy tắc Credits Hằng số ──────────────────────────────────
 SIGNUP_BONUS_CREDITS=3
-REFERRAL_REWARD_CREDITS=2
-REFEREE_REWARD_CREDITS=1
 READING_COST_CREDITS=1
-REFERRAL_DAILY_CAP=10
+REFERRAL_DAILY_CAP=5
+REFERRAL_NETWORK_DAILY_CAP=5
 ```
 
 ---

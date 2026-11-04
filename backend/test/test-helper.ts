@@ -18,6 +18,7 @@ import { BillingModule } from "../src/billing/billing.module";
 import { MailService } from "../src/mail/mail.service";
 import { GoogleAuthVerifier } from "../src/auth/google-auth.verifier";
 import { FacebookAuthVerifier } from "../src/auth/facebook-auth.verifier";
+import { ReferralNetworkCounter } from "../src/schemas/referral-network-counter.schema";
 
 export interface TestAppInstance {
   app: INestApplication;
@@ -51,6 +52,7 @@ export interface TestAppOptions {
   pricePerAction?: number;
   starterNetworkDailyCap?: number;
   anonymousSignupDailyCap?: number;
+  referralNetworkDailyCap?: number;
 }
 
 export async function createTestApp(
@@ -59,6 +61,21 @@ export async function createTestApp(
   const replSet = await MongoMemoryReplSet.create({
     replSet: { count: 1, storageEngine: "wiredTiger" },
   });
+
+  try {
+    return await startTestApp(replSet, options);
+  } catch (error) {
+    // Lỗi khởi động không tới được closeTestApp, nên phải dừng mongod ở đây
+    await mongoose.disconnect().catch(() => undefined);
+    await replSet.stop().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function startTestApp(
+  replSet: MongoMemoryReplSet,
+  options: TestAppOptions
+): Promise<TestAppInstance> {
   const mongoUri = replSet.getUri();
 
   const sentEmails: Array<{
@@ -109,9 +126,10 @@ export async function createTestApp(
             MAX_ACTIONS_PER_TAP: 5,
             STARTER_NETWORK_DAILY_CAP: options.starterNetworkDailyCap ?? 5,
             ANONYMOUS_SIGNUP_DAILY_CAP: options.anonymousSignupDailyCap ?? 3,
-            REFERRAL_REWARD_CREDITS: 2,
-            REFEREE_REWARD_CREDITS: 1,
-            REFERRAL_DAILY_CAP: 10,
+            REFERRAL_DAILY_CAP: 5,
+            REFERRAL_NETWORK_DAILY_CAP: options.referralNetworkDailyCap ?? 5,
+            // Request không gửi header này được coi là không có IP nên không tính giới hạn mạng.
+            CLIENT_IP_HEADER: "cf-connecting-ip",
             PUBLIC_BASE_URL: "http://localhost:5173",
             GOOGLE_CLIENT_ID:
               "test-google-client-id.apps.googleusercontent.com",
@@ -181,6 +199,7 @@ export async function createTestApp(
     "ad_rewards",
     "play_subscriptions",
     "billing_events",
+    "referral_network_counters",
   ];
   for (const col of collectionNames) {
     try {
@@ -189,6 +208,9 @@ export async function createTestApp(
       continue;
     }
   }
+
+  // autoIndex tắt, mà trần theo mạng cần unique index để upsert đồng thời không sinh hai bộ đếm.
+  await connection.model(ReferralNetworkCounter.name).syncIndexes();
 
   return {
     app,
@@ -201,7 +223,10 @@ export async function createTestApp(
   };
 }
 
-export async function closeTestApp(instance: TestAppInstance): Promise<void> {
+export async function closeTestApp(
+  instance: TestAppInstance | undefined
+): Promise<void> {
+  if (!instance) return;
   if (instance.app) {
     await instance.app.close();
   }

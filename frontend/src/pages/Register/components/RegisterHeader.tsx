@@ -1,4 +1,5 @@
 import { Sparkles } from "lucide-react";
+import { ECONOMY_DEFAULTS } from "@palmsight/shared";
 
 export const RegisterHeader = () => {
   return (
@@ -14,13 +15,13 @@ export const RegisterHeader = () => {
         Tạo tài khoản
       </h1>
       <p className="text-base text-body mb-8">
-        Xác thực email để nhận 3 credits.
+        Xác thực email để nhận {ECONOMY_DEFAULTS.STARTER_GRANT} GEM.
       </p>
 
       <div className="space-y-3 border-t border-hairline pt-5">
         <div className="p-3 rounded-xl bg-[#0b0716]/60 border border-hairline/70 text-sm sm:text-base text-body flex items-center">
           <span className="font-bold text-[#d4af37] mr-2.5 font-rune">[+]</span>
-          <span>1 lần xem bói = 1 credit</span>
+          <span>1 lần xem bói = {ECONOMY_DEFAULTS.PRICE_PER_ACTION} GEM</span>
         </div>
         <div className="p-3 rounded-xl bg-[#0b0716]/60 border border-hairline/70 text-sm sm:text-base text-body flex items-center">
           <span className="font-bold text-[#d4af37] mr-2.5 font-rune">[+]</span>

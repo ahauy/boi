@@ -46,12 +46,26 @@ export interface PurchaseResult {
   error?: string;
 }
 
+/** Translation key for what a purchase attempt should tell the user, if anything. */
+export function purchaseNoticeKey(result: PurchaseResult): string | null {
+  if (result.upgradeUnavailable) return 'paywall.upgradeUnavailable';
+  if (result.pending) return 'paywall.pending';
+  if (result.ok || result.canceled) return null;
+  return 'paywall.purchaseFailed';
+}
+
+export function restoreNoticeKey(result: PurchaseResult): string | null {
+  if (result.ok) return null;
+  return result.error ? 'paywall.restoreFailed' : 'paywall.restoreNone';
+}
+
 export type VerifiedVipListener = (response: BillingVerifyResponseDto) => void;
 
 let iapModuleOverride: IapSdk | null = null;
 let purchaseUpdateSubscription: { remove: () => void } | null = null;
 let purchaseErrorSubscription: { remove: () => void } | null = null;
 let appStateSubscriptionInstalled = false;
+let retryingProducts = false;
 let currentBillingRef: string | null = null;
 const verifiedListeners = new Set<VerifiedVipListener>();
 const pendingPurchaseResolvers = new Map<
@@ -143,6 +157,9 @@ export function normalizePlaySubscriptions(
   for (const raw of rawSubs) {
     const productId = raw.id;
     if (!productId) continue;
+
+    // Billing Library 8 returns SKUs it could not sell as empty records with a status.
+    if (raw.productStatusAndroid && raw.productStatusAndroid !== 'ok') continue;
 
     let planKind: PlanKind = 'yearly';
     if (productId === config.weeklyId) planKind = 'weekly';
@@ -261,10 +278,13 @@ export async function fetchBillingProductsWithRetry(): Promise<
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const rawSubs = await iap.fetchProducts({ skus, type: 'subs' });
-      if (Array.isArray(rawSubs) && rawSubs.length > 0) {
-        const products = normalizePlaySubscriptions(
-          rawSubs as IapModule.ProductSubscriptionAndroid[],
-        );
+      if (isDev()) {
+        console.log(`[BillingService] fetchProducts returned ${rawSubs?.length ?? 0} products`);
+      }
+      const products = normalizePlaySubscriptions(
+        (rawSubs ?? []) as IapModule.ProductSubscriptionAndroid[],
+      );
+      if (Object.keys(products).length > 0) {
         billingStore.setProducts(products);
         return products;
       }
@@ -477,6 +497,27 @@ export async function reconcilePurchases(): Promise<BillingVerifyResponseDto | n
   return latestVipResponse;
 }
 
+/** Prices only come from Play (§6.1): with none to show, the paywall stays closed. */
+function enableBillingIfProductsLoaded(): boolean {
+  const hasProducts = Object.keys(billingStore.getState().products).length > 0;
+  billingStore.setState({ billingEnabled: hasProducts });
+  return hasProducts;
+}
+
+/** A launch on a bad network must not cost the whole session: try again when the app returns. */
+export async function retryProductsOnForeground(): Promise<void> {
+  const { connected, products } = billingStore.getState();
+  if (retryingProducts || !connected || Object.keys(products).length > 0) return;
+
+  retryingProducts = true;
+  try {
+    await fetchBillingProductsWithRetry();
+    if (enableBillingIfProductsLoaded()) await reconcilePurchases();
+  } finally {
+    retryingProducts = false;
+  }
+}
+
 function ensureForegroundReconcileListener(): void {
   if (appStateSubscriptionInstalled) return;
   appStateSubscriptionInstalled = true;
@@ -484,6 +525,7 @@ function ensureForegroundReconcileListener(): void {
   try {
     AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (nextState === 'active') {
+        void retryProductsOnForeground();
         const { lastReconciledAt, connected } = billingStore.getState();
         if (
           connected &&
@@ -504,9 +546,7 @@ function ensureForegroundReconcileListener(): void {
  * Connect -> fetch products (retry after 1 s and 3 s) -> THEN attach purchase listener -> reconcile on launch.
  */
 export async function initializeBilling(): Promise<boolean> {
-  const configured = isBillingConfigured();
-  billingStore.setState({ billingEnabled: configured });
-  if (!configured) {
+  if (!isBillingConfigured()) {
     return false;
   }
 
@@ -535,10 +575,7 @@ export async function initializeBilling(): Promise<boolean> {
     // 3. Reconcile available purchases on every launch (including guests)
     await reconcilePurchases();
 
-    // Prices only come from Play (§6.1): with none to show, the paywall stays closed.
-    const hasProducts = Object.keys(billingStore.getState().products).length > 0;
-    if (!hasProducts) billingStore.setState({ billingEnabled: false });
-    return hasProducts;
+    return enableBillingIfProductsLoaded();
   } catch (err) {
     if (isDev()) console.warn('[BillingService] initConnection failed:', err);
     billingStore.setState({ connected: false, billingEnabled: false });

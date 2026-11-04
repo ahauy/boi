@@ -127,8 +127,8 @@ describe("ReadingsHistory Page (/readings)", () => {
       ).toBeInTheDocument();
 
       expect(screen.getAllByText("[+] Xong").length).toBe(2);
-      expect(screen.getByText("[!] Hệ thống bận · đã hoàn 1 credit")).toBeInTheDocument();
-      expect(screen.getByText("[!] Ảnh không rõ · đã hoàn 1 credit")).toBeInTheDocument();
+      expect(screen.getByText("[!] Hệ thống bận · đã hoàn GEM")).toBeInTheDocument();
+      expect(screen.getByText("[!] Ảnh không rõ · đã hoàn GEM")).toBeInTheDocument();
       expect(screen.getByText("[...] Đang xử lý")).toBeInTheDocument();
     });
   });

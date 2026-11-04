@@ -1,6 +1,6 @@
 import React from "react";
 import { Hand } from "lucide-react";
-import { HandOrientation, ReadingSchool } from "@palmsight/shared";
+import { ECONOMY_DEFAULTS, HandOrientation, ReadingSchool } from "@palmsight/shared";
 
 interface HandStepProps {
   school: ReadingSchool;
@@ -70,7 +70,7 @@ export const HandStep: React.FC<HandStepProps> = ({
 
       <div className="mt-6 pt-4 border-t border-hairline">
         <p className="text-xs sm:text-sm text-mute m-0 leading-normal">
-          [i] Giá 1 credit, dù chọn bao nhiêu mục
+          [i] Giá {ECONOMY_DEFAULTS.PRICE_PER_ACTION} GEM, dù chọn bao nhiêu mục
         </p>
       </div>
     </div>

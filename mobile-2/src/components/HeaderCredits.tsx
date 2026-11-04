@@ -7,10 +7,12 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Text from './AppText';
 import { useAuth } from '../state/auth';
 import { colors, font, radius, spacing, text as type } from '../theme';
+import { t, useI18n } from '../i18n';
 import { haptic } from '../lib/haptics';
 
 /** Credits / Gems luôn hiện ở góc trên; bấm để mở ví gems. */
 export default function HeaderCredits() {
+  useI18n();
   const { user } = useAuth();
   if (!user) return null;
 
@@ -20,7 +22,7 @@ export default function HeaderCredits() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${gemCount} GEM${isVip ? ', hội viên VIP' : ''}, mở ví gems`}
+      accessibilityLabel={t(isVip ? 'credits.a11yVip' : 'credits.a11y', { count: gemCount })}
       onPress={() => {
         haptic.select();
         router.push('/(tabs)/currency');

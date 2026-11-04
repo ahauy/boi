@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Formik, Form } from "formik";
-import { enterReferralSchema } from "@palmsight/shared";
+import { CREDIT_AMOUNTS, enterReferralSchema } from "@palmsight/shared";
 import { useAuth } from "@/providers/AuthenticationProvider";
 import { useQueryClient } from "@tanstack/react-query";
 import { ME_QUERY_KEY } from "../hooks/useMeQuery";
@@ -14,6 +14,9 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   REFERRAL_ALREADY_USED: "Tài khoản đã nhập mã giới thiệu trước đó",
   REFERRAL_CYCLE: "Không thể nhập mã của người bạn đã mời",
   REFERRAL_NOT_ALLOWED: "Tài khoản không đủ điều kiện nhập mã",
+  REFERRAL_DEVICE_USED: "Thiết bị này đã nhập mã giới thiệu trước đó",
+  REFERRAL_NETWORK_LIMIT:
+    "Mạng này đã đạt giới hạn nhập mã hôm nay, vui lòng thử lại sau",
 };
 
 interface EnterReferralSectionProps {
@@ -52,7 +55,7 @@ export const EnterReferralSection = ({ user }: EnterReferralSectionProps) => {
       setSubmittedCode(trimmedCode);
       const referrerName = response.referrer?.displayName || "bạn bè";
       setSuccessMessage(
-        `[✓] Đã ghi nhận mã của ${referrerName}! Bạn được cộng 1 credit.`
+        `[✓] Đã ghi nhận mã của ${referrerName}! Bạn được cộng ${response.creditsEarned} GEM.`
       );
 
       await queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
@@ -173,7 +176,7 @@ export const EnterReferralSection = ({ user }: EnterReferralSectionProps) => {
                   </div>
                 ) : (
                   <div className="mt-2.5 text-xs text-mute">
-                    [i] Mã gồm 8 ký tự in hoa. Nhập mã để nhận ngay 1 credit.
+                    [i] Mã gồm 8 ký tự in hoa. Nhập mã để nhận ngay {CREDIT_AMOUNTS.REFEREE_REWARD} GEM.
                   </div>
                 )}
               </Form>

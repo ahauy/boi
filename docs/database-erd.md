@@ -156,6 +156,7 @@ Mỗi user phải đăng nhập được bằng ít nhất một cách: có `pas
 | `referralCode` | string | 8 ký tự, unique | Mã của chính user để chia sẻ |
 | `creditBalance` | int | bắt buộc, validator `minimum: 0` | Cache của sổ cái |
 | `identities` | array | 0–2 phần tử | Xem bảng dưới |
+| `deletedDeviceIdHash` | string \| null | không index, không unique | `deviceIdHash` của tài khoản đã xoá, chuyển sang đây khi thiết bị mở guest mới |
 | `referralBlocked` | boolean | bắt buộc, mặc định `false` | `true` khi user được tạo lại từ một định danh có trong `deleted_identities`: không được nhập mã giới thiệu. User loại này cũng không có `SIGNUP_BONUS` |
 | `createdAt`, `updatedAt` | Date | | Mongoose `timestamps` |
 | `deletedAt` | Date \| null | | Đánh dấu tài khoản đã bị xoá bằng script `users:delete` |

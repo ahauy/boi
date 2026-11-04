@@ -1,4 +1,5 @@
 import { ScrollText } from "lucide-react";
+import { ECONOMY_DEFAULTS } from "@palmsight/shared";
 
 export const TermsContent = () => {
   return (
@@ -52,7 +53,7 @@ export const TermsContent = () => {
         </h2>
         <div className="py-2.5 border-b border-hairline/60 text-sm sm:text-base text-body flex items-baseline gap-2.5">
           <span className="font-bold font-rune text-[#d4af37] shrink-0">[+]</span>
-          <span>Mỗi lượt luận giải chỉ tay tiêu tốn chính xác 1 credit.</span>
+          <span>Mỗi lượt luận giải chỉ tay tiêu tốn {ECONOMY_DEFAULTS.PRICE_PER_ACTION} GEM.</span>
         </div>
         <div className="py-2.5 border-b border-hairline/60 text-sm sm:text-base text-body flex items-baseline gap-2.5">
           <span className="font-bold font-rune text-[#d4af37] shrink-0">[+]</span>

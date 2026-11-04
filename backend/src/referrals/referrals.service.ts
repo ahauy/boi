@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
   Optional,
@@ -19,10 +21,21 @@ import {
   ReferralListResponseDto,
   ReferralStatus,
 } from '@palmsight/shared';
+import { hashIp } from '../common/client-ip.util';
 import { CreditLedgerService } from '../credits/credit-ledger.service';
+import {
+  computeDeviceIdHash,
+  DEFAULT_IDENTITY_HASH_SECRET,
+} from '../common/device-id-hash.util';
+import { Device, DeviceDocument } from '../schemas/device.schema';
 import { Referral, ReferralDocument } from '../schemas/referral.schema';
 import { User, UserDocument } from '../schemas/user.schema';
 import { maskDisplayName } from './mask-display-name.util';
+import { startOfReferralDay } from './referral-day.util';
+import { ReferralNetworkQuotaService } from './referral-network-quota.service';
+
+// Thưởng chủ mã trước khi referrals lưu referrerReward.
+const LEGACY_REFERRER_REWARD = 2;
 
 @Injectable()
 export class ReferralsService {
@@ -31,9 +44,12 @@ export class ReferralsService {
     private readonly referralModel: Model<ReferralDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectModel(Device.name)
+    private readonly deviceModel: Model<DeviceDocument>,
     @InjectConnection()
     private readonly connection: Connection,
     private readonly creditLedgerService: CreditLedgerService,
+    private readonly referralNetworkQuota: ReferralNetworkQuotaService,
     @Optional()
     private readonly configService?: ConfigService,
   ) {}
@@ -41,6 +57,8 @@ export class ReferralsService {
   async enterReferral(
     user: UserDocument,
     code: string,
+    rawDeviceHeader?: string,
+    clientIp?: string | null,
   ): Promise<EnterReferralResponseDto> {
     const normalizedCode = code.trim().toUpperCase();
 
@@ -97,89 +115,125 @@ export class ReferralsService {
       });
     }
 
-    // Gate 6: Daily Cap check (REFERRAL_DAILY_CAP = 10):
-    // Calculate start of today in Vietnam time (UTC+7)
-    const now = new Date();
-    const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    const startOfVnDayUtc = new Date(
-      Date.UTC(vnTime.getUTCFullYear(), vnTime.getUTCMonth(), vnTime.getUTCDate()) -
-        7 * 60 * 60 * 1000,
-    );
+    // Gate 6: REFERRAL_DEVICE_USED (409): mỗi thiết bị chỉ nhập mã một lần.
+    // Không có định danh thiết bị (web, tài khoản email/Google) thì chỉ còn giới hạn theo tài khoản ở Gate 4.
+    const deviceIdHash = this.resolveDeviceIdHash(user, rawDeviceHeader);
+    if (deviceIdHash) {
+      await this.assertDeviceNotRedeemed(deviceIdHash, user._id);
+      await this.ensureDevice(deviceIdHash);
+    }
 
+    // Gate 7: trần thưởng của chủ mã trong ngày (giờ Việt Nam).
     const dailyCap = Number(
       this.configService?.get('REFERRAL_DAILY_CAP') ??
         CREDIT_AMOUNTS.REFERRAL_DAILY_CAP,
     );
 
-    const rewardedTodayCount = await this.referralModel.countDocuments({
-      referrerId: referrer._id,
-      status: ReferralStatus.REWARDED,
-      createdAt: { $gte: startOfVnDayUtc },
-    });
+    const networkSlot = await this.referralNetworkQuota.prepare(
+      clientIp ? hashIp(clientIp) : null,
+    );
 
-    const status =
-      rewardedTodayCount >= dailyCap
-        ? ReferralStatus.CAPPED
-        : ReferralStatus.REWARDED;
-
-    // Transaction Safety:
-    // Execute in a single MongoDB transaction (ClientSession)
+    // Ghi referral, dấu thiết bị và credits trong một transaction: lỗi ở bước nào cũng không để lại gì.
     const session = await this.connection.startSession();
-    session.startTransaction();
 
     try {
-      // 1. Create referral record
-      const [referralDoc] = await this.referralModel.create(
-        [
-          {
+      let creditBalance = 0;
+
+      await session.withTransaction(async () => {
+        creditBalance = 0;
+
+        // Ghi vào chủ mã trước khi đếm: các lượt nhập cùng mã xung đột ở đây và lần retry đếm lại trên snapshot mới.
+        await this.userModel.updateOne(
+          { _id: referrer._id },
+          { $set: { updatedAt: new Date() } },
+          { session },
+        );
+
+        const rewardedTodayCount = await this.referralModel
+          .countDocuments({
             referrerId: referrer._id,
-            refereeId: user._id,
-            codeUsed: normalizedCode,
-            status,
-          },
-        ],
-        { session },
-      );
+            status: ReferralStatus.REWARDED,
+            createdAt: { $gte: startOfReferralDay() },
+          })
+          .session(session);
 
-      // 2. Update referee creditBalance: +1 credit (REFEREE_REWARD)
-      const refereeTx = await this.creditLedgerService.credit(
-        {
-          userId: user._id,
-          amount: CREDIT_AMOUNTS.REFEREE_REWARD,
-          type: CreditTransactionType.REFEREE_BONUS,
-          reason: 'referee_bonus',
-          referralId: referralDoc._id,
-        },
-        session,
-      );
+        const status =
+          rewardedTodayCount >= dailyCap
+            ? ReferralStatus.CAPPED
+            : ReferralStatus.REWARDED;
 
-      // 3. If status === ReferralStatus.REWARDED:
-      if (status === ReferralStatus.REWARDED) {
-        await this.creditLedgerService.credit(
+        const [referralDoc] = await this.referralModel.create(
+          [
+            {
+              referrerId: referrer._id,
+              refereeId: user._id,
+              codeUsed: normalizedCode,
+              status,
+              referrerReward:
+                status === ReferralStatus.REWARDED
+                  ? CREDIT_AMOUNTS.REFERRAL_REWARD
+                  : 0,
+            },
+          ],
+          { session },
+        );
+
+        // Cộng cho người nhập trước khi đánh dấu thiết bị để giữ thứ tự khoá user rồi device như currency.
+        const refereeTx = await this.creditLedgerService.credit(
           {
-            userId: referrer._id,
-            amount: CREDIT_AMOUNTS.REFERRAL_REWARD,
-            type: CreditTransactionType.REFERRAL_BONUS,
-            reason: 'referral_bonus',
+            userId: user._id,
+            amount: CREDIT_AMOUNTS.REFEREE_REWARD,
+            type: CreditTransactionType.REFEREE_BONUS,
+            reason: 'referee_bonus',
             referralId: referralDoc._id,
           },
           session,
         );
-      }
+        creditBalance = refereeTx.balanceAfter;
 
-      // 4. If status === ReferralStatus.CAPPED:
-      // Referrer does NOT receive credits (0 credits added).
+        if (deviceIdHash) {
+          const claimed = await this.deviceModel.findOneAndUpdate(
+            { deviceIdHash, referralRedeemedAt: null },
+            {
+              $set: {
+                referralRedeemedAt: new Date(),
+                referralRedeemedUserId: user._id,
+              },
+            },
+            { session },
+          );
+          if (!claimed) throw this.deviceUsedError();
+        }
 
-      await session.commitTransaction();
+        // Đặt sau referral và thiết bị để lỗi tài khoản, thiết bị được ưu tiên báo; ném lỗi thì rollback tất cả.
+        if (
+          networkSlot &&
+          !(await this.referralNetworkQuota.take(networkSlot, session))
+        ) {
+          throw this.networkLimitError();
+        }
+
+        if (status === ReferralStatus.REWARDED) {
+          await this.creditLedgerService.credit(
+            {
+              userId: referrer._id,
+              amount: CREDIT_AMOUNTS.REFERRAL_REWARD,
+              type: CreditTransactionType.REFERRAL_BONUS,
+              reason: 'referral_bonus',
+              referralId: referralDoc._id,
+            },
+            session,
+          );
+        }
+      });
 
       return {
         accepted: true,
         referrer: { displayName: referrer.displayName },
         creditsEarned: CREDIT_AMOUNTS.REFEREE_REWARD,
-        creditBalance: refereeTx.balanceAfter,
+        creditBalance,
       };
     } catch (err: any) {
-      await session.abortTransaction();
       if (err?.code === 11000) {
         throw new ConflictException({
           code: 'REFERRAL_ALREADY_USED',
@@ -192,6 +246,70 @@ export class ReferralsService {
     }
   }
 
+  // Ưu tiên định danh gắn với tài khoản guest: đổi header không né được kiểm tra.
+  private resolveDeviceIdHash(
+    user: UserDocument,
+    rawDeviceHeader?: string,
+  ): string | null {
+    if (user.deviceIdHash) return user.deviceIdHash;
+    if (!rawDeviceHeader?.trim()) return null;
+    const secret =
+      this.configService?.get<string>('IDENTITY_HASH_SECRET') ??
+      DEFAULT_IDENTITY_HASH_SECRET;
+    return computeDeviceIdHash(secret, rawDeviceHeader);
+  }
+
+  private async assertDeviceNotRedeemed(
+    deviceIdHash: string,
+    userId: Types.ObjectId,
+  ): Promise<void> {
+    const device = await this.deviceModel
+      .findOne({ deviceIdHash })
+      .select('referralRedeemedAt')
+      .lean();
+    if (device?.referralRedeemedAt) throw this.deviceUsedError();
+
+    // Lượt nhập trước khi có dấu thiết bị chỉ truy được qua guest sở hữu thiết bị này.
+    const deviceOwner = await this.userModel
+      .findOne({ deviceIdHash, _id: { $ne: userId } })
+      .select('_id')
+      .lean();
+    if (
+      deviceOwner &&
+      (await this.referralModel.exists({ refereeId: deviceOwner._id }))
+    ) {
+      throw this.deviceUsedError();
+    }
+  }
+
+  private async ensureDevice(deviceIdHash: string): Promise<void> {
+    try {
+      await this.deviceModel.updateOne(
+        { deviceIdHash },
+        { $setOnInsert: { deviceIdHash } },
+        { upsert: true },
+      );
+    } catch (err: any) {
+      if (err?.code !== 11000) throw err;
+    }
+  }
+
+  private networkLimitError(): HttpException {
+    return new HttpException(
+      {
+        code: 'REFERRAL_NETWORK_LIMIT',
+        message: 'Mạng này đã nhập quá nhiều mã giới thiệu hôm nay. Vui lòng thử lại vào ngày mai.',
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
+  private deviceUsedError(): ConflictException {
+    return new ConflictException({
+      code: 'REFERRAL_DEVICE_USED',
+      message: 'Thiết bị này đã nhập mã giới thiệu trước đó.',
+    });
+  }
 
   async getReferrals(
     userId: Types.ObjectId,
@@ -216,7 +334,7 @@ export class ReferralsService {
 
     const limit = Math.min(Math.max(Number(query?.limit) || 20, 1), 50);
 
-    const [referralDocs, totalRewarded] = await Promise.all([
+    const [referralDocs, totalRewarded, earnedTotals] = await Promise.all([
       this.referralModel
         .find(filter)
         .sort({ _id: -1 })
@@ -227,6 +345,17 @@ export class ReferralsService {
         referrerId: userId,
         status: ReferralStatus.REWARDED,
       }),
+      this.referralModel.aggregate<{ total: number }>([
+        { $match: { referrerId: userId, status: ReferralStatus.REWARDED } },
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: { $ifNull: ['$referrerReward', LEGACY_REFERRER_REWARD] },
+            },
+          },
+        },
+      ]),
     ]);
 
     const hasMore = referralDocs.length > limit;
@@ -254,7 +383,10 @@ export class ReferralsService {
         ? 'Người dùng đã xoá'
         : maskDisplayName(referee.displayName);
 
-      const creditsEarned = doc.status === ReferralStatus.REWARDED ? 2 : 0;
+      const creditsEarned =
+        doc.status === ReferralStatus.REWARDED
+          ? (doc.referrerReward ?? LEGACY_REFERRER_REWARD)
+          : 0;
 
       return {
         displayName,
@@ -264,7 +396,7 @@ export class ReferralsService {
       };
     });
 
-    const totalCreditsEarned = totalRewarded * 2;
+    const totalCreditsEarned = earnedTotals[0]?.total ?? 0;
 
     return {
       totalRewarded,

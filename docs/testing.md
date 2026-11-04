@@ -46,8 +46,11 @@ Test integration phải dùng `MongoMemoryReplSet` (replica set), không dùng `
 
 ### Referral
 
-- [ ] Mã hợp lệ → `REWARDED`; người nhập +1 (`REFEREE_BONUS`), chủ mã +2 (`REFERRAL_BONUS`); cả hai giao dịch có cùng `referralId`; response có `creditsEarned = 1` và `creditBalance` đúng.
-- [ ] Chủ mã đã đủ 10 lượt trong ngày → `CAPPED`; người nhập **vẫn +1**, chủ mã không đổi.
+- [ ] Mã hợp lệ → `REWARDED`; người nhập +5 (`REFEREE_BONUS`), chủ mã +3 (`REFERRAL_BONUS`); cả hai giao dịch có cùng `referralId`; response có `creditsEarned = 5` và `creditBalance` đúng.
+- [ ] Chủ mã đã đủ 5 lượt trong ngày → `CAPPED`; người nhập **vẫn +5**, chủ mã không đổi.
+- [ ] N tài khoản nhập đồng thời khi chủ mã còn 1 lượt → đúng 1 `REWARDED`, còn lại `CAPPED`, tất cả vẫn +5.
+- [ ] Tài khoản thứ hai trên cùng thiết bị nhập mã → `409 REFERRAL_DEVICE_USED`, không ai được cộng.
+- [ ] Lần thứ 6 trên cùng mạng trong ngày → `429 REFERRAL_NETWORK_LIMIT`, không ai được cộng; mạng khác không bị ảnh hưởng.
 - [ ] Lỗi giữa chừng khi cộng cho một bên → transaction rollback: không có referral, không ai được cộng.
 - [ ] Tài khoản `referralBlocked = true` nhập mã → `403 REFERRAL_NOT_ALLOWED`; `GET /me` trả `canEnterCode = false`.
 - [ ] Mỗi mã lỗi trong [business-rules.md](business-rules.md) trả đúng HTTP status và `code`.
@@ -87,7 +90,7 @@ Test integration phải dùng `MongoMemoryReplSet` (replica set), không dùng `
 - [ ] Sai mật khẩu 5 lần → lần thứ 6 (kể cả đúng mật khẩu) → `429`.
 - [ ] `login`, `forgot-password`, `resend-verification` trả cùng một response dù email có tồn tại hay không.
 - [ ] Mật khẩu < 8 ký tự, hoặc trùng email/username → `400 VALIDATION_ERROR`.
-- [ ] Đăng ký có `referralCode` hợp lệ → sau khi xác minh, user có 4 credits (3 + 1), chủ mã +2, `canEnterCode = false`; response xác minh trả `creditBalance = 4`. Mã không tồn tại → user vẫn được tạo với 3 credits, `canEnterCode = true`.
+- [ ] Đăng ký có `referralCode` hợp lệ → sau khi xác minh, user có 10 GEM (5 + 5), chủ mã +3, `canEnterCode = false`; response xác minh trả `creditBalance = 10` và `referralApplied = true`. Mã không tồn tại → user vẫn được tạo với 3 credits, `canEnterCode = true`.
 - [ ] Quên mật khẩu → đặt lại → mọi phiên cũ bị thu hồi; link dùng lần 2 → `400 RESET_TOKEN_INVALID`.
 - [ ] Đổi mật khẩu sai mật khẩu cũ → `400 CURRENT_PASSWORD_INCORRECT`; đúng → phiên khác bị thu hồi, phiên hiện tại vẫn refresh được.
 

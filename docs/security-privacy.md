@@ -52,6 +52,7 @@ Không có tính năng tự xoá trong app, để chặn vòng xoá–đăng ký
 
 - `_id` và sổ cái credits, để đối soát.
 - HMAC của các định danh, dùng khoá `IDENTITY_HASH_SECRET`. Nhờ đó tài khoản tạo lại từ cùng email/Google/Facebook bắt đầu với 0 credits và không được nhập mã giới thiệu.
+- HMAC của định danh thiết bị (`deviceIdHash`, `deletedDeviceIdHash`, bản ghi `devices`), để giữ giới hạn theo thiết bị sau khi xoá tài khoản.
 - Không giữ email, ID gốc hay ảnh bàn tay. Trang `/privacy` phải nói rõ việc giữ mã băm này.
 
 Facebook bắt buộc cung cấp **Data Deletion Instructions URL**: dùng trang `/data-deletion`.
@@ -96,10 +97,10 @@ Facebook bắt buộc cung cấp **Data Deletion Instructions URL**: dùng trang
 | Hai người nhập mã của nhau để cùng được thưởng | Chặn bằng `REFERRAL_CYCLE` |
 | Gắn cả mật khẩu + Google + Facebook để nhận bonus nhiều lần | Gộp theo email đã xác minh; bonus unique theo user |
 | Xoá tài khoản rồi đăng ký lại để nhận lại +3 và nhập mã lần nữa | Không có tự xoá; xoá thủ công ghi HMAC định danh vào `deleted_identities`; tài khoản tạo lại có 0 credits, `referralBlocked = true` |
-| Tạo tài khoản ảo nhập mã của chính mình để nhận +2 và +1 | +1 rơi vào tài khoản ảo, vô ích với tài khoản chính; +2 cho chủ mã bị giới hạn bởi trần 10 lượt/ngày; tài khoản ảo phải xác minh email thật |
+| Tạo tài khoản ảo nhập mã của chính mình để nhận +3 và +5 | +5 rơi vào tài khoản ảo, vô ích với tài khoản chính; +3 cho chủ mã bị giới hạn bởi trần 5 lượt/ngày; mỗi thiết bị chỉ nhập mã một lần |
 | Đăng ký hàng loạt bằng email giả để nhận +3 | Bắt buộc xác minh email trước khi tạo user; giới hạn 3 email/giờ cho mỗi địa chỉ. Email dùng một lần (temp mail) vẫn lọt; chấp nhận |
 | Dò mã giới thiệu | Rate limit 5 lần/giờ cho `POST /me/referral` |
-| Một người tạo nhiều tài khoản ảo để tự nhận thưởng | Chấp nhận rủi ro; trần 10 lượt/ngày giới hạn thiệt hại |
+| Một người tạo nhiều tài khoản ảo để tự nhận thưởng | Chấp nhận rủi ro; trần 5 lượt/ngày giới hạn thiệt hại |
 
 Script `credits:reconcile` so tổng sổ cái với `creditBalance` của từng user; chạy tay hoặc định kỳ.
 

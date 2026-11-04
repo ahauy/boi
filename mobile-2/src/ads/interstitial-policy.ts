@@ -7,14 +7,14 @@ import { isExternalActivityActive } from '../lib/external-activity';
  * Interstitial Policy & Persistence (Playbook §5.2, §5.4, §12)
  *
  * - INTERSTITIAL_GAP_MS = 90_000 (90s)
- * - ADS_USER_GAP_MS = 30_000 (30s)
+ * - ADS_USER_GAP_MS = 60_000 (60s, owner decision over the playbook default of 30s)
  * - ADS_USER_DECLINES = 3
  * - Persists `lastInterstitialShownAt` and `paywallDeclineCount` in AsyncStorage
  *   so cooldowns and ads-user status survive app restarts.
  */
 
 export const INTERSTITIAL_GAP_MS = 90_000;
-export const ADS_USER_GAP_MS = 30_000;
+export const ADS_USER_GAP_MS = 60_000;
 export const ADS_USER_DECLINES = 3;
 export const NO_INTERSTITIAL_SUPPRESSION_MS = 1_000;
 
@@ -279,7 +279,7 @@ export function interstitialBlockReason(
     return 'reading_already_had_ad';
   }
 
-  // 8. Minimum gap between interstitials: 90 s, or 30 s for ads users (§5.2, §5.4)
+  // 8. Minimum gap between interstitials: 90 s, or 60 s for ads users (§5.2, §5.4)
   if (getInterstitialGapLeftMs(now) > 0) {
     return 'gap';
   }

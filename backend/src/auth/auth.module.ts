@@ -21,6 +21,7 @@ import { Device, DeviceSchema } from '../schemas/device.schema';
 
 import { MailModule } from '../mail/mail.module';
 import { CreditsModule } from '../credits/credits.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
@@ -54,6 +55,7 @@ import { PasswordService } from './password.service';
     }),
     MailModule,
     CreditsModule,
+    ReferralsModule,
   ],
   controllers: [AuthController],
   providers: [

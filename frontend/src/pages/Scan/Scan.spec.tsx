@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Scan from "./index";
 import httpService from "@/services/httpService";
-import { AuthenticationProvider } from "@/providers/AuthenticationProvider";
+import { AuthenticationProvider, useAuth } from "@/providers/AuthenticationProvider";
 import readingsService from "@/services/readingsService";
 import * as toastHelper from "@/helpers/toast";
 import {
@@ -12,6 +12,10 @@ import {
   HandOrientation,
   ReadingStatus,
 } from "@palmsight/shared";
+
+const BalanceProbe = () => (
+  <span data-testid="balance-probe">{useAuth().user?.creditBalance}</span>
+);
 
 describe("Scan Page (/scan)", () => {
   let queryClient: QueryClient;
@@ -33,7 +37,7 @@ describe("Scan Page (/scan)", () => {
     username: "testuser",
     avatarUrl: null,
     referralCode: "ABCDEF12",
-    creditBalance: 3,
+    creditBalance: 5,
     referral: {
       canEnterCode: true,
       enteredCode: null,
@@ -48,6 +52,7 @@ describe("Scan Page (/scan)", () => {
             skipInitialRefresh
             initialUser={{ ...mockUser, ...userOverride }}
           >
+            <BalanceProbe />
             <Routes>
               <Route path="/scan" element={<Scan />} />
               <Route
@@ -76,7 +81,7 @@ describe("Scan Page (/scan)", () => {
 
     // Fixed price note
     expect(
-      screen.getByText("[i] Giá 1 credit, dù chọn bao nhiêu mục")
+      screen.getByText("[i] Giá 5 GEM, dù chọn bao nhiêu mục")
     ).toBeInTheDocument();
   });
 
@@ -144,17 +149,19 @@ describe("Scan Page (/scan)", () => {
       screen.getByTestId("insufficient-credits-banner")
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Mời bạn bè nhập mã để nhận 2 credits:")
+      screen.getByText("Mời bạn bè nhập mã để nhận 3 GEM:")
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Có mã của bạn bè\?/i)
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /Nhập để nhận 1 credit/i })
+      screen.getByRole("link", { name: /Nhập để nhận 5 GEM/i })
     ).toBeInTheDocument();
 
+    expect(screen.getByText("Không đủ GEM")).toBeInTheDocument();
     const submitBtn = screen.getByTestId("submit-reading-button");
     expect(submitBtn).toBeDisabled();
+    expect(submitBtn).toHaveTextContent("Xem bói (−5 GEM)");
   });
 
   it("should enable submit button only when image is provided and consent is checked", () => {
@@ -255,8 +262,59 @@ describe("Scan Page (/scan)", () => {
       expect(
         screen.getByText("Ảnh quá tối, không nhìn rõ các đường chỉ tay.")
       ).toBeInTheDocument();
-      expect(screen.getByText("[+] Đã hoàn 1 credit")).toBeInTheDocument();
+      expect(screen.getByText("[+] Đã hoàn 5 GEM")).toBeInTheDocument();
     });
+  });
+
+  it.each([1, 2, 3, 4])(
+    "should block submission when the balance of %i GEM is below the price",
+    (creditBalance) => {
+      renderScan({ creditBalance });
+
+      expect(
+        screen.getByTestId("insufficient-credits-banner")
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("submit-reading-button")).toBeDisabled();
+    }
+  );
+
+  it("should allow submission when the balance equals the price", () => {
+    renderScan({ creditBalance: 5 });
+
+    expect(
+      screen.queryByTestId("insufficient-credits-banner")
+    ).not.toBeInTheDocument();
+  });
+
+  it("should keep the real balance from a 402 instead of forcing 0", async () => {
+    vi.spyOn(httpService, "post").mockRejectedValue({
+      response: {
+        status: 402,
+        data: {
+          error: {
+            code: "INSUFFICIENT_CREDITS",
+            message: "Bạn không đủ GEM để xem bói.",
+            details: { required: 5, balance: 3 },
+          },
+        },
+      },
+    });
+
+    renderScan();
+
+    const file = new File(["dummy"], "palm.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByTestId("file-input"), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByTestId("ai-consent-checkbox"));
+    fireEvent.click(screen.getByTestId("submit-reading-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-probe")).toHaveTextContent("3");
+    });
+    expect(
+      screen.getByTestId("insufficient-credits-banner")
+    ).toBeInTheDocument();
   });
 
   it("should handle 503 AI_UNAVAILABLE with retry", async () => {
@@ -266,7 +324,7 @@ describe("Scan Page (/scan)", () => {
         data: {
           error: {
             code: "AI_UNAVAILABLE",
-            message: "Hệ thống bận, đã hoàn 1 credit. Thử lại sau ít phút.",
+            message: "Hệ thống bận, đã hoàn lại GEM. Vui lòng thử lại.",
             details: { refunded: true, creditBalance: 3 },
           },
         },
@@ -283,7 +341,9 @@ describe("Scan Page (/scan)", () => {
     fireEvent.click(screen.getByTestId("submit-reading-button"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("ai-unavailable-banner")).toBeInTheDocument();
+      expect(screen.getByTestId("ai-unavailable-banner")).toHaveTextContent(
+        "[!] Hệ thống bận, đã hoàn 5 GEM. Thử lại sau ít phút."
+      );
       expect(screen.getByTestId("retry-ai-button")).toBeInTheDocument();
     });
   });
@@ -465,6 +525,31 @@ describe("Scan Page (/scan)", () => {
       });
     });
 
+    it("should not promise a GEM refund when a guest trial hits AI_UNAVAILABLE", async () => {
+      vi.spyOn(readingsService, "createGuestReading").mockRejectedValueOnce({
+        response: {
+          status: 503,
+          data: { error: { code: "AI_UNAVAILABLE", message: "Hệ thống bận." } },
+        },
+      });
+
+      renderScanAsGuest();
+
+      const file = new File(["dummy"], "palm.jpg", { type: "image/jpeg" });
+      fireEvent.change(screen.getByTestId("file-input"), {
+        target: { files: [file] },
+      });
+      fireEvent.click(screen.getByTestId("ai-consent-checkbox"));
+      fireEvent.click(screen.getByTestId("submit-reading-button"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("ai-unavailable-banner")).toHaveTextContent(
+          "[!] Hệ thống bận. Thử lại sau ít phút."
+        );
+      });
+      expect(screen.queryByText(/đã hoàn/i)).not.toBeInTheDocument();
+    });
+
     it("should handle REJECTED status with friendly Vietnamese toast message", async () => {
       const showErrorSpy = vi.spyOn(toastHelper, "showError");
       vi.spyOn(readingsService, "createGuestReading").mockResolvedValueOnce({
@@ -493,6 +578,7 @@ describe("Scan Page (/scan)", () => {
         );
         expect(screen.getByTestId("rejected-banner")).toBeInTheDocument();
       });
+      expect(screen.queryByText(/đã hoàn/i)).not.toBeInTheDocument();
     });
   });
 });

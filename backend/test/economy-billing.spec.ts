@@ -14,6 +14,7 @@ import {
   ReadingStatus,
 } from '@palmsight/shared';
 import { createTestApp, closeTestApp, TestAppInstance } from './test-helper';
+import { deleteUserAccount } from '../scripts/users-delete';
 import { BillingService } from '../src/billing/billing.service';
 import { PlayPurchaseVerifier } from '../src/billing/play-purchase.verifier';
 import { UsersService } from '../src/users/users.service';
@@ -230,6 +231,51 @@ describe('Phase 7 Backend: Billing, Subscriptions, RTDN & VIP School Gating (Pla
   });
 
   describe('2. Restore & Reinstall Transfer Across Accounts (Playbook §6.2 & §6.5)', () => {
+    it('moves an active subscription from a deleted guest to the new guest on the same device', async () => {
+      const verify = (accessToken: string, purchaseToken: string) =>
+        fetch(`${testApp.baseUrl}/api/v1/billing/verify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            productId: 'weeklyid',
+            purchaseToken,
+            isTrial: false,
+            priceAmountMicros: 6_990_000,
+            priceCurrencyCode: 'USD',
+          }),
+        });
+
+      const oldGuest = await createDeviceUser();
+      const purchaseToken = `deleted_owner_token_${crypto.randomUUID()}`;
+      expect((await verify(oldGuest.accessToken, purchaseToken)).status).toBe(200);
+
+      await deleteUserAccount(
+        testApp.connection,
+        oldGuest.userId.toString(),
+        'Restore after deletion test',
+        'test-identity-secret-at-least-32-chars-long',
+      );
+      const newGuest = await createDeviceUser(oldGuest.deviceId);
+      expect(newGuest.userId.toString()).not.toBe(oldGuest.userId.toString());
+
+      const restoreRes = await verify(newGuest.accessToken, purchaseToken);
+      expect(restoreRes.status).toBe(200);
+      const restored = (await restoreRes.json()) as BillingVerifyResponseDto;
+      expect(restored.restored).toBe(true);
+      expect(restored.firstPurchase).toBe(false);
+      expect(restored.vip.active).toBe(true);
+
+      const subscriptions = await testApp.connection
+        .collection('play_subscriptions')
+        .find({ purchaseToken })
+        .toArray();
+      expect(subscriptions).toHaveLength(1);
+      expect(subscriptions[0].userId.toString()).toBe(newGuest.userId.toString());
+    });
+
     it('transfers an active subscription from an old guest account to the current account on restore without re-firing firstPurchase', async () => {
       const oldGuest = await createDeviceUser();
       const newAccount = await createDeviceUser();

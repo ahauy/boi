@@ -23,7 +23,10 @@ import {
   verifyAndFinishPurchase,
   billingStore,
   initializeBilling,
+  purchaseNoticeKey,
   purchaseSubscription,
+  restoreNoticeKey,
+  retryProductsOnForeground,
 } from './index';
 import {
   canAutoOpenPaywall,
@@ -345,6 +348,79 @@ describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers
       expect(billingStore.getState().isPurchasing).toBe(false);
     });
 
+    it('turns billing on later, when a foreground retry finally gets products', async () => {
+      const fetchProducts = vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValue([
+          subscriptionProduct('yearlyid', [
+            {
+              offerTokenAndroid: 'offer-yearly-base',
+              pricingPhasesAndroid: { pricingPhaseList: [phase('99000000', '$99.00', 'P1Y')] },
+            },
+          ]),
+        ]);
+      const getAvailablePurchases = vi.fn(async () => []);
+      fakeIap({ fetchProducts, getAvailablePurchases });
+
+      await initializeBilling();
+      expect(billingStore.getState().billingEnabled).toBe(false);
+      getAvailablePurchases.mockClear();
+
+      await retryProductsOnForeground();
+
+      expect(billingStore.getState().billingEnabled).toBe(true);
+      expect(getAvailablePurchases).toHaveBeenCalled();
+    }, 10_000);
+
+    it('keeps billing off until products have loaded', async () => {
+      let finishFetch: (value: unknown[]) => void = () => undefined;
+      fakeIap({ fetchProducts: vi.fn(() => new Promise((resolve) => (finishFetch = resolve))) });
+
+      const init = initializeBilling();
+      await vi.waitFor(() => expect(billingStore.getState().connected).toBe(true));
+      expect(billingStore.getState().billingEnabled).toBe(false);
+
+      finishFetch([
+        subscriptionProduct('yearlyid', [
+          {
+            offerTokenAndroid: 'offer-yearly-base',
+            pricingPhasesAndroid: { pricingPhaseList: [phase('99000000', '$99.00', 'P1Y')] },
+          },
+        ]),
+      ]);
+      await init;
+      expect(billingStore.getState().billingEnabled).toBe(true);
+    });
+
+    it.each([
+      [{ ok: false, error: 'Verification failed' }, 'paywall.purchaseFailed'],
+      [{ ok: false, canceled: true, error: 'cancelled' }, null],
+      [{ ok: false, pending: true }, 'paywall.pending'],
+      [{ ok: false, upgradeUnavailable: true }, 'paywall.upgradeUnavailable'],
+      [{ ok: true }, null],
+    ])('tells the user about purchase result %j', (result, key) => {
+      expect(purchaseNoticeKey(result)).toBe(key);
+    });
+
+    it.each([
+      [{ ok: false, restored: false }, 'paywall.restoreNone'],
+      [{ ok: false, error: 'Network' }, 'paywall.restoreFailed'],
+      [{ ok: true, restored: true }, null],
+    ])('tells the user about restore result %j', (result, key) => {
+      expect(restoreNoticeKey(result)).toBe(key);
+    });
+
+    it('ignores SKUs Play reports as not found', () => {
+      const products = normalizePlaySubscriptions([
+        { ...subscriptionProduct('yearlyid', []), productStatusAndroid: 'not-found' },
+      ]);
+
+      expect(products).toEqual({});
+    });
+
     it('turns billing off when Play returns no products, but still reconciles', async () => {
       const getAvailablePurchases = vi.fn(async () => []);
       fakeIap({ fetchProducts: vi.fn(async () => []), getAvailablePurchases });
@@ -407,6 +483,10 @@ describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers
   });
 
   describe('3. Paywall Automatic Triggers, Exclusions & Ads-User Decline Counter (Playbook §5.4, §6.3, §11.8)', () => {
+    beforeEach(() => {
+      billingStore.setState({ billingEnabled: true });
+    });
+
     it('enforces all §6.3 exclusions (unknown VIP, VIP, excluded routes, fullScreenAdShowing, open sheet, external activity)', () => {
       // Unknown VIP -> false
       expect(canAutoOpenPaywall()).toBe(false);

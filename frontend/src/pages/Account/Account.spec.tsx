@@ -224,6 +224,12 @@ describe("Account Page", () => {
       expect(
         screen.getByPlaceholderText("K7QX4MZP")
       ).toBeInTheDocument();
+      expect(
+        screen.getByText("[i] Mã gồm 8 ký tự in hoa. Nhập mã để nhận ngay 5 GEM.")
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("sample-share-text")).toHaveTextContent(
+        "Nhập mã K7QX4MZP trên PalmSight: bạn được thêm 5 GEM xem bói miễn phí"
+      );
     });
 
     it("should submit referral code, update balance, and display success alert", async () => {
@@ -232,8 +238,8 @@ describe("Account Page", () => {
         data: {
           accepted: true,
           referrer: { displayName: "Trần B" },
-          creditsEarned: 1,
-          creditBalance: 5,
+          creditsEarned: 5,
+          creditBalance: 9,
         },
       } as any);
 
@@ -259,12 +265,63 @@ describe("Account Page", () => {
       await waitFor(() => {
         expect(
           screen.getByText(
-            "[✓] Đã ghi nhận mã của Trần B! Bạn được cộng 1 credit."
+            "[✓] Đã ghi nhận mã của Trần B! Bạn được cộng 5 GEM."
           )
         ).toBeInTheDocument();
         expect(
           screen.getByText("[✓] Đã nhập mã giới thiệu: ABCDEF23")
         ).toBeInTheDocument();
+      });
+    });
+
+    it("should handle REFERRAL_DEVICE_USED error", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(httpService, "post").mockRejectedValue({
+        response: {
+          status: 409,
+          data: {
+            error: {
+              code: "REFERRAL_DEVICE_USED",
+              message: "Thiết bị này đã nhập mã giới thiệu trước đó.",
+            },
+          },
+        },
+      });
+
+      await renderComponent({ referral: { canEnterCode: true, enteredCode: null } });
+
+      await user.type(screen.getByPlaceholderText("K7QX4MZP"), "K7QX4MZP");
+      await user.click(screen.getByRole("button", { name: /Xác nhận mã/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          /^Thiết bị này đã nhập mã giới thiệu trước đó$/
+        );
+      });
+    });
+
+    it("should handle REFERRAL_NETWORK_LIMIT error", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(httpService, "post").mockRejectedValue({
+        response: {
+          status: 429,
+          data: {
+            error: {
+              code: "REFERRAL_NETWORK_LIMIT",
+            },
+          },
+        },
+      });
+
+      await renderComponent({ referral: { canEnterCode: true, enteredCode: null } });
+
+      await user.type(screen.getByPlaceholderText("K7QX4MZP"), "K7QX4MZP");
+      await user.click(screen.getByRole("button", { name: /Xác nhận mã/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          /^Mạng này đã đạt giới hạn nhập mã hôm nay, vui lòng thử lại sau$/
+        );
       });
     });
 
@@ -436,18 +493,18 @@ describe("Account Page", () => {
     });
   });
 
-  describe("Ví credits Section (#vi-credits)", () => {
+  describe("Ví GEM Section (#vi-credits)", () => {
     it("should display credit balance, expiration note, and link to /wallet", async () => {
       await renderComponent({ creditBalance: 7 });
 
       const creditsDisplay = screen.getByTestId("account-credits-display");
-      expect(creditsDisplay).toHaveTextContent("7 credits");
+      expect(creditsDisplay).toHaveTextContent("7 GEM");
 
       expect(
-        screen.getByText(/Credits không có hạn sử dụng/i)
+        screen.getByText(/GEM không có hạn sử dụng. Mỗi lần xem bói tiêu thụ 5 GEM./i)
       ).toBeInTheDocument();
 
-      const walletLinks = screen.getAllByRole("link", { name: /Ví credits/i });
+      const walletLinks = screen.getAllByRole("link", { name: /Ví GEM/i });
       expect(walletLinks.some((l) => l.getAttribute("href") === "/wallet")).toBe(
         true
       );
@@ -488,7 +545,7 @@ describe("Account Page", () => {
       );
 
       const referralDetailLink = screen.getByRole("link", {
-        name: /Mời bạn bè nhận credit/i,
+        name: /Mời bạn bè nhận GEM/i,
       });
       expect(referralDetailLink).toHaveAttribute("href", "/referral");
     });

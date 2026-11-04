@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, text as type } from '../theme';
+import { t } from '../i18n';
 import Text from './AppText';
 import CosmicBackground from './CosmicBackground';
 import { Eyebrow, IconButton, Subtitle, Title } from './ui';
@@ -105,7 +106,7 @@ export function ScreenHeader({ eyebrow, title, subtitle, right, onBack, compact 
   if (compact) {
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 46 }}>
-        {onBack ? <IconButton icon="chevron-left" size={42} accessibilityLabel="Quay lại" onPress={onBack} /> : null}
+        {onBack ? <IconButton icon="chevron-left" size={42} accessibilityLabel={t('reading.back')} onPress={onBack} /> : null}
         <Text
           style={[type.headingMd, { color: colors.ink, flex: 1 }]}
           accessibilityRole="header"
@@ -121,7 +122,7 @@ export function ScreenHeader({ eyebrow, title, subtitle, right, onBack, compact 
   return (
     <View style={{ gap: spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 46, gap: spacing.sm }}>
-        {onBack ? <IconButton icon="chevron-left" size={42} accessibilityLabel="Quay lại" onPress={onBack} /> : <View />}
+        {onBack ? <IconButton icon="chevron-left" size={42} accessibilityLabel={t('reading.back')} onPress={onBack} /> : <View />}
         {right}
       </View>
 

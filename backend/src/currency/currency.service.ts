@@ -31,6 +31,10 @@ import { Device, DeviceDocument } from '../schemas/device.schema';
 import { AdReward, AdRewardDocument } from '../schemas/ad-reward.schema';
 import { CreditLedgerService } from '../credits/credit-ledger.service';
 import {
+  computeDeviceIdHash,
+  DEFAULT_IDENTITY_HASH_SECRET,
+} from '../common/device-id-hash.util';
+import {
   diffRewardDays,
   getNextRewardReset,
   getRewardDay,
@@ -211,14 +215,13 @@ export class CurrencyService {
   }
 
   hashDeviceId(rawDeviceId: string): string {
-    const secret = this.configService.get<string>(
-      'IDENTITY_HASH_SECRET',
-      'palmsight-identity-secret',
+    return computeDeviceIdHash(
+      this.configService.get<string>(
+        'IDENTITY_HASH_SECRET',
+        DEFAULT_IDENTITY_HASH_SECRET,
+      ),
+      rawDeviceId,
     );
-    return crypto
-      .createHmac('sha256', secret)
-      .update(`device:${rawDeviceId.trim()}`)
-      .digest('hex');
   }
 
   resolveDeviceIdHash(

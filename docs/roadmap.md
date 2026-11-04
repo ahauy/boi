@@ -51,7 +51,7 @@ Mỗi phase kết thúc bằng một bản chạy được. Chưa gán ngày; ư
 | Việc | Gợi ý chia việc |
 | --- | --- |
 | `/r/:code` + cookie `ref_code` | Frontend |
-| `POST /me/referral` (5 kiểm tra + trần 10 lượt/ngày; người nhập +1, chủ mã +2 trong một transaction), `GET /me/referrals` | Backend |
+| `POST /me/referral` (kiểm tra tài khoản và thiết bị + trần 5 lượt/ngày; người nhập +5, chủ mã +3 trong một transaction), `GET /me/referrals` | Backend |
 | Áp dụng `referralCode` lúc xác minh email đăng ký | Backend |
 | Màn `/referral/enter`, `/referral`, nhập mã từ `/account` | Frontend |
 | Script `credits:adjust`, `credits:reconcile`, `db:check` | Backend |

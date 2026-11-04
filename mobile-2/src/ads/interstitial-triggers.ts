@@ -18,7 +18,7 @@ import {
  * 3. `screen_change`: Tab switch, push/pop. Opening paywall never triggers; suppressed for 1s after a `noInterstitial` tap.
  * 4. `paywall_declined`: Closing paywall via X or Back (not after purchase) -> counts a decline and triggers ad when leaving paywall.
  * 5. `background_return`: Return from background >= 10s (`{PAYWALL_RETURN_AFTER}`) when the paywall cannot open.
- * 6. `ads_user_tap`: After 3 paywall declines, every button tap not marked `noInterstitial` triggers with 30s gap;
+ * 6. `ads_user_tap`: After 3 paywall declines, every button tap not marked `noInterstitial` triggers with 60s gap;
  *    second tap while first ad is coming is dropped; if user left the screen before ad finishes, drop the tap.
  */
 

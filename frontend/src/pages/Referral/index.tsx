@@ -29,7 +29,7 @@ export const Referral = () => {
           </div>
           <h1 className="text-3xl sm:text-4xl font-display font-bold text-gold-gradient">Giới thiệu bạn bè</h1>
           <p className="text-sm text-mute mt-1">
-            Chia sẻ mã giới thiệu của bạn để nhận thêm credits xem bói miễn phí.
+            Chia sẻ mã giới thiệu của bạn để nhận thêm GEM xem bói miễn phí.
           </p>
         </div>
 

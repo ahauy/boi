@@ -82,6 +82,11 @@ export function CheckinCard({ earnState, onUpdated }: CheckinCardProps) {
     return () => clearInterval(timer);
   }, [hasCountdown]);
 
+  const countdownEnded = secondsLeft === 0;
+  useEffect(() => {
+    if (countdownEnded) onUpdated?.();
+  }, [countdownEnded, onUpdated]);
+
   // The popup opens by itself once per reward day per device (§7.2).
   useEffect(() => {
     if (!hasRestoreOffer || !rewardDay) return;

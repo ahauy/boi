@@ -226,7 +226,9 @@ describe("ReadingDetail Page (/readings/:id)", () => {
     renderComponent();
 
     await waitFor(() => {
-      expect(screen.getByTestId("re-scan-button")).toBeInTheDocument();
+      expect(screen.getByTestId("re-scan-button")).toHaveTextContent(
+        "Bói thêm mục khác / trường phái khác (−5 GEM)"
+      );
     });
 
     fireEvent.click(screen.getByTestId("re-scan-button"));

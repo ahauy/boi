@@ -21,6 +21,8 @@ export interface AdsStoreState {
   fullScreenAdShowing: boolean;
   nativeAdsOnScreen: number;
   bannerVisible: boolean;
+  /** Adaptive height of the root banner, known once the SDK is ready. */
+  bannerHeight: number;
 }
 
 let status: AdSdkStatus = 'uninitialized';
@@ -28,6 +30,8 @@ let consentRegion: ConsentRegion = 'UNKNOWN';
 const activeFullScreenAds = new Set<string>();
 let nativeAdsOnScreen = 0;
 let bannerVisible = false;
+export const DEFAULT_BANNER_HEIGHT = 50;
+let bannerHeight = DEFAULT_BANNER_HEIGHT;
 
 const listeners = new Set<() => void>();
 let staleAdListener: ((adKey: string) => void) | null = null;
@@ -83,12 +87,20 @@ export const adsStore = {
       fullScreenAdShowing: activeFullScreenAds.size > 0,
       nativeAdsOnScreen,
       bannerVisible,
+      bannerHeight,
     };
   },
 
   setBannerVisible(visible: boolean): void {
     if (bannerVisible !== visible) {
       bannerVisible = visible;
+      notify();
+    }
+  },
+
+  setBannerHeight(height: number): void {
+    if (height > 0 && bannerHeight !== height) {
+      bannerHeight = height;
       notify();
     }
   },
@@ -170,6 +182,7 @@ export const adsStore = {
     activeFullScreenAds.clear();
     nativeAdsOnScreen = 0;
     bannerVisible = false;
+    bannerHeight = DEFAULT_BANNER_HEIGHT;
     staleAdListener = null;
     if (appStateTimer) clearTimeout(appStateTimer);
     appStateTimer = null;

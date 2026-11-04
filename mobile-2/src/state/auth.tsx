@@ -9,6 +9,7 @@ import { onVerifiedPurchase, setCurrentBillingRef } from '../billing/billing-ser
 import { loadPaywallDeclines, syncPaywallVipState } from '../premium/paywall-triggers';
 import { setInterstitialVipState } from '../ads/interstitial-policy';
 import { setRewardedBalanceListener } from '../ads/rewarded';
+import { t } from '../i18n';
 
 type AuthStatus = 'loading' | 'ready' | 'error';
 
@@ -55,7 +56,7 @@ async function resolveSession(): Promise<SessionResult> {
       }
       console.warn('[session] lỗi không mong đợi khi mở phiên:', cause);
       return {
-        error: 'Không mở được phiên trên thiết bị này. Vui lòng thử lại hoặc cài đặt lại app.',
+        error: t('error.session'),
       };
     }
   })().finally(() => {

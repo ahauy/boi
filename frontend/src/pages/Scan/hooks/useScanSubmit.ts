@@ -95,13 +95,14 @@ export const useScanSubmit = ({
       const errCode = err?.response?.data?.error?.code;
       const errDetails = err?.response?.data?.error?.details;
 
-      if (errDetails?.creditBalance !== undefined) {
-        updateUser({ creditBalance: errDetails.creditBalance });
+      // Lỗi hết GEM trả số dư ở `balance`, lỗi có hoàn GEM trả ở `creditBalance`
+      const serverBalance = errDetails?.balance ?? errDetails?.creditBalance;
+      if (serverBalance !== undefined) {
+        updateUser({ creditBalance: serverBalance });
       }
 
       if (statusCode === 402 || errCode === "INSUFFICIENT_CREDITS") {
         setStatus("INSUFFICIENT_CREDITS");
-        updateUser({ creditBalance: 0 });
       } else if (statusCode === 409 || errCode === "READING_IN_PROGRESS") {
         const readingId = errDetails?.readingId;
         if (readingId) {

@@ -94,6 +94,10 @@ export class User {
   @Prop({ type: String, default: null, trim: true })
   deviceIdHash?: string | null;
 
+  // Hash của thiết bị trước khi nhường `deviceIdHash` cho guest mới sau khi tài khoản này bị xoá
+  @Prop({ type: String, default: null, trim: true })
+  deletedDeviceIdHash?: string | null;
+
   // Hash IP lúc tạo tài khoản ẩn danh — dùng để chặn tạo hàng loạt
   @Prop({ type: String, default: null, trim: true })
   signupIpHash?: string | null;

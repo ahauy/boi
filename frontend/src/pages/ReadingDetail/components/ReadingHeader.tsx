@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Sparkles, Share2, Trash2, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import BaseUrl from "@/consts/baseUrl";
 import {
+  ECONOMY_DEFAULTS,
   ReadingDto,
   READING_SCHOOLS,
   HandOrientation,
@@ -527,7 +528,7 @@ export const ReadingHeader: React.FC<ReadingHeaderProps> = ({
             data-testid="re-scan-button"
           >
             <Sparkles aria-hidden="true" className="h-4 w-4 shrink-0" />
-            <span>Bói thêm mục khác / trường phái khác (−1 credit)</span>
+            <span>Bói thêm mục khác / trường phái khác (−{ECONOMY_DEFAULTS.PRICE_PER_ACTION} GEM)</span>
           </button>
 
           <button

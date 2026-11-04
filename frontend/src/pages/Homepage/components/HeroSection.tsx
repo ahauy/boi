@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { Sparkles, Eye, Compass, Stars, Hand } from "lucide-react";
+import { ECONOMY_DEFAULTS } from "@palmsight/shared";
 import BaseUrl from "@/consts/baseUrl";
 import { useAuth } from "@/providers/AuthenticationProvider";
 import MysticPalmOracle from "@/components/mystic/MysticPalmOracle";
@@ -34,7 +35,7 @@ export const HeroSection = () => {
                 ✦ Khai Mở Thiên Cơ ·
               </span>
               <span className="text-xs sm:text-sm font-semibold text-[#f7e7b4]">
-                Miễn phí 3 credits
+                Miễn phí {ECONOMY_DEFAULTS.STARTER_GRANT} GEM
               </span>
             </div>
 

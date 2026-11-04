@@ -144,7 +144,7 @@ export default function Navbar({ rightAction }: NavbarProps) {
                   className="inline-flex items-center gap-1.5 rounded-full border border-[#d4af37]/50 bg-gradient-to-r from-[#241842] to-[#1b1233] px-3 py-1 font-rune text-xs font-bold text-[#f7e7b4] shadow-[0_0_15px_rgba(212,175,55,0.2)] transition-all hover:border-[#d4af37] hover:shadow-[0_0_20px_rgba(212,175,55,0.4)]"
                 >
                   <Sparkles aria-hidden="true" className="h-3 w-3 text-[#d4af37]" />
-                  <span>[{user?.creditBalance ?? 0} CREDITS]</span>
+                  <span>[{user?.creditBalance ?? 0} GEM]</span>
                 </Link>
 
                 <Popover open={openPopover} onOpenChange={setPopover}>
@@ -189,7 +189,7 @@ export default function Navbar({ rightAction }: NavbarProps) {
                       className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink transition-colors hover:bg-[#241842] hover:text-[#f7e7b4]"
                     >
                       <Wallet className="h-4 w-4 text-[#a855f7]" />
-                      <span>Ví credits</span>
+                      <span>Ví GEM</span>
                     </Link>
                     <Link
                       to={BaseUrl.Referral}

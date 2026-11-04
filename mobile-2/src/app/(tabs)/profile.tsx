@@ -19,6 +19,7 @@ import { markNoInterstitialTap } from '../../ads/interstitial-policy';
 import { triggerPaywall } from '../../premium/paywall-triggers';
 import { billingStore } from '../../billing';
 import { SUPPORTED_LANGUAGES, SupportedLanguage, t, useI18n } from '../../i18n';
+import { REFERRAL_AMOUNTS } from '../../lib/format';
 import { useAuth } from '../../state/auth';
 import { colors, font, radius, shadow, spacing, text as type } from '../../theme';
 import { haptic } from '../../lib/haptics';
@@ -192,7 +193,7 @@ export default function ProfileScreen() {
             {/* Referral Row */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t('profile.referA11y')}
+              accessibilityLabel={t('profile.referA11y', REFERRAL_AMOUNTS)}
               onPress={() => {
                 haptic.select();
                 router.push('/referral');
@@ -211,7 +212,7 @@ export default function ProfileScreen() {
             {user.referral.canEnterCode ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t('profile.enterCodeA11y')}
+                accessibilityLabel={t('profile.enterCodeA11y', REFERRAL_AMOUNTS)}
                 onPress={() => {
                   haptic.select();
                   router.push('/enter-referral');
@@ -222,7 +223,7 @@ export default function ProfileScreen() {
                 </View>
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={[type.bodyBold, { color: colors.goldLight }]}>{t('profile.enterCodeTitle')}</Text>
-                  <Text style={[type.caption, { color: colors.mute }]}>{t('profile.enterCodeBody')}</Text>
+                  <Text style={[type.caption, { color: colors.mute }]}>{t('profile.enterCodeBody', REFERRAL_AMOUNTS)}</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
               </Pressable>

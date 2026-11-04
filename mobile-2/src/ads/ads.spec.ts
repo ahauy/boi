@@ -100,6 +100,12 @@ describe('Phase 3 & Phase 4: Ads Core & Banner / Fill-space (Playbook §2.1, §3
       expect(adsStore.getState().fullScreenAdShowing).toBe(false);
     });
 
+    it('keeps the measured banner height and ignores an empty answer', () => {
+      adsStore.setBannerHeight(62);
+      adsStore.setBannerHeight(0);
+      expect(adsStore.getState().bannerHeight).toBe(62);
+    });
+
     it('tracks nativeAdsOnScreen count correctly', () => {
       expect(adsStore.getState().nativeAdsOnScreen).toBe(0);
 

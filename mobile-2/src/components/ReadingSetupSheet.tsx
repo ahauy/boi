@@ -10,6 +10,7 @@ import Text from './AppText';
 import HandChoice from './HandChoice';
 import { Banner, Button, Chip, RadioCard, SectionLabel } from './ui';
 import { colors, radius, spacing, text as type } from '../theme';
+import { t, useI18n } from '../i18n';
 import { haptic } from '../lib/haptics';
 import { handLabel } from '../lib/format';
 import { useAuth } from '../state/auth';
@@ -19,9 +20,9 @@ import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { triggerPaywall } from '../premium/paywall-triggers';
 
 const STEPS = [
-  { title: 'Trường phái', short: 'Cổ phái' },
-  { title: 'Mục muốn bói', short: 'Mục bói' },
-  { title: 'Bàn tay', short: 'Bàn tay' },
+  { title: 'setup.stepSchool', short: 'setup.stepSchoolShort' },
+  { title: 'setup.stepTopics', short: 'setup.stepTopicsShort' },
+  { title: 'setup.stepHand', short: 'setup.stepHand' },
 ] as const;
 
 const SCHOOL_GLYPHS: Record<string, string> = { WESTERN: '☼', EASTERN: '☯', VEDIC: '✦' };
@@ -34,6 +35,7 @@ interface ReadingSetupSheetProps {
 }
 
 export default function ReadingSetupSheet({ visible, onClose, onStartScan }: ReadingSetupSheetProps) {
+  useI18n();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const { user } = useAuth();
@@ -93,12 +95,12 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
   }
 
   const canContinue = step !== 1 || draft.selected.length > 0;
-  const summary = `${draft.schoolConfig.name} · ${handLabel(draft.hand)} · ${draft.selected.length}/${draft.allTopics.length} mục`;
+  const summary = t('setup.summary', { school: draft.schoolConfig.name, hand: handLabel(draft.hand), selected: draft.selected.length, total: draft.allTopics.length });
   return (
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={close} onShow={() => setStep(0)} accessibilityViewIsModal>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Animated.View style={{ ...absoluteFill, backgroundColor: colors.scrim, opacity: backdrop }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Đóng thiết lập" onPress={close} style={{ flex: 1 }} />
+          <Pressable accessibilityRole="button" accessibilityLabel={t('setup.closeSetup')} onPress={close} style={{ flex: 1 }} />
         </Animated.View>
 
         <Animated.View
@@ -116,12 +118,12 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
           <LinearGradient colors={['rgba(124,108,246,0.16)', 'rgba(8,13,30,0.96)']} style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingTop: spacing.lg, paddingHorizontal: spacing.xl }}>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[type.eyebrow, { color: colors.gold }]}>THIẾT LẬP QUẺ</Text>
-                <Text style={[type.headingMd, { color: colors.ink }]}>{STEPS[step].title}</Text>
+                <Text style={[type.eyebrow, { color: colors.gold }]}>{t('setup.eyebrow')}</Text>
+                <Text style={[type.headingMd, { color: colors.ink }]}>{t(STEPS[step].title)}</Text>
               </View>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Đóng"
+                accessibilityLabel={t('setup.close')}
                 onPress={close}
                 hitSlop={8}
                 style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.glassBorder, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.glassFill }}>
@@ -136,7 +138,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                   <Pressable
                     key={item.title}
                     accessibilityRole="tab"
-                    accessibilityLabel={item.title}
+                    accessibilityLabel={t(item.title)}
                     accessibilityState={{ selected: position === step, disabled: unavailable }}
                     aria-selected={position === step}
                     aria-disabled={unavailable}
@@ -148,7 +150,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                     style={{ flex: 1, gap: 4, minHeight: 44, justifyContent: 'center', opacity: unavailable ? 0.4 : 1 }}>
                     <View style={{ height: 3, borderRadius: 2, backgroundColor: position <= step ? colors.gold : colors.glassBorder }} />
                     <Text style={[type.captionStrong, { color: position === step ? colors.goldLight : colors.stone, fontSize: 11 }]} numberOfLines={1}>
-                      {item.short}
+                      {t(item.short)}
                     </Text>
                   </Pressable>
                 );
@@ -161,7 +163,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled">
               {step === 0 ? (
-                <View accessibilityRole="radiogroup" accessibilityLabel="Chọn trường phái" style={{ gap: spacing.sm }}>
+                <View accessibilityRole="radiogroup" accessibilityLabel={t('setup.pickSchool')} style={{ gap: spacing.sm }}>
                   {READING_SCHOOL_LIST.map((config) => {
                     const isVipSchool = config.id === 'EASTERN' || config.id === 'VEDIC';
                     const isLocked = !isVip && isVipSchool;
@@ -191,15 +193,15 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
 
               {step === 1 ? (
                 <View style={{ gap: spacing.md }}>
-                  <Chip label="Bói toàn bộ" selected={draft.selected.length === draft.allTopics.length} onPress={() => { haptic.select(); draft.toggleAll(); }} style={{ alignSelf: 'flex-start' }} />
+                  <Chip label={t('setup.all')} selected={draft.selected.length === draft.allTopics.length} onPress={() => { haptic.select(); draft.toggleAll(); }} style={{ alignSelf: 'flex-start' }} />
                   <TopicGroup
-                    label="ĐƯỜNG CHỈ & DẤU HIỆU"
+                    label={t('setup.linesSigns')}
                     items={draft.schoolConfig.sections.map((section) => ({ key: section.key, label: section.label }))}
                     selected={draft.selected}
                     onToggle={draft.toggleTopic}
                   />
                   <TopicGroup
-                    label="KHÍA CẠNH CUỘC SỐNG"
+                    label={t('reading.lifeAspects')}
                     items={LIFE_ASPECTS.map((aspect) => ({ key: aspect.key, label: aspect.label }))}
                     selected={draft.selected}
                     onToggle={draft.toggleTopic}
@@ -209,7 +211,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
 
               {step === 2 ? (
                 <View style={{ gap: spacing.lg }}>
-                  <View accessibilityRole="radiogroup" accessibilityLabel="Chọn tay" style={{ flexDirection: 'row', gap: spacing.md }}>
+                  <View accessibilityRole="radiogroup" accessibilityLabel={t('setup.pickHand')} style={{ flexDirection: 'row', gap: spacing.md }}>
                     {[HandOrientation.RIGHT, HandOrientation.LEFT].map((side) => (
                       <HandChoice
                         key={side}
@@ -227,7 +229,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                   <View style={{ borderWidth: 1, borderColor: colors.hairline, borderRadius: radius.xl, backgroundColor: colors.goldWash, padding: spacing.md, gap: 6, flexDirection: 'row', alignItems: 'center' }}>
                     <MaterialCommunityIcons name="star-four-points" size={16} color={colors.gold} />
                     <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={[type.captionStrong, { color: colors.goldLight }]}>{`${CORE_READING_COST_GEM} GEM cho mỗi quẻ`}</Text>
+                      <Text style={[type.captionStrong, { color: colors.goldLight }]}>{t('setup.cost', { cost: CORE_READING_COST_GEM })}</Text>
                       <Text style={[type.caption, { color: colors.mute }]}>{summary}</Text>
                     </View>
                   </View>
@@ -235,10 +237,10 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                   {user && gemBalance < CORE_READING_COST_GEM ? (
                     <Banner
                       variant="warning"
-                      title="Bạn chưa đủ GEM"
-                      lines={[`Mỗi quẻ đọc bài cần ${CORE_READING_COST_GEM} GEM. Vào mục Gems để điểm danh hoặc xem video nhận thêm.`]}
+                      title={t('setup.noGemTitle')}
+                      lines={[t('scan.notEnoughBody', { cost: CORE_READING_COST_GEM })]}
                       action={{
-                        label: 'Mở ví Gems',
+                        label: t('scan.openWallet'),
                         onPress: () => {
                           close();
                           setTimeout(() => router.push('/(tabs)/currency'), 120);
@@ -252,9 +254,9 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
 
             <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.lg, gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.glassBorder }}>
               <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                {step > 0 ? <Button label="Quay lại" variant="ghost" style={{ flex: 1 }} onPress={() => { haptic.tap(); setStep((current) => current - 1); }} /> : null}
+                {step > 0 ? <Button label={t('reading.back')} variant="ghost" style={{ flex: 1 }} onPress={() => { haptic.tap(); setStep((current) => current - 1); }} /> : null}
                 <Button
-                  label={step === STEPS.length - 1 ? 'Vào phòng quét' : 'Tiếp tục'}
+                  label={step === STEPS.length - 1 ? t('setup.enterScan') : t('setup.continue')}
                   style={{ flex: step > 0 ? 2 : 1 }}
                   onPress={next}
                   disabled={!canContinue}
@@ -263,10 +265,10 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
               </View>
               <Text style={[type.caption, { color: step === 1 && draft.selected.length === 0 ? colors.danger : colors.stone, textAlign: 'center' }]}>
                 {step === 1 && draft.selected.length === 0
-                  ? 'Chọn ít nhất 1 mục để tiếp tục.'
+                  ? t('setup.needOne')
                   : step === 2
-                    ? 'Bạn sẽ chụp ảnh lòng bàn tay ở bước tiếp theo.'
-                    : 'Mọi lựa chọn có thể thay đổi trong phòng quét.'}
+                    ? t('setup.nextPhoto')
+                    : t('setup.changeLater')}
               </Text>
             </View>
           </LinearGradient>

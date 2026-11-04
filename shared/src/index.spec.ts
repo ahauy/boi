@@ -66,11 +66,9 @@ describe('@palmsight/shared', () => {
 
   describe('Constants', () => {
     it('should have correct CREDIT_AMOUNTS', () => {
-      expect(CREDIT_AMOUNTS.SIGNUP_BONUS).toBe(3);
-      expect(CREDIT_AMOUNTS.REFERRAL_REWARD).toBe(2);
-      expect(CREDIT_AMOUNTS.REFEREE_REWARD).toBe(1);
-      expect(CREDIT_AMOUNTS.READING_COST).toBe(1);
-      expect(CREDIT_AMOUNTS.REFERRAL_DAILY_CAP).toBe(10);
+      expect(CREDIT_AMOUNTS.REFERRAL_REWARD).toBe(3);
+      expect(CREDIT_AMOUNTS.REFEREE_REWARD).toBe(5);
+      expect(CREDIT_AMOUNTS.REFERRAL_DAILY_CAP).toBe(5);
     });
 
     it('should have 3 reading schools with non-empty sections', () => {

@@ -7,6 +7,7 @@ import {
   PasswordResetSchema,
   SessionSchema,
   ReferralSchema,
+  ReferralNetworkCounterSchema,
   ReadingSchema,
   CreditTransactionSchema,
   DeletedIdentitySchema,
@@ -56,6 +57,7 @@ export const SYNC_TARGETS: SyncTarget[] = [
   { name: 'AdReward', schema: AdRewardSchema },
   { name: 'PlaySubscription', schema: PlaySubscriptionSchema },
   { name: 'BillingEvent', schema: BillingEventSchema },
+  { name: 'ReferralNetworkCounter', schema: ReferralNetworkCounterSchema },
 ];
 
 export async function syncGuestTrialIndexes(connection: Connection): Promise<void> {
