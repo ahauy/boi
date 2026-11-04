@@ -1,0 +1,23 @@
+name: Dependency review
+
+on:
+  pull_request:
+    branches: [main]
+
+# Chỉ đọc manifest/lockfile. Không cần token riêng cho repo public.
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Khác biệt so với "pnpm audit": audit sẽ đỏ ngay từ đầu vì repo đang có 19 lỗ hổng cũ.
+      # Dependency review chỉ chặn khi chính PR này introduces lỗ hổng mới, nên nó dùng làm gate được.
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
