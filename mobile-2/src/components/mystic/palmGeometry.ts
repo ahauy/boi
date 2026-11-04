@@ -1,7 +1,5 @@
 // Hình bàn tay + 4 đường chỉ tay lấy nguyên từ frontend/src/components/mystic/MysticPalmOracle.tsx
 // để mobile và web cùng một "ấn chứng" thị giác.
-export const PALM_VIEWBOX = { width: 200, height: 260 } as const;
-
 export const PALM_OUTLINE_PATH = `M 52 188
   C 42 172 24 145 16 128
   C 11 117 16 106 27 110
@@ -43,6 +41,3 @@ export const PALM_DOTS: [number, number][] = [
   [121, 123],
   [143, 134],
 ];
-
-export const PALM_EYE_PATH = 'M 84 166 Q 104 152 124 166 Q 104 180 84 166 Z';
-export const PALM_CRESCENT_PATH = 'M 134 202 A 7 7 0 1 1 127 212 A 5.5 5.5 0 1 0 134 202 Z';

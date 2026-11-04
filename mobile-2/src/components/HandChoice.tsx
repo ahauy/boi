@@ -36,8 +36,8 @@ export default function HandChoice({ side, selected, onPress }: HandChoiceProps)
           alignItems: 'center',
           gap: spacing.sm,
         }}>
-        {/* Path gốc vẽ bàn tay phải (ngón cái bên trái); tay trái lật trục ngang để đúng giải phẫu */}
-        <View style={{ transform: [{ scaleX: side === HandOrientation.LEFT ? -1 : 1 }] }}>
+        {/* Path gốc vẽ lòng bàn tay trái (ngón cái bên phải); bàn tay phải lật trục ngang */}
+        <View style={{ transform: [{ scaleX: side === HandOrientation.RIGHT ? -1 : 1 }] }}>
           <Svg width={58} height={76} viewBox="0 0 200 260" fill="none">
             <Path d={PALM_OUTLINE_PATH} stroke={selected ? colors.gold : colors.stone} strokeWidth="2" strokeLinecap="round" />
             {/* Chỉ tay vẽ cùng màu nét bao, mờ hơn một bậc: đủ để đọc là lòng bàn tay, không biến thẻ thành bảng màu. */}

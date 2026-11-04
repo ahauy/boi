@@ -763,12 +763,3 @@ export function TextLink({ label, onPress, style }: { label: string; onPress: ()
     </Pressable>
   );
 }
-
-export function LinkFooter({ question, action, onPress }: { question: string; action: string; onPress: () => void }) {
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, flexWrap: 'wrap' }}>
-      <Text style={[type.caption, { color: colors.mute }]}>{question}</Text>
-      <TextLink label={action} onPress={onPress} />
-    </View>
-  );
-}

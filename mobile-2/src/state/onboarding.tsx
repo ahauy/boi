@@ -29,7 +29,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
       // Cài lại app trên iOS có thể giữ Keychain cũ: đã có bài bói thì không bắt xem lại onboarding
       try {
-        const page = await fetchReadings();
+        const page = await fetchReadings(undefined, 1);
         if (page.items.length > 0) {
           await markOnboardingComplete();
           if (!cancelled) setStatus('done');

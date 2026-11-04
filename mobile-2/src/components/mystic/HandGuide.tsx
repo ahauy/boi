@@ -13,7 +13,7 @@ interface HandGuideProps {
   height: number;
   showBeam?: boolean;
   color?: string;
-  /** Bàn tay người dùng đã chọn: path gốc vẽ tay phải, tay trái phải lật trục ngang. */
+  /** Bàn tay người dùng đã chọn: path gốc vẽ tay trái, tay phải phải lật trục ngang. */
   hand?: HandOrientation;
   children?: React.ReactNode;
 }
@@ -63,7 +63,7 @@ export default function HandGuide({
       </View>
 
       <Svg width="72%" height="82%" viewBox="0 0 200 260" fill="none" preserveAspectRatio="xMidYMid meet">
-        <G transform={hand === HandOrientation.LEFT ? 'translate(200, 0) scale(-1, 1)' : undefined}>
+        <G transform={hand === HandOrientation.RIGHT ? 'translate(200, 0) scale(-1, 1)' : undefined}>
           <Path d={PALM_OUTLINE_PATH} fill="none" stroke={color} strokeOpacity="0.62" strokeWidth="1.4" />
           <Path d={PALM_OUTLINE_PATH} fill="none" stroke={colors.gold} strokeOpacity="0.16" strokeWidth="6" />
           {/* Nét mờ hơn viền một bậc: đủ để đọc là lòng bàn tay mà không lẫn vào ảnh thật phía sau. */}

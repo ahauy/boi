@@ -4,14 +4,10 @@ import type {
   MeResponseDto,
   ReferralListResponseDto,
 } from '@palmsight/shared';
-import { get, post, put } from './api';
+import { get, post } from './api';
 
 export function fetchMe(): Promise<MeResponseDto> {
   return get<MeResponseDto>('/me');
-}
-
-export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  return put<void>('/me/password', { currentPassword, newPassword });
 }
 
 export function enterReferralCode(code: string): Promise<EnterReferralResponseDto> {
