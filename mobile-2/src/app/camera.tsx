@@ -17,12 +17,14 @@ import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { useReduceMotion } from '../lib/motion';
 import { useCapture } from '../state/capture';
+import { useReadingDraft } from '../state/readingDraft';
 
 const HINTS = ['ĐỦ SÁNG', 'XOÈ NGÓN', 'HƯỚNG CAMERA'] as const;
 
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
   const { submitPhoto } = useCapture();
+  const { hand } = useReadingDraft();
   const cameraRef = useRef<CameraViewHandle>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [ready, setReady] = useState(false);
@@ -182,7 +184,7 @@ export default function CameraScreen() {
           <Text pointerEvents="none" style={[type.eyebrow, { color: colors.goldLight, textAlign: 'center', marginBottom: spacing.sm, fontSize: 10 }]}>
             ✦ ĐẶT LÒNG BÀN TAY TRONG KHUNG ✦
           </Text>
-          {guideAreaHeight > 0 ? <HandGuide height={guideHeight} /> : null}
+          {guideAreaHeight > 0 ? <HandGuide height={guideHeight} hand={hand} /> : null}
         </View>
 
         <View style={{ gap: spacing.sm, paddingHorizontal: spacing.lg }}>

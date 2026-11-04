@@ -93,7 +93,7 @@ export default function HistoryScreen() {
             <Banner variant="error" title={failure} action={{ label: 'Thử lại', onPress: () => void loadFirst() }} />
           ) : (
             <View style={{ alignItems: 'center', gap: spacing.md, paddingTop: spacing.sm }}>
-              <CosmicHand size={210} scan={false} />
+              <CosmicHand size={210} />
               <Text style={[type.eyebrow, { color: colors.gold }]}>SỔ THIÊN MỆNH</Text>
               <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>Chưa có quẻ nào được lưu</Text>
               <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center', maxWidth: 300 }]}>
