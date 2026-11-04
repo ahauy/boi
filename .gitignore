@@ -61,6 +61,7 @@ AGENTS.md
 !.github/workflows/*
 !.github/rulesets/
 !.github/rulesets/*
+!.github/dependabot.yml
 !.github/ISSUE_TEMPLATE/
 !.github/pull_request_template.md
 
