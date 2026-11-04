@@ -21,12 +21,16 @@ Token cần scope `administration:write`. Xem ruleset đã áp: `GET /repos/ahau
 | File | Enforcement | Nội dung |
 | --- | --- | --- |
 | `01-default-branch.json` | `active` | Chặn xoá và force-push nhánh mặc định; PR phải có 4 check xanh: `Lint`, `Typecheck`, `Test`, `Build` |
-| `02-default-branch-pr-only.json` | `disabled` | Bản nghiêm ngặt: thêm `update` (không được push thẳng vào main), lịch sử tuyến tính, chỉ squash, và check `Dependency review`. Đổi sang `active` khi sẵn sàng |
+| `02-default-branch-pr-only.json` | `active` | Bản nghiêm ngặt: thêm `update` (không được push thẳng vào main), lịch sử tuyến tính, chỉ squash, và check `Dependency review` |
 | `03-release-tags.json` | `active` | Tag `v*` không xoá được, không ghi đè được |
 
-`02` cố ý đặt `enforcement: "disabled"` để áp được mà không đổi hành vi ngay. Khi bật,
-mọi thay đổi phải đi qua PR — bao gồm cả bạn, vì `required_approving_review_count` vẫn là `0`
-nên bạn tự merge được, chỉ thêm một bước thao tác chứ không phải chờ ai.
+`02` là bản đang bật: nó bao gồm luôn những gì `01` làm, nên khi `02` active thì **xoá `01`**
+(kể cả ruleset cũ `main — bắt buộc CI` nếu còn) để hai ruleset cùng nhắm một ref khỏi giao nhau.
+
+Vì `02` có rule `update`, `git push origin main` sẽ bị từ chối với
+`push declined due to repository rule violations`. Mọi thay đổi phải đi qua PR — bao gồm cả
+push trực tiếp từ máy dev. Lưu ý thêm: chính `required_status_checks` trong ruleset cũng đã đủ
+chặn push thẳng, không cần đến `update`.
 
 ## Hai liên kết dễ gãy
 
