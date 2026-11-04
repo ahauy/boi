@@ -3,7 +3,7 @@ import { View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { ReadingStatus, type ReadingListItemDto } from '@palmsight/shared';
+import { CORE_READING_COST_GEM, ReadingStatus, type ReadingListItemDto } from '@palmsight/shared';
 
 import HeaderCredits from '../../components/HeaderCredits';
 import Screen from '../../components/Screen';
@@ -12,16 +12,24 @@ import CosmicHand from '../../components/CosmicHand';
 import ReadingCard from '../../components/ReadingCard';
 import ReadingSetupSheet from '../../components/ReadingSetupSheet';
 import { Banner, Button, SectionLabel, TextLink } from '../../components/ui';
+import NativeAdSlot from '../../ads/native-ad-slot';
+import NotEnoughSheet from '../../earn/not-enough-sheet';
+import { triggerPaywall } from '../../premium/paywall-triggers';
+import { useAuth } from '../../state/auth';
 import { errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
 import { fetchReadings } from '../../lib/readings';
 import { colors, font, radius, shadow, spacing, text as type } from '../../theme';
 
 export default function HomeScreen() {
+  const { user, refreshUser } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [notEnoughOpen, setNotEnoughOpen] = useState(false);
   const [recent, setRecent] = useState<ReadingListItemDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<string | null>(null);
+
+  const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
 
   const loadRecent = useCallback(async () => {
     setLoading(true);
@@ -39,13 +47,24 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadRecent();
-    }, [loadRecent])
+      void refreshUser().catch(() => undefined);
+    }, [loadRecent, refreshUser])
   );
 
   const greeting = greetingForHour(new Date().getHours());
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const compact = height < 720;
   const handSize = compact ? 112 : 158;
+
+  function handleStartReadingPress() {
+    haptic.tap();
+    if (gemBalance < CORE_READING_COST_GEM) {
+      setNotEnoughOpen(true);
+      void triggerPaywall('out_of_currency');
+      return;
+    }
+    setSheetOpen(true);
+  }
 
   return (
     <>
@@ -94,17 +113,23 @@ export default function HomeScreen() {
             <Button
               label="Bắt đầu xem bói"
               size="lg"
-              onPress={() => {
-                haptic.tap();
-                setSheetOpen(true);
-              }}
+              onPress={handleStartReadingPress}
               icon={<MaterialCommunityIcons name="star-four-points" size={18} color={colors.onGold} />}
             />
 
             <Text style={[type.code, { color: colors.body, textAlign: 'center', fontSize: 9.5, lineHeight: 14 }]}>
-              {compact ? '1 credit · dưới 60 giây' : '1 credit / quẻ · dưới 60 giây · ảnh được bảo vệ'}
+              {compact ? `${CORE_READING_COST_GEM} GEM · dưới 60 giây` : `${CORE_READING_COST_GEM} GEM / quẻ · dưới 60 giây · ảnh được bảo vệ`}
             </Text>
           </LinearGradient>
+        </View>
+
+        {/* Native Ad Slot on Home Feed */}
+        <View style={{ alignItems: 'center', paddingVertical: spacing.xs }}>
+          <NativeAdSlot
+            availableHeight={280}
+            availableWidth={Math.max(300, width - spacing.xl * 2)}
+            {...({ placement: 'home_feed' } as any)}
+          />
         </View>
 
         <View style={{ gap: spacing.sm }}>
@@ -174,6 +199,17 @@ export default function HomeScreen() {
         onStartScan={() => {
           setSheetOpen(false);
           router.navigate('/scan');
+        }}
+      />
+
+      <NotEnoughSheet
+        visible={notEnoughOpen}
+        onClose={() => setNotEnoughOpen(false)}
+        currentBalance={gemBalance}
+        requiredGem={CORE_READING_COST_GEM}
+        onEarned={() => {
+          void refreshUser().catch(() => undefined);
+          setNotEnoughOpen(false);
         }}
       />
     </>

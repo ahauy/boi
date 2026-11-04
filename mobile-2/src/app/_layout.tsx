@@ -14,6 +14,9 @@ import { CaptureProvider } from '../state/capture';
 import { ReadingDraftProvider } from '../state/readingDraft';
 import { SessionErrorScreen, SessionLoadingScreen } from '../components/SessionGate';
 import SimulatedAdHost from '../components/SimulatedAdHost';
+import BannerHost from '../ads/banner-host';
+import { PaywallModal, setCurrentPaywallRoute, VipDailyGiftBanner } from '../premium';
+import { View } from 'react-native';
 import { colors } from '../theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -34,9 +37,13 @@ const palmTheme = {
 };
 
 function Gate({ appReady }: { appReady: boolean }) {
-  const { status } = useAuth();
+  const { status, user, setCreditBalance } = useAuth();
   const { status: onboarding } = useOnboarding();
   const pathname = usePathname();
+
+  useEffect(() => {
+    setCurrentPaywallRoute(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     if (!appReady) return;
@@ -56,21 +63,30 @@ function Gate({ appReady }: { appReady: boolean }) {
   if (status === 'loading' || onboarding === 'loading') return <SessionLoadingScreen />;
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
-      <Stack.Protected guard={onboarding === 'pending'}>
-        <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-      </Stack.Protected>
+    <>
+      <VipDailyGiftBanner />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
+        <Stack.Protected guard={onboarding === 'pending'}>
+          <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+        </Stack.Protected>
 
-      <Stack.Protected guard={onboarding === 'done'}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="reading/[id]" />
-        <Stack.Screen name="wallet" />
-        <Stack.Screen name="referral" />
-        <Stack.Screen name="enter-referral" />
-      </Stack.Protected>
+        <Stack.Protected guard={onboarding === 'done'}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="reading/[id]" />
+          <Stack.Screen name="wallet" />
+          <Stack.Screen name="referral" />
+          <Stack.Screen name="enter-referral" />
+        </Stack.Protected>
 
-      <Stack.Screen name="camera" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
-    </Stack>
+        <Stack.Screen name="camera" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
+      </Stack>
+      <PaywallModal
+        billingRef={user?.billingRef ?? null}
+        isVip={Boolean(user?.vip?.active)}
+        vipProductId={user?.vip?.productId ?? null}
+        onVerified={setCreditBalance}
+      />
+    </>
   );
 }
 
@@ -98,7 +114,12 @@ export default function RootLayout() {
                 <StatusBar style="light" />
                 {/* Đăng ký trình phát trước khi màn ví kịp hỏi `rewardedAdsSupported()`. */}
                 <SimulatedAdHost />
-                <Gate appReady={fontsLoaded || Boolean(fontError)} />
+                <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+                  <View style={{ flex: 1 }}>
+                    <Gate appReady={fontsLoaded || Boolean(fontError)} />
+                  </View>
+                  <BannerHost />
+                </View>
               </ThemeProvider>
             </ReadingDraftProvider>
           </OnboardingProvider>

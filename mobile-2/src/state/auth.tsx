@@ -4,6 +4,9 @@ import * as api from '../lib/api';
 import * as authApi from '../lib/authApi';
 import { getDeviceId } from '../lib/deviceId';
 import { fetchMe } from '../lib/users';
+import { billingStore } from '../billing/billing-store';
+import { onVerifiedPurchase, setCurrentBillingRef } from '../billing/billing-service';
+import { loadPaywallDeclines, syncPaywallVipState } from '../premium/paywall-triggers';
 
 type AuthStatus = 'loading' | 'ready' | 'error';
 
@@ -67,23 +70,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const applyResult = useCallback((result: SessionResult) => {
-    if ('user' in result) {
-      setUser(result.user);
-      setError(null);
-      setStatus('ready');
+  const syncUserMonetizationState = useCallback((nextUser: UserDto | null) => {
+    if (!nextUser) {
+      setCurrentBillingRef(null);
+      syncPaywallVipState({ vipKnown: false, isVip: false });
       return;
     }
-    setUser(null);
-    setError(result.error);
-    setStatus('error');
+
+    setCurrentBillingRef(nextUser.billingRef ?? null);
+    syncPaywallVipState({
+      vipKnown: true,
+      isVip: Boolean(nextUser.vip?.active),
+    });
+
+    if (nextUser.grantedNow && nextUser.vipDailyGranted) {
+      billingStore.setState({ vipGiftBannerAmount: nextUser.vipDailyGranted });
+    }
   }, []);
+
+  const applyResult = useCallback(
+    (result: SessionResult) => {
+      if ('user' in result) {
+        setUser(result.user);
+        setError(null);
+        setStatus('ready');
+        syncUserMonetizationState(result.user);
+        return;
+      }
+      setUser(null);
+      setError(result.error);
+      setStatus('error');
+      syncUserMonetizationState(null);
+    },
+    [syncUserMonetizationState]
+  );
 
   const refreshUser = useCallback(async () => {
-    setUser(await fetchMe());
-  }, []);
+    const fresh = await fetchMe();
+    setUser(fresh);
+    syncUserMonetizationState(fresh);
+  }, [syncUserMonetizationState]);
 
   useEffect(() => {
+    void loadPaywallDeclines();
     let cancelled = false;
     void (async () => {
       const result = await resolveSession();
@@ -93,6 +122,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [applyResult]);
+
+  // Playbook §6.5: VIP from verify is written to the /v1/me cache immediately (ads stop at once), then refetched.
+  useEffect(
+    () =>
+      onVerifiedPurchase((res) => {
+        setCurrentBillingRef(res.billingRef);
+        syncPaywallVipState({
+          vipKnown: true,
+          isVip: Boolean(res.vip?.active),
+        });
+        setUser((current) =>
+          current
+            ? {
+                ...current,
+                vip: res.vip,
+                creditBalance: res.balance,
+                balance: res.balance,
+                billingRef: res.billingRef,
+              }
+            : current
+        );
+        void refreshUser().catch(() => {
+          // Ignore background refetch error since cache was already updated
+        });
+      }),
+    [refreshUser]
+  );
 
   const retry = useCallback(async () => {
     setStatus('loading');
@@ -106,13 +162,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       api.onSessionExpired(() => {
         setUser(null);
         setStatus('loading');
+        syncUserMonetizationState(null);
         void resolveSession().then(applyResult);
       }),
-    [applyResult]
+    [applyResult, syncUserMonetizationState]
   );
 
   const setCreditBalance = useCallback((balance: number) => {
-    setUser((current) => (current ? { ...current, creditBalance: balance } : current));
+    setUser((current) =>
+      current ? { ...current, creditBalance: balance, balance } : current
+    );
   }, []);
 
   const value = useMemo<AuthContextValue>(

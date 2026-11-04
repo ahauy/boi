@@ -155,7 +155,13 @@ export const CREDIT_AMOUNTS = {
   REWARDED_AD_REWARD_CREDITS: 1,
 } as const;
 
+export const CORE_READING_COST_GEM = 5;
+
 export const ECONOMY_DEFAULTS = {
+  APP_NAME: "PalmSight",
+  CORE_ACTION: "Palm reading",
+  VIP_ONLY_FEATURE: "Eastern & Vedic Palmistry Schools",
+  LANGUAGES: ["en", "vi", "id", "hi", "zh", "ru", "ja", "pt", "es"] as const,
   CURRENCY: "GEM",
   PRICE_PER_ACTION: 5,
   MAX_ACTIONS_PER_TAP: 5,

@@ -13,6 +13,9 @@ import {
   GuestTrialSchema,
   RewardedAdClaimSchema,
   DeviceSchema,
+  AdRewardSchema,
+  PlaySubscriptionSchema,
+  BillingEventSchema,
 } from '../src/schemas';
 
 // Load .env file if available
@@ -52,6 +55,9 @@ export const SYNC_TARGETS: SyncTarget[] = [
   { name: 'GuestTrial', schema: GuestTrialSchema },
   { name: 'RewardedAdClaim', schema: RewardedAdClaimSchema },
   { name: 'Device', schema: DeviceSchema },
+  { name: 'AdReward', schema: AdRewardSchema },
+  { name: 'PlaySubscription', schema: PlaySubscriptionSchema },
+  { name: 'BillingEvent', schema: BillingEventSchema },
 ];
 
 export async function syncGuestTrialIndexes(connection: Connection): Promise<void> {

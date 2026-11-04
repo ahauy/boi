@@ -69,6 +69,19 @@ export enum RewardedAdPlacement {
   OUT_OF_CREDITS = "out_of_credits",
 }
 
+export enum AdRewardKind {
+  CHECKIN = "checkin",
+  SPIN = "spin",
+  BONUS = "bonus",
+}
+
+export enum AdRewardStatus {
+  PENDING = "pending",
+  REWARDED = "rewarded",
+  CAPPED = "capped",
+  RELEASED = "released",
+}
+
 export enum ImageQuality {
   GOOD = "GOOD",
   FAIR = "FAIR",

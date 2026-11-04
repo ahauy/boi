@@ -9,3 +9,6 @@ export * from './deleted-identity.schema';
 export * from './guest-trial.schema';
 export * from './rewarded-ad-claim.schema';
 export * from './device.schema';
+export * from './ad-reward.schema';
+export * from './play-subscription.schema';
+export * from './billing-event.schema';

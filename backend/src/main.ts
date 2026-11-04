@@ -116,6 +116,7 @@ async function bootstrap() {
       "X-Request-Id",
       "X-Refresh-Token",
       "X-Client",
+      "X-Device-Id",
     ],
     exposedHeaders: [
       "Set-Cookie",

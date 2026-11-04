@@ -14,6 +14,8 @@ import { HealthModule } from "../src/health/health.module";
 import { ReadingsModule } from "../src/readings/readings.module";
 import { AdsModule } from "../src/ads/ads.module";
 import { AppConfigModule } from "../src/config/app-config.module";
+import { CurrencyModule } from "../src/currency/currency.module";
+import { BillingModule } from "../src/billing/billing.module";
 import { MailService } from "../src/mail/mail.service";
 import { GoogleAuthVerifier } from "../src/auth/google-auth.verifier";
 import { FacebookAuthVerifier } from "../src/auth/facebook-auth.verifier";
@@ -142,6 +144,8 @@ export async function createTestApp(
       ReadingsModule,
       AdsModule,
       AppConfigModule,
+      CurrencyModule,
+      BillingModule,
     ],
   })
     .overrideProvider(MailService)
@@ -182,6 +186,9 @@ export async function createTestApp(
     "guest_trials",
     "rewarded_ad_claims",
     "devices",
+    "ad_rewards",
+    "play_subscriptions",
+    "billing_events",
   ];
   for (const col of collectionNames) {
     try {

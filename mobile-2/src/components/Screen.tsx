@@ -7,6 +7,7 @@ import { colors, spacing, text as type } from '../theme';
 import Text from './AppText';
 import CosmicBackground from './CosmicBackground';
 import { Eyebrow, IconButton, Subtitle, Title } from './ui';
+import { useAdsStore } from '../ads/ads-store';
 
 interface ScreenProps {
   children?: React.ReactNode;
@@ -24,13 +25,15 @@ interface ScreenProps {
 
 export default function Screen({ children, scroll = true, header, footer, contentStyle, scrollRef, avoidKeyboard = true, background = true }: ScreenProps) {
   const insets = useSafeAreaInsets();
+  const adsState = useAdsStore();
+  const bottomInset = adsState.bannerVisible ? 0 : insets.bottom;
 
   const body = scroll ? (
     <ScrollView
       ref={scrollRef}
       style={{ flex: 1 }}
       contentContainerStyle={[
-        { paddingHorizontal: spacing.xl, paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.lg },
+        { paddingHorizontal: spacing.xl, paddingTop: insets.top + spacing.md, paddingBottom: bottomInset + spacing.xxl, gap: spacing.lg },
         contentStyle,
       ]}
       keyboardShouldPersistTaps="handled"
@@ -42,7 +45,7 @@ export default function Screen({ children, scroll = true, header, footer, conten
   ) : (
     <View
       style={[
-        { flex: 1, paddingHorizontal: spacing.xl, paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.md, gap: spacing.lg },
+        { flex: 1, paddingHorizontal: spacing.xl, paddingTop: insets.top + spacing.md, paddingBottom: bottomInset + spacing.md, gap: spacing.lg },
         contentStyle,
       ]}>
       {header}
@@ -55,7 +58,7 @@ export default function Screen({ children, scroll = true, header, footer, conten
       style={{
         paddingHorizontal: spacing.xl,
         paddingTop: spacing.md,
-        paddingBottom: insets.bottom + spacing.md,
+        paddingBottom: bottomInset + spacing.md,
         backgroundColor: colors.tabBar,
         borderTopWidth: 1,
         borderTopColor: colors.glassBorder,

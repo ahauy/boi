@@ -11,6 +11,9 @@ import {
   DeletedIdentitySchema,
   GuestTrialSchema,
   DeviceSchema,
+  AdRewardSchema,
+  PlaySubscriptionSchema,
+  BillingEventSchema,
 } from '../src/schemas';
 import {
   AuthProvider,
@@ -36,6 +39,9 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
       expect((DeletedIdentitySchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('deleted_identities');
       expect((GuestTrialSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('guest_trials');
       expect((DeviceSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('devices');
+      expect((AdRewardSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('ad_rewards');
+      expect((PlaySubscriptionSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('play_subscriptions');
+      expect((BillingEventSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('billing_events');
     });
   });
 
@@ -394,8 +400,8 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
   });
 
   describe('sync-indexes targets', () => {
-    it('should register all 11 schemas in SYNC_TARGETS', () => {
-      expect(SYNC_TARGETS).toHaveLength(11);
+    it('should register all 14 schemas in SYNC_TARGETS', () => {
+      expect(SYNC_TARGETS).toHaveLength(14);
       const names = SYNC_TARGETS.map((t) => t.name);
       expect(names).toEqual([
         'User',
@@ -409,6 +415,9 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
         'GuestTrial',
         'RewardedAdClaim',
         'Device',
+        'AdReward',
+        'PlaySubscription',
+        'BillingEvent',
       ]);
     });
   });

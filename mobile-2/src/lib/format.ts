@@ -39,18 +39,38 @@ export function topicLabels(topics: string[] | null | undefined, school: Reading
 export function transactionLabel(type: CreditTransactionType, note?: string): string {
   switch (type) {
     case CreditTransactionType.SIGNUP_BONUS:
+    case CreditTransactionType.STARTER:
       return 'Quà chào mừng';
     case CreditTransactionType.REFERRAL_BONUS:
       return 'Thưởng giới thiệu';
     case CreditTransactionType.REFEREE_BONUS:
       return 'Thưởng nhập mã';
     case CreditTransactionType.READING_SPEND:
+    case CreditTransactionType.SINGLE:
       return 'Xem bói';
     case CreditTransactionType.READING_REFUND:
-      return 'Hoàn credit';
+    case CreditTransactionType.REFUND:
+      return 'Hoàn GEM';
     case CreditTransactionType.REWARDED_AD:
+    case CreditTransactionType.AD_REWARD:
       return 'Xem quảng cáo';
+    case CreditTransactionType.CHECKIN:
+      return 'Điểm danh hằng ngày';
+    case CreditTransactionType.CHECKIN_MILESTONE:
+      return 'Mốc chuỗi điểm danh';
+    case CreditTransactionType.CHECKIN_RESTORE:
+      return 'Khôi phục chuỗi điểm danh';
+    case CreditTransactionType.WHEEL:
+      return 'Thưởng vòng quay';
+    case CreditTransactionType.WHEEL_SPIN:
+      return 'Lượt quay bằng GEM';
+    case CreditTransactionType.VIP_DAILY:
+      return 'Quà VIP hằng ngày';
+    case CreditTransactionType.GUEST_MERGE:
+      return 'Gộp tài khoản khách';
     case CreditTransactionType.ADMIN_ADJUST:
+    case CreditTransactionType.OPERATOR:
+    default:
       return note ? `Điều chỉnh (${note})` : 'Điều chỉnh hệ thống';
   }
 }

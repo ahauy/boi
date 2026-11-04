@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { HandOrientation, LIFE_ASPECTS, READING_SCHOOL_LIST } from '@palmsight/shared';
+import { CORE_READING_COST_GEM, HandOrientation, LIFE_ASPECTS, READING_SCHOOL_LIST } from '@palmsight/shared';
 
 import Text from './AppText';
 import HandChoice from './HandChoice';
@@ -16,6 +16,7 @@ import { useAuth } from '../state/auth';
 import { useReadingDraft } from '../state/readingDraft';
 import { useReduceMotion } from '../lib/motion';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
+import { triggerPaywall } from '../premium/paywall-triggers';
 
 const STEPS = [
   { title: 'Trường phái', short: 'Cổ phái' },
@@ -39,6 +40,10 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
   const draft = useReadingDraft();
   const reduceMotion = useReduceMotion();
   const [step, setStep] = useState(0);
+
+  const isVip = Boolean((user as any)?.isVip || user?.vip?.active);
+  const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
+
   // Yoga không tự tính chiều cao cho `flex: 1` khi cha chỉ có maxHeight, nên sheet phải có height rõ ràng.
   const sheetMax = Math.round(height * 0.9);
   // Bước 1 tràn ngập chip nên cần gần hết màn hình; hai bước còn lại ít nội dung hơn nhiều.
@@ -157,19 +162,30 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
               keyboardShouldPersistTaps="handled">
               {step === 0 ? (
                 <View accessibilityRole="radiogroup" accessibilityLabel="Chọn trường phái" style={{ gap: spacing.sm }}>
-                  {READING_SCHOOL_LIST.map((config) => (
-                    <RadioCard
-                      key={config.id}
-                      label={config.name}
-                      description={config.description}
-                      glyph={SCHOOL_GLYPHS[config.id]}
-                      selected={config.id === draft.school}
-                      onPress={() => {
-                        haptic.select();
-                        draft.pickSchool(config.id);
-                      }}
-                    />
-                  ))}
+                  {READING_SCHOOL_LIST.map((config) => {
+                    const isVipSchool = config.id === 'EASTERN' || config.id === 'VEDIC';
+                    const isLocked = !isVip && isVipSchool;
+
+                    return (
+                      <RadioCard
+                        key={config.id}
+                        label={config.name}
+                        description={config.description}
+                        glyph={SCHOOL_GLYPHS[config.id]}
+                        badge={isLocked ? 'VIP' : undefined}
+                        selected={config.id === draft.school}
+                        onPress={() => {
+                          if (isLocked) {
+                            haptic.warning();
+                            void triggerPaywall('locked_feature');
+                            return;
+                          }
+                          haptic.select();
+                          draft.pickSchool(config.id);
+                        }}
+                      />
+                    );
+                  })}
                 </View>
               ) : null}
 
@@ -211,21 +227,21 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                   <View style={{ borderWidth: 1, borderColor: colors.hairline, borderRadius: radius.xl, backgroundColor: colors.goldWash, padding: spacing.md, gap: 6, flexDirection: 'row', alignItems: 'center' }}>
                     <MaterialCommunityIcons name="star-four-points" size={16} color={colors.gold} />
                     <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={[type.captionStrong, { color: colors.goldLight }]}>1 credit cho mỗi quẻ</Text>
+                      <Text style={[type.captionStrong, { color: colors.goldLight }]}>{`${CORE_READING_COST_GEM} GEM cho mỗi quẻ`}</Text>
                       <Text style={[type.caption, { color: colors.mute }]}>{summary}</Text>
                     </View>
                   </View>
 
-                  {user && user.creditBalance <= 0 ? (
+                  {user && gemBalance < CORE_READING_COST_GEM ? (
                     <Banner
                       variant="warning"
-                      title="Bạn đã dùng hết credits"
-                      lines={['Mời bạn bè hoặc nhập mã giới thiệu để nhận thêm credits.']}
+                      title="Bạn chưa đủ GEM"
+                      lines={[`Mỗi quẻ đọc bài cần ${CORE_READING_COST_GEM} GEM. Vào mục Gems để điểm danh hoặc xem video nhận thêm.`]}
                       action={{
-                        label: 'Mở Hồ sơ',
+                        label: 'Mở ví Gems',
                         onPress: () => {
                           close();
-                          setTimeout(() => router.push('/profile'), 120);
+                          setTimeout(() => router.push('/(tabs)/currency'), 120);
                         },
                       }}
                     />

@@ -21,7 +21,10 @@ import {
 import Screen from '../../components/Screen';
 import Text from '../../components/AppText';
 import CosmicHand from '../../components/CosmicHand';
+import NativeAdSlot from '../../ads/native-ad-slot';
+import SaveShareGate from '../../earn/save-share-gate';
 import { Banner, Button, Card, Chip, IconButton, SectionLabel } from '../../components/ui';
+import { onFlowCompleteInterstitial } from '../../ads/interstitial-triggers';
 import { ApiError } from '../../lib/api';
 import { errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
@@ -54,14 +57,21 @@ const LINE_LEGEND = [
 
 export default function ReadingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
   const scrollRef = useRef<ScrollViewInstance>(null);
+
+  const isVip = Boolean((user as any)?.isVip || user?.vip?.active);
+
   const [reading, setReading] = useState<ReadingDto | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [sharingImage, setSharingImage] = useState(false);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
+
+  const [saveShareGateVisible, setSaveShareGateVisible] = useState(false);
+  const pendingShareActionRef = useRef<(() => void) | null>(null);
+  const flowInterstitialFiredRef = useRef(false);
 
   function showShareNotice(message: string) {
     setShareNotice(message);
@@ -72,8 +82,15 @@ export default function ReadingDetailScreen() {
     if (!id) return;
     setLoading(true);
     try {
-      setReading(await fetchReading(id));
+      const data = await fetchReading(id);
+      setReading(data);
       setFailure(null);
+
+      // Trigger flow complete interstitial once reading is done (§5.4 #1)
+      if (data.status === ReadingStatus.DONE && !flowInterstitialFiredRef.current) {
+        flowInterstitialFiredRef.current = true;
+        void onFlowCompleteInterstitial('reading_complete');
+      }
     } catch (error) {
       setFailure(
         error instanceof ApiError && error.status === 404
@@ -103,6 +120,10 @@ export default function ReadingDetailScreen() {
         setReading(next);
         if (next.status !== ReadingStatus.PROCESSING) {
           await refreshUser().catch(() => undefined);
+          if (next.status === ReadingStatus.DONE && !flowInterstitialFiredRef.current) {
+            flowInterstitialFiredRef.current = true;
+            void onFlowCompleteInterstitial('reading_complete');
+          }
         }
       } catch {
         // Lỗi mạng tạm thời: giữ nguyên màn trạng thái và thử lại ở nhịp sau
@@ -143,6 +164,15 @@ export default function ReadingDetailScreen() {
     } finally {
       setDeleting(false);
     }
+  }
+
+  function executeShareGated(action: () => void) {
+    if (isVip) {
+      action();
+      return;
+    }
+    pendingShareActionRef.current = action;
+    setSaveShareGateVisible(true);
   }
 
   async function shareText() {
@@ -186,42 +216,65 @@ export default function ReadingDetailScreen() {
   }
 
   return (
-    <Screen
-      scrollRef={scrollRef}
-      contentStyle={{ paddingHorizontal: 0, gap: 0 }}
-      header={<ReadingTopBar onBack={() => router.back()} />}
-      footer={
-        reading && reading.status === ReadingStatus.DONE ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <IconButton icon="share-variant-outline" accessibilityLabel="Chia sẻ văn bản kết quả" onPress={() => void shareText()} />
-            <Button label="Bói thêm (−1 credit)" style={{ flex: 1 }} onPress={() => router.navigate('/scan')} />
-            <IconButton icon="trash-can-outline" accessibilityLabel="Xoá lần xem này" onPress={confirmDelete} style={{ borderColor: 'rgba(251,113,133,0.34)' }} />
+    <>
+      <Screen
+        scrollRef={scrollRef}
+        contentStyle={{ paddingHorizontal: 0, gap: 0 }}
+        header={<ReadingTopBar onBack={() => router.back()} />}
+        footer={
+          reading && reading.status === ReadingStatus.DONE ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <IconButton
+                icon="share-variant-outline"
+                accessibilityLabel="Chia sẻ văn bản kết quả"
+                onPress={() => executeShareGated(() => void shareText())}
+              />
+              <Button label="Bói thêm (−5 GEM)" style={{ flex: 1 }} onPress={() => router.navigate('/scan')} />
+              <IconButton icon="trash-can-outline" accessibilityLabel="Xoá lần xem này" onPress={confirmDelete} style={{ borderColor: 'rgba(251,113,133,0.34)' }} />
+            </View>
+          ) : null
+        }>
+        {shareNotice ? (
+          <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.sm }}>
+            <Banner variant="success" title={shareNotice} />
           </View>
-        ) : null
-      }>
-      {shareNotice ? (
-        <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.sm }}>
-          <Banner variant="success" title={shareNotice} />
-        </View>
-      ) : null}
+        ) : null}
 
-      {loading && !reading ? <ReadingSkeleton /> : null}
+        {loading && !reading ? <ReadingSkeleton /> : null}
 
-      {!loading && failure ? (
-        <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.lg }}>
-          <Card ornate glow style={{ alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }}>
-            <Text style={[type.eyebrow, { color: colors.danger }]}>KHÔNG MỞ ĐƯỢC QUẺ</Text>
-            <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>Không tìm thấy lần xem bói</Text>
-            <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center' }]}>{failure}</Text>
-            <Button label="Quay lại Lịch sử" onPress={() => router.replace('/history')} />
-          </Card>
-        </View>
-      ) : null}
+        {!loading && failure ? (
+          <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.lg }}>
+            <Card ornate glow style={{ alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }}>
+              <Text style={[type.eyebrow, { color: colors.danger }]}>KHÔNG MỞ ĐƯỢC QUẺ</Text>
+              <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>Không tìm thấy lần xem bói</Text>
+              <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center' }]}>{failure}</Text>
+              <Button label="Quay lại Lịch sử" onPress={() => router.replace('/history')} />
+            </Card>
+          </View>
+        ) : null}
 
-      {reading ? (
-        <ReadingBody reading={reading} onDelete={confirmDelete} deleting={deleting} onShareImage={shareImage} sharingImage={sharingImage} scrollRef={scrollRef} />
-      ) : null}
-    </Screen>
+        {reading ? (
+          <ReadingBody
+            reading={reading}
+            onDelete={confirmDelete}
+            deleting={deleting}
+            onShareImage={() => executeShareGated(() => void shareImage())}
+            sharingImage={sharingImage}
+            scrollRef={scrollRef}
+          />
+        ) : null}
+      </Screen>
+
+      <SaveShareGate
+        visible={saveShareGateVisible}
+        onClose={() => setSaveShareGateVisible(false)}
+        onProceed={() => {
+          const action = pendingShareActionRef.current;
+          pendingShareActionRef.current = null;
+          action?.();
+        }}
+      />
+    </>
   );
 }
 
@@ -293,7 +346,7 @@ function ReadingBody({
               ? reading.rejectReason || 'Hãy chụp lại nơi đủ sáng, xoè thẳng bàn tay.'
               : 'PalmSight chưa thể luận giải lần này. Bạn có thể thử lại hoặc xoá quẻ.'}
           </Text>
-          <Text style={[type.captionStrong, { color: colors.success }]}>Đã hoàn 1 credit</Text>
+          <Text style={[type.captionStrong, { color: colors.success }]}>Đã hoàn 5 GEM</Text>
           <Button label="Chụp lại ảnh" onPress={() => router.navigate('/scan')} />
           {onDelete ? (
             <Pressable accessibilityRole="button" accessibilityLabel="Xoá lần xem này" onPress={onDelete} disabled={deleting} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg }}>
@@ -521,6 +574,15 @@ function ReadingBody({
             ) : null}
           </>
         ) : null}
+
+        {/* Native Ad Slot at bottom of scroll content (§5.2, §5.4) */}
+        <View style={{ alignItems: 'center', paddingTop: spacing.md }}>
+          <NativeAdSlot
+            availableHeight={280}
+            availableWidth={Math.max(300, width - spacing.xl * 2)}
+            {...({ placement: 'reading_result' } as any)}
+          />
+        </View>
       </View>
     </View>
   );

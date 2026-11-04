@@ -9,6 +9,8 @@ import { UsersModule } from "./users/users.module";
 import { ReadingsModule } from "./readings/readings.module";
 import { AdsModule } from "./ads/ads.module";
 import { AppConfigModule } from "./config/app-config.module";
+import { CurrencyModule } from "./currency/currency.module";
+import { BillingModule } from "./billing/billing.module";
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { AppConfigModule } from "./config/app-config.module";
     ReadingsModule,
     AdsModule,
     AppConfigModule,
+    CurrencyModule,
+    BillingModule,
   ],
 })
 export class AppModule {}

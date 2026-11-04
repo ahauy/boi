@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { ReadingStatus, RewardedAdPlacement } from '@palmsight/shared';
+import { CORE_READING_COST_GEM, ReadingStatus, RewardedAdPlacement } from '@palmsight/shared';
 
 import Screen from '../../components/Screen';
 import HeaderCredits from '../../components/HeaderCredits';
@@ -14,6 +14,9 @@ import CosmicHand from '../../components/CosmicHand';
 import ReadingSetupSheet from '../../components/ReadingSetupSheet';
 import RewardedOffer from '../../components/RewardedOffer';
 import { Banner, Button, Checkbox, LoadingOverlay, SectionLabel } from '../../components/ui';
+import NativeAdSlot from '../../ads/native-ad-slot';
+import NotEnoughSheet from '../../earn/not-enough-sheet';
+import { triggerPaywall } from '../../premium/paywall-triggers';
 import { ApiError } from '../../lib/api';
 import { errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
@@ -39,7 +42,10 @@ export default function ScanStudioScreen() {
   const { user, refreshUser } = useAuth();
   const { photo, submitPhoto, clearPhoto } = useCapture();
   const draft = useReadingDraft();
+  const { width } = useWindowDimensions();
+
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [notEnoughOpen, setNotEnoughOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cancelled, setCancelled] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -48,8 +54,8 @@ export default function ScanStudioScreen() {
   const cancelRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
 
-  const creditBalance = user?.creditBalance ?? 0;
-  const submitDisabled = !photo || creditBalance <= 0 || !draft.aiConsent || backgroundBusy;
+  const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
+  const submitDisabled = !photo || gemBalance < CORE_READING_COST_GEM || !draft.aiConsent || backgroundBusy;
 
   useEffect(() => {
     if (!busy) return;
@@ -85,6 +91,13 @@ export default function ScanStudioScreen() {
   }
 
   async function submit() {
+    if (gemBalance < CORE_READING_COST_GEM) {
+      haptic.warning();
+      setNotEnoughOpen(true);
+      void triggerPaywall('out_of_currency');
+      return;
+    }
+
     if (!photo) return;
     cancelRef.current = false;
     setElapsed(0);
@@ -184,15 +197,15 @@ export default function ScanStudioScreen() {
                 ? 'Quẻ trước vẫn đang xử lý — vui lòng đợi hoặc xem trong Lịch sử.'
                 : !photo
                   ? 'Chụp hoặc chọn ảnh lòng bàn tay để bắt đầu.'
-                  : creditBalance <= 0
-                    ? 'Bạn cần thêm credit để xem bói.'
+                  : gemBalance < CORE_READING_COST_GEM
+                    ? `Bạn cần ${CORE_READING_COST_GEM} GEM để xem bói.`
                     : !draft.aiConsent
                       ? 'Bạn cần đồng ý gửi ảnh cho AI phân tích.'
-                      : 'Mỗi quẻ tiêu thụ 1 credit.'}
+                      : `Mỗi quẻ tiêu thụ ${CORE_READING_COST_GEM} GEM.`}
             </Text>
             {photo ? (
               <Button
-                label={busy ? 'Đang luận giải...' : 'Xem bói (−1 credit)'}
+                label={busy ? 'Đang luận giải...' : `Xem bói (−${CORE_READING_COST_GEM} GEM)`}
                 onPress={() => void submit()}
                 loading={busy}
                 disabled={submitDisabled}
@@ -216,15 +229,15 @@ export default function ScanStudioScreen() {
             )}
           </View>
         }>
-        {creditBalance <= 0 ? (
+        {gemBalance < CORE_READING_COST_GEM ? (
           <View style={{ gap: spacing.sm }}>
             <Banner
               variant="warning"
-              title="Hết credits"
-              lines={user?.referral.canEnterCode ? ['Mời bạn bè nhận 2 credits. Có mã của bạn bè? Nhập để nhận 1 credit.'] : ['Mời bạn bè nhập mã của bạn để nhận 2 credits.']}
+              title="Chưa đủ GEM"
+              lines={[`Mỗi quẻ đọc bài tiêu thụ ${CORE_READING_COST_GEM} GEM. Vào mục Gems để điểm danh hoặc xem video nhận thêm miễn phí.`]}
               action={{
-                label: user?.referral.canEnterCode ? 'Nhập mã giới thiệu' : 'Trang giới thiệu',
-                onPress: () => router.push(user?.referral.canEnterCode ? '/enter-referral' : '/referral'),
+                label: 'Mở ví Gems',
+                onPress: () => router.push('/(tabs)/currency'),
               }}
             />
             <RewardedOffer placement={RewardedAdPlacement.OUT_OF_CREDITS} variant="inline" />
@@ -308,6 +321,17 @@ export default function ScanStudioScreen() {
           )}
         </View>
 
+        {/* Native Ad Slot when idle (no photo, not busy) */}
+        {!photo && !busy ? (
+          <View style={{ alignItems: 'center', paddingVertical: spacing.md }}>
+            <NativeAdSlot
+              availableHeight={260}
+              availableWidth={Math.max(300, width - spacing.xl * 2)}
+              {...({ placement: 'scan_idle' } as any)}
+            />
+          </View>
+        ) : null}
+
         {failure ? (
           <Banner
             variant="error"
@@ -348,53 +372,81 @@ export default function ScanStudioScreen() {
         onClose={() => setSheetOpen(false)}
         onStartScan={() => {
           setSheetOpen(false);
-          router.push('/camera');
+          router.navigate('/camera');
+        }}
+      />
+
+      <NotEnoughSheet
+        visible={notEnoughOpen}
+        onClose={() => setNotEnoughOpen(false)}
+        currentBalance={gemBalance}
+        requiredGem={CORE_READING_COST_GEM}
+        onEarned={() => {
+          void refreshUser().catch(() => undefined);
+          setNotEnoughOpen(false);
         }}
       />
 
       <LoadingOverlay
         visible={busy}
-        title="Thiên cơ đang mở"
-        message="PalmSight đang đọc từng đường chỉ tay và viết bài luận giải riêng cho bạn."
-        progress={Math.min(elapsed / PROGRESS_SECONDS, 1)}
+        title="Đang đọc bàn tay"
+        message="Hệ thống AI đang nhận diện các đường chỉ chính và liên kết với trường phái cổ truyền."
+        progress={elapsed / PROGRESS_SECONDS}
         photoUri={photo?.uri}
         onCancel={cancelWait}
-        cancelLabel="Hủy chờ kết quả">
-        <Text style={[type.caption, { color: colors.stone, textAlign: 'center' }]}>
-          {`Đã trôi qua ${Math.min(elapsed, PROGRESS_SECONDS)} giây · ảnh chỉ dùng cho lần xem này.`}
-        </Text>
-      </LoadingOverlay>
+      />
     </>
   );
 }
 
-async function waitForReading(id: string, shouldStop: () => boolean) {
-  const deadline = Date.now() + POLL_TIMEOUT_MS;
-  let current = await fetchReading(id);
-  while (current.status === ReadingStatus.PROCESSING && Date.now() < deadline && !shouldStop()) {
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    current = await fetchReading(id);
+async function waitForReading(id: string, isCancelled: () => boolean): Promise<any> {
+  const started = Date.now();
+  while (Date.now() - started < POLL_TIMEOUT_MS) {
+    if (isCancelled()) return { status: ReadingStatus.PROCESSING, id };
+    await sleep(POLL_INTERVAL_MS);
+    if (isCancelled()) return { status: ReadingStatus.PROCESSING, id };
+    try {
+      const reading = await fetchReading(id);
+      if (reading.status !== ReadingStatus.PROCESSING) return reading;
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 500) {
+        // Tạm thời bỏ qua 5xx để thử lại nhịp sau
+        continue;
+      }
+      throw error;
+    }
   }
-  return current;
+  return { status: ReadingStatus.PROCESSING, id };
 }
 
-function outcomeFailure(status: ReadingStatus, rejectReason?: string | null) {
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function outcomeFailure(status: ReadingStatus, reason?: string | null): { title: string; lines?: string[]; retryable: boolean } {
   if (status === ReadingStatus.REJECTED) {
     return {
-      title: 'Không nhìn rõ lòng bàn tay',
-      lines: [rejectReason || 'Hãy chụp lại nơi đủ sáng, xoè thẳng bàn tay.', 'Đã hoàn 1 credit'],
-      retryable: false,
+      title: 'Ảnh chụp chưa đạt chuẩn nhận diện.',
+      lines: [reason ?? 'Không tìm thấy lòng bàn tay rõ nét. Vui lòng chụp lại nơi đủ sáng, xoè đều 5 ngón.'],
+      retryable: true,
     };
   }
-  return { title: 'Hệ thống bận, đã hoàn 1 credit. Thử lại sau ít phút.', retryable: true };
+  return {
+    title: 'Hệ thống luận giải gián đoạn.',
+    lines: ['Đã hoàn lại lượt xem bói cho bạn. Vui lòng thử lại sau ít phút.'],
+    retryable: true,
+  };
 }
 
 function toFailure(error: unknown): { title: string; lines?: string[]; retryable: boolean } {
   if (error instanceof ApiError) {
-    if (error.code === 'INSUFFICIENT_CREDITS') return { title: 'Hết credits', lines: ['Mời bạn bè nhập mã để nhận 2 credits.'], retryable: false };
-    if (error.code === 'AI_UNAVAILABLE') return { title: 'Hệ thống bận, đã hoàn 1 credit. Thử lại sau ít phút.', retryable: true };
-    if (error.status === 0) return { title: 'Mất kết nối hoặc quá thời gian chờ.', retryable: true };
-    return { title: errorMessageOf(error), retryable: error.status >= 500 };
+    if (error.code === 'INSUFFICIENT_CREDITS') {
+      return { title: 'Tài khoản không đủ GEM.', lines: ['Vào mục Gems để điểm danh hoặc xem video nhận thêm.'], retryable: false };
+    }
+    if (error.code === 'CONCURRENT_PROCESSING') {
+      return { title: 'Đang có quẻ khác được xử lý.', lines: ['Vui lòng đợi quẻ hiện tại hoàn tất hoặc kiểm tra Lịch sử.'], retryable: false };
+    }
+    return { title: errorMessageOf(error, 'Không thể gửi ảnh để luận giải.'), retryable: error.status >= 500 };
   }
-  return { title: errorMessageOf(error), retryable: false };
+  return { title: errorMessageOf(error, 'Đã xảy ra sự cố ngoài ý muốn. Vui lòng thử lại.'), retryable: true };
 }

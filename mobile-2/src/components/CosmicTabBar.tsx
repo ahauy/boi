@@ -8,18 +8,19 @@ import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import Text from './AppText';
 import { colors, shadow, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
+import { onTabSwitchInterstitial } from '../ads/interstitial-triggers';
 
-type TabName = 'index' | 'scan' | 'history' | 'profile';
+type TabName = 'index' | 'scan' | 'currency' | 'history' | 'profile';
 
 const TAB_META: Record<TabName, { label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = {
   index: { label: 'Trang chủ', icon: 'home-variant-outline' },
   scan: { label: 'Quét', icon: 'line-scan' },
+  currency: { label: 'Gems', icon: 'diamond-stone' },
   history: { label: 'Lịch sử', icon: 'history' },
   profile: { label: 'Hồ sơ', icon: 'account-circle-outline' },
 };
 
-// 4 ô flex:1 bằng nhau nên khoảng cách giữa các tab đều nhau; Quét không còn là nút tròn nâng cao.
-const TAB_ORDER: TabName[] = ['index', 'scan', 'history', 'profile'];
+const TAB_ORDER: TabName[] = ['index', 'scan', 'currency', 'history', 'profile'];
 
 export default function CosmicTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -35,6 +36,7 @@ export default function CosmicTabBar({ state, emitter, navigateToTab }: BottomTa
     const event = emitter.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
     if (!focused && !event.defaultPrevented) {
       haptic.select();
+      void onTabSwitchInterstitial(name);
       navigateToTab(route.key);
     }
   }

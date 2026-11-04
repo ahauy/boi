@@ -5,8 +5,10 @@ import {
   HttpStatus,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { InjectModel, InjectConnection } from "@nestjs/mongoose";
 import { Model, Connection, Types, FilterQuery } from "mongoose";
 import * as crypto from "crypto";
@@ -44,6 +46,7 @@ import {
 @Injectable()
 export class ReadingsService {
   private readonly cloudinary: CloudinaryService;
+  private clockFn: () => Date = () => new Date();
 
   constructor(
     @InjectModel(Reading.name)
@@ -57,9 +60,30 @@ export class ReadingsService {
     private readonly creditLedgerService: CreditLedgerService,
     private readonly imageProcessorService: ImageProcessorService,
     private readonly aiService: AiService,
-    @Optional() cloudinaryService?: CloudinaryService
+    @Optional() cloudinaryService?: CloudinaryService,
+    @Optional() private readonly configService?: ConfigService
   ) {
     this.cloudinary = cloudinaryService ?? new CloudinaryService();
+  }
+
+  setClock(fn: () => Date): void {
+    this.clockFn = fn;
+  }
+
+  resetClock(): void {
+    this.clockFn = () => new Date();
+  }
+
+  private now(): Date {
+    return this.clockFn();
+  }
+
+  private isVipSchoolGatingEnabled(): boolean {
+    const raw = this.configService?.get<string | boolean>(
+      "ENFORCE_VIP_SCHOOLS",
+      "true"
+    );
+    return raw !== false && raw !== "false";
   }
 
   private async uploadReadingAssets(
@@ -143,7 +167,7 @@ export class ReadingsService {
         throw new HttpException(
           {
             code: "AI_UNAVAILABLE",
-            message: "Hệ thống bận, đã hoàn 1 credit. Thử lại sau ít phút.",
+            message: "Hệ thống bận, đã hoàn lại GEM. Vui lòng thử lại.",
             details: {
               readingId: existing._id.toString(),
               refunded: true,
@@ -184,6 +208,26 @@ export class ReadingsService {
       });
     }
 
+    if (
+      this.isVipSchoolGatingEnabled() &&
+      (validatedInput.school === ReadingSchool.EASTERN ||
+        validatedInput.school === ReadingSchool.VEDIC)
+    ) {
+      const requestingUser = await this.userModel.findById(userObjId).lean();
+      const now = this.now();
+      const vipActive = Boolean(
+        requestingUser?.vipExpiresAt &&
+          requestingUser.vipExpiresAt.getTime() > now.getTime()
+      );
+      if (!vipActive) {
+        throw new ForbiddenException({
+          code: "vip_required",
+          message:
+            "Trường phái chỉ tay Phương Đông và Ấn Độ (Vedic) chỉ dành cho thành viên VIP.",
+        });
+      }
+    }
+
     let palmLines: PalmLineDto[] | null = null;
     try {
       palmLines = parsePalmLinesInput(validatedInput.palmLines);
@@ -208,7 +252,8 @@ export class ReadingsService {
       await this.creditLedgerService.spendForReading(
         userObjId,
         readingId,
-        session
+        session,
+        validatedInput.actionCount ?? 1
       );
 
       await this.readingModel.create(
@@ -350,7 +395,7 @@ export class ReadingsService {
       throw new HttpException(
         {
           code: "AI_UNAVAILABLE",
-          message: "Hệ thống bận, đã hoàn 1 credit. Thử lại sau ít phút.",
+          message: "Hệ thống bận, đã hoàn lại GEM. Vui lòng thử lại.",
           details: {
             readingId: readingId.toString(),
             refunded: true,

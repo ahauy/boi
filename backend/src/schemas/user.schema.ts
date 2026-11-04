@@ -119,6 +119,12 @@ export class User {
   @Prop({ type: Number, default: 0, min: 0, max: 365 })
   checkinStreak?: number;
 
+  @Prop({ type: Number, default: 0, min: 0 })
+  lastCheckinAmount?: number;
+
+  @Prop({ type: String, default: null, trim: true })
+  freeSpinDay?: string | null;
+
   @Prop({ type: String, default: null, trim: true })
   vipDailyDay?: string | null;
 

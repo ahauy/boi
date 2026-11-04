@@ -454,6 +454,15 @@ export const createReadingRequestSchema = yup
         }
       ),
     palmLines: yup.mixed().optional(),
+    actionCount: yup
+      .number()
+      .transform((val, orig) =>
+        orig === "" || orig === undefined || orig === null ? undefined : Number(orig)
+      )
+      .integer("Số lượng hành động phải là số nguyên")
+      .min(1, "Số lượng hành động tối thiểu là 1")
+      .max(5, "Số lượng hành động tối đa là 5")
+      .optional(),
   })
   .noUnknown();
 

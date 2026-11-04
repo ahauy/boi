@@ -24,6 +24,7 @@ import { colors, font, gradients, radius, shadow, spacing, text as type, MAX_FON
 import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { useReduceMotion } from '../lib/motion';
+import { runGatedTap } from '../ui/tap-gate';
 import Text from './AppText';
 import CosmicBackground from './CosmicBackground';
 import CosmicHand from './CosmicHand';
@@ -32,9 +33,9 @@ export const GOLD_GRADIENT = gradients.gold;
 
 type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'danger';
 
-interface ButtonProps {
+export interface ButtonProps {
   label: string;
-  onPress: () => void;
+  onPress: () => void | Promise<any>;
   variant?: ButtonVariant;
   disabled?: boolean;
   loading?: boolean;
@@ -42,9 +43,10 @@ interface ButtonProps {
   accessibilityLabel?: string;
   icon?: React.ReactNode;
   size?: 'md' | 'lg';
+  noInterstitial?: boolean;
 }
 
-export function Button({ label, onPress, variant = 'primary', disabled, loading, style, accessibilityLabel, icon, size = 'md' }: ButtonProps) {
+export function Button({ label, onPress, variant = 'primary', disabled, loading, style, accessibilityLabel, icon, size = 'md', noInterstitial }: ButtonProps) {
   const inactive = Boolean(disabled || loading);
   const height = size === 'lg' ? 56 : 50;
   const contentColor = disabled
@@ -98,7 +100,7 @@ export function Button({ label, onPress, variant = 'primary', disabled, loading,
       accessibilityState={{ disabled: inactive, busy: Boolean(loading) }}
       onPress={() => {
         if (variant !== 'ghost') haptic.tap();
-        onPress();
+        runGatedTap(() => onPress?.(), { eligibleForAd: !noInterstitial, noInterstitial });
       }}
       disabled={inactive}
       android_ripple={{ color: 'rgba(255,244,208,0.16)', foreground: true }}
@@ -118,16 +120,29 @@ export function Button({ label, onPress, variant = 'primary', disabled, loading,
   );
 }
 
-interface IconButtonProps {
+export function GoldButton(props: Omit<ButtonProps, 'variant'>) {
+  return <Button {...props} variant="primary" />;
+}
+
+export function OutlineButton(props: Omit<ButtonProps, 'variant'>) {
+  return <Button {...props} variant="outline" />;
+}
+
+export function GhostButton(props: Omit<ButtonProps, 'variant'>) {
+  return <Button {...props} variant="ghost" />;
+}
+
+export interface IconButtonProps {
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  onPress: () => void;
+  onPress: () => void | Promise<any>;
   accessibilityLabel: string;
   selected?: boolean;
   size?: number;
   style?: StyleProp<ViewStyle>;
+  noInterstitial?: boolean;
 }
 
-export function IconButton({ icon, onPress, accessibilityLabel, selected, size = 46, style }: IconButtonProps) {
+export function IconButton({ icon, onPress, accessibilityLabel, selected, size = 46, style, noInterstitial }: IconButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -135,7 +150,7 @@ export function IconButton({ icon, onPress, accessibilityLabel, selected, size =
       accessibilityState={{ selected }}
       onPress={() => {
         haptic.select();
-        onPress();
+        runGatedTap(() => onPress?.(), { eligibleForAd: !noInterstitial, noInterstitial });
       }}
       hitSlop={6}
       style={({ pressed }) => [
