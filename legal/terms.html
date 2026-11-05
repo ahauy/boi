@@ -4,87 +4,72 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PalmSight - Điều khoản dịch vụ</title>
+  <meta name="description" content="Điều khoản dịch vụ của PalmSight.">
+  <meta name="theme-color" content="#0b0716">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background-color: #fdfcfc;
-      color: #201d1d;
-      font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
-      font-size: 16px;
-      line-height: 1.5;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    .container { width: 100%; max-width: 960px; margin: 0 auto; padding: 0 16px; }
-    .header { height: 56px; border-bottom: 1px solid rgba(15, 0, 0, 0.12); display: flex; align-items: center; }
-    .header a { font-weight: 700; text-decoration: none; color: #201d1d; }
-    .main { flex: 1; padding: 48px 0 64px 0; }
-    .content { max-width: 640px; }
-    h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
-    .meta { font-size: 14px; color: #646262; margin-bottom: 32px; }
-    .lead { font-size: 16px; color: #424245; margin-bottom: 40px; }
-    .section { margin-bottom: 40px; }
-    .section-title { font-size: 16px; font-weight: 700; border-bottom: 1px solid rgba(15, 0, 0, 0.12); padding-bottom: 8px; margin-bottom: 16px; }
-    .row { padding: 10px 0; border-bottom: 1px solid rgba(15, 0, 0, 0.12); display: flex; gap: 10px; font-size: 15px; color: #424245; }
-    .row:last-child { border-bottom: none; }
-    .marker { font-weight: 700; color: #201d1d; }
-    footer { border-top: 1px solid rgba(15, 0, 0, 0.12); padding: 24px 0; font-size: 14px; color: #646262; margin-top: auto; }
-    .footer-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-    .footer-links a { color: #646262; text-decoration: underline; margin-right: 16px; }
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400;1,600&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header class="header">
-    <div class="container">
-      <a href="/">PALMSIGHT</a>
+  <div class="stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <header class="site-header">
+    <div class="inner">
+      <a class="brand" href="/" aria-label="PALMSIGHT">
+        <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><span class="spark" aria-hidden="true">✦</span></span>
+        <span class="brand-text">
+          <span class="brand-name">PALMSIGHT</span>
+          <span class="brand-sub">Huyền Cơ Chỉ Tay</span>
+        </span>
+      </a>
     </div>
   </header>
-  <main class="main">
-    <div class="container">
+  <main class="page">
+      <nav class="tabs" aria-label="Điều hướng chính sách"><a href="/data-deletion">Xoá dữ liệu</a><a href="/terms" aria-current="page">Điều khoản</a><a href="/privacy">Chính sách riêng tư</a></nav>
+    <div class="card">
+      <span class="corner tl" aria-hidden="true"></span><span class="corner tr" aria-hidden="true"></span>
+      <span class="corner bl" aria-hidden="true"></span><span class="corner br" aria-hidden="true"></span>
       <div class="content">
         <h1>Điều khoản dịch vụ</h1>
         <div class="meta">Cập nhật: 15/10/2026</div>
         <p class="lead">Chào mừng bạn đến với PalmSight. Vui lòng đọc kỹ các điều khoản dưới đây trước khi trải nghiệm ứng dụng.</p>
 
         <div class="section">
-          <div class="section-title">Mục đích giải trí</div>
+          <h2 class="section-title">Mục đích giải trí</h2>
           <p>Toàn bộ kết quả bói toán và phân tích đường chỉ tay trên PalmSight được tạo tự động bởi mô hình trí tuệ nhân tạo và chỉ mang tính chất tham khảo, giải trí. Kết quả hoàn toàn không thay thế cho tư vấn chuyên môn về y tế, pháp lý, tài chính hoặc tâm lý học.</p>
         </div>
 
         <div class="section">
-          <div class="section-title">Tài khoản người dùng</div>
+          <h2 class="section-title">Tài khoản người dùng</h2>
           <div class="row"><span class="marker">[+]</span><span>Mỗi cá nhân chỉ được sử dụng một tài khoản chính chủ.</span></div>
           <div class="row"><span class="marker">[+]</span><span>Nghiêm cấm các hành vi gian lận credits hoặc tạo tài khoản ảo.</span></div>
           <div class="row"><span class="marker">[+]</span><span>Bạn có trách nhiệm bảo mật mật khẩu và thông tin đăng nhập của mình.</span></div>
         </div>
 
         <div class="section">
-          <div class="section-title">Chính sách Credits</div>
+          <h2 class="section-title">Chính sách Credits</h2>
           <div class="row"><span class="marker">[+]</span><span>Mỗi lượt luận giải chỉ tay tiêu tốn 5 GEM.</span></div>
           <div class="row"><span class="marker">[+]</span><span>Credits khuyến mãi không có giá trị quy đổi thành tiền mặt.</span></div>
           <div class="row"><span class="marker">[+]</span><span>PalmSight có quyền thu hồi credits thu được từ hành vi gian lận.</span></div>
         </div>
 
         <div class="section">
-          <div class="section-title">Quyền sở hữu trí tuệ</div>
+          <h2 class="section-title">Quyền sở hữu trí tuệ</h2>
           <p>Giao diện, mã nguồn, thuật toán và nội dung hiển thị thuộc bản quyền độc quyền của PalmSight.</p>
         </div>
       </div>
     </div>
   </main>
-  <footer>
-    <div class="container footer-inner">
-      <div>Kết quả mang tính giải trí, không thay thế tư vấn chuyên môn.</div>
-      <div class="footer-links">
+  <footer class="site-footer">
+    <div class="inner">
+      <div class="note"><span class="moon" aria-hidden="true">☽</span><p>Kết quả mang tính giải trí, không thay thế tư vấn chuyên môn.</p></div>
+      <nav class="footer-links" aria-label="Chính sách">
         <a href="/privacy">Chính sách riêng tư</a>
         <a href="/terms">Điều khoản</a>
         <a href="/data-deletion">Xoá dữ liệu</a>
-      </div>
-      <div>© PALMSIGHT</div>
+      </nav>
+      <div class="copyright"><span class="ornament" aria-hidden="true">✦ ☼ ✦</span><p class="name">© PALMSIGHT</p></div>
     </div>
   </footer>
 </body>
