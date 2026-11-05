@@ -807,7 +807,7 @@ describe('US-REF-002: POST /api/v1/me/referral', () => {
     const counterOf = (ip: string) =>
       testApp.connection
         .collection('referral_network_counters')
-        .findOne({ ipHash: hashIp(ip), day: startOfReferralDay() });
+        .findOne({ ipHash: hashIp(IDENTITY_SECRET, ip), day: startOfReferralDay() });
     const balanceOf = async (id: Types.ObjectId) =>
       (await testApp.connection.collection('users').findOne({ _id: id }))?.creditBalance;
 

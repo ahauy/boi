@@ -9,6 +9,8 @@ import {
   type MeResponseDto,
 } from '@palmsight/shared';
 import { User, UserDocument } from '../schemas/user.schema';
+import { Device, DeviceDocument } from '../schemas/device.schema';
+import { isVipDailyBlockedByDevice, markVipDailyOnDevice } from '../common/vip-daily-device';
 import { Referral, ReferralDocument } from '../schemas/referral.schema';
 import { CreditLedgerService } from '../credits/credit-ledger.service';
 import { getRewardDay } from '../currency/reward-day.util';
@@ -22,6 +24,8 @@ export class UsersService {
     private readonly referralModel: Model<ReferralDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectModel(Device.name)
+    private readonly deviceModel: Model<DeviceDocument>,
     @InjectConnection()
     private readonly connection: Connection,
     private readonly configService: ConfigService,
@@ -128,7 +132,18 @@ export class UsersService {
           )
           .lean();
 
-        if (claimed) {
+        // Cùng thiết bị, khác tài khoản, cùng ngày thì không cấp thêm quà VIP hằng ngày.
+        const deviceBlocked =
+          claimed &&
+          (await isVipDailyBlockedByDevice(
+            this.deviceModel,
+            user.deviceIdHash,
+            user._id,
+            currentRewardDay,
+            session,
+          ));
+
+        if (claimed && !deviceBlocked) {
           const tx = await this.creditLedgerService.credit(
             {
               userId: user._id,
@@ -136,6 +151,13 @@ export class UsersService {
               type: CreditTransactionType.VIP_DAILY,
               reason: 'vip_daily',
             },
+            session,
+          );
+          await markVipDailyOnDevice(
+            this.deviceModel,
+            user.deviceIdHash,
+            user._id,
+            currentRewardDay,
             session,
           );
           await session.commitTransaction();
@@ -176,8 +198,6 @@ export class UsersService {
       ...(vipDailyGranted !== undefined ? { vipDailyGranted } : {}),
       referralCode: user.referralCode,
       referralLink: `${baseUrl}/r/${user.referralCode}`,
-      hasPassword: Boolean(user.passwordHash),
-      providers: (user.identities ?? []).map((identity) => identity.provider),
       isAnonymous: Boolean(user.isAnonymous),
       referral: {
         canEnterCode: !enteredReferral && !user.referralBlocked,

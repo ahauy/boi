@@ -2,6 +2,7 @@ import type * as AdjustModule from 'react-native-adjust';
 import type * as AnalyticsModule from '@react-native-firebase/analytics';
 import type * as CrashlyticsModule from '@react-native-firebase/crashlytics';
 import { ADS_CONFIG } from './ads-config';
+import { adsStore, type ConsentRegion } from './ads-store';
 
 /**
  * Ad Revenue & Attribution Module (Playbook §5.6, §8)
@@ -25,21 +26,58 @@ export interface FirstPurchasePayload {
   orderId: string;
 }
 
-export interface AttributionIds {
-  adjustAdid: string | null;
-  gaid: string | null;
-}
-
-const ATTRIBUTION_ID_TIMEOUT_MS = 2_000;
-
 let adjustInitialized = false;
+/** True when Adjust was started without consent (GDPR/UNKNOWN): it must never receive events. */
+let adjustRestricted = false;
 let analyticsOverride: typeof AnalyticsModule | null = null;
+
+let adjustOverride: typeof AdjustModule | null = null;
+let crashlyticsOverride: typeof CrashlyticsModule | null = null;
 
 export function setAnalyticsSdkForTesting(sdk: typeof AnalyticsModule | null): void {
   analyticsOverride = sdk;
 }
 
+export function setAdjustSdkForTesting(sdk: typeof AdjustModule | null): void {
+  adjustOverride = sdk;
+}
+
+export function setCrashlyticsSdkForTesting(sdk: typeof CrashlyticsModule | null): void {
+  crashlyticsOverride = sdk;
+}
+
+/**
+ * The single gate for third-party measurement (privacy policy section 5): Adjust events,
+ * Firebase Analytics and Crashlytics. Only a region known to be outside GDPR scope allows it.
+ * Until the region is known (UNKNOWN) it stays off. Billing verification does not use this gate.
+ * Known limit: an EEA user who consented through the UMP form is still treated as GDPR here,
+ * because the app does not read the real consent result.
+ */
+export function measurementAllowed(region: ConsentRegion = adsStore.getState().consentRegion): boolean {
+  return region === 'OTHER';
+}
+
+/** Pushes the measurement decision to Firebase collection switches (both directions). */
+export function applyMeasurementConsent(region: ConsentRegion = adsStore.getState().consentRegion): void {
+  const enabled = measurementAllowed(region);
+  try {
+    const analytics = loadAnalytics();
+    void analytics?.setAnalyticsCollectionEnabled(analytics.getAnalytics(), enabled)?.catch?.(() => undefined);
+  } catch (err) {
+    if (__DEV__) console.warn('[Firebase] Analytics collection switch failed:', err);
+  }
+  try {
+    const crashlytics = loadCrashlytics();
+    void crashlytics
+      ?.setCrashlyticsCollectionEnabled(crashlytics.getCrashlytics(), enabled)
+      ?.catch?.(() => undefined);
+  } catch (err) {
+    if (__DEV__) console.warn('[Crashlytics] Collection switch failed:', err);
+  }
+}
+
 function loadAdjust(): typeof AdjustModule | null {
+  if (adjustOverride) return adjustOverride;
   try {
     return require('react-native-adjust') as typeof AdjustModule;
   } catch {
@@ -57,6 +95,7 @@ function loadAnalytics(): typeof AnalyticsModule | null {
 }
 
 function loadCrashlytics(): typeof CrashlyticsModule | null {
+  if (crashlyticsOverride) return crashlyticsOverride;
   try {
     return require('@react-native-firebase/crashlytics') as typeof CrashlyticsModule;
   } catch {
@@ -68,7 +107,8 @@ function loadCrashlytics(): typeof CrashlyticsModule | null {
  * Starts Adjust after the MAX consent flow (§5.6). GDPR or unknown region: third-party sharing
  * off, Google DMA `eea=1`, no ad personalization, no GAID read.
  */
-export async function initializeAdjust(consentRegion: 'GDPR' | 'OTHER' | 'UNKNOWN'): Promise<void> {
+export async function initializeAdjust(consentRegion: ConsentRegion): Promise<void> {
+  applyMeasurementConsent(consentRegion);
   const appToken = ADS_CONFIG.adjust.appToken;
   if (adjustInitialized || !appToken) return;
 
@@ -95,6 +135,7 @@ export async function initializeAdjust(consentRegion: 'GDPR' | 'OTHER' | 'UNKNOW
 
     Adjust.initSdk(config);
     adjustInitialized = true;
+    adjustRestricted = !measurementAllowed(consentRegion);
   } catch (err) {
     if (__DEV__) console.warn('[Adjust] Init failed:', err);
   }
@@ -109,6 +150,7 @@ export function trackAdRevenue(info: TrackRevenuePayload): void {
   if (typeof revenue !== 'number' || !Number.isFinite(revenue) || revenue <= 0) {
     return;
   }
+  if (!measurementAllowed()) return;
 
   sendToFirebaseAnalytics({
     ad_platform: 'appLovin',
@@ -131,8 +173,13 @@ function sendToFirebaseAnalytics(params: Record<string, string | number>): void 
   }
 }
 
+function adjustSdkIfAllowed(): typeof AdjustModule | null {
+  if (!adjustInitialized || adjustRestricted || !measurementAllowed()) return null;
+  return loadAdjust();
+}
+
 function sendToAdjustRevenue(revenue: number, networkName?: string): void {
-  const sdk = adjustInitialized ? loadAdjust() : null;
+  const sdk = adjustSdkIfAllowed();
   if (!sdk) return;
   try {
     const adRevenue = new sdk.AdjustAdRevenue('applovin_max_sdk');
@@ -152,7 +199,7 @@ function sendToAdjustRevenue(revenue: number, networkName?: string): void {
  */
 export function trackFirstPurchase(purchase: FirstPurchasePayload): void {
   const token = ADS_CONFIG.adjust.purchaseEventToken;
-  const sdk = adjustInitialized ? loadAdjust() : null;
+  const sdk = adjustSdkIfAllowed();
   if (!token || !sdk) return;
 
   try {
@@ -167,39 +214,9 @@ export function trackFirstPurchase(purchase: FirstPurchasePayload): void {
   }
 }
 
-function readId(read: (done: (id: string | null) => void) => void): Promise<string | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), ATTRIBUTION_ID_TIMEOUT_MS);
-    try {
-      read((id) => {
-        clearTimeout(timer);
-        resolve(id || null);
-      });
-    } catch {
-      clearTimeout(timer);
-      resolve(null);
-    }
-  });
-}
-
-/** Adjust ADID and GAID for `/billing/verify`, only where consent allows them (§5.6, §6.5). */
-export async function getAttributionIds(
-  consentRegion: 'GDPR' | 'OTHER' | 'UNKNOWN'
-): Promise<AttributionIds> {
-  const sdk = adjustInitialized ? loadAdjust() : null;
-  if (!sdk || consentRegion !== 'OTHER') {
-    return { adjustAdid: null, gaid: null };
-  }
-  const { Adjust } = sdk;
-  const [adjustAdid, gaid] = await Promise.all([
-    readId((done) => Adjust.getAdidWithTimeout(ATTRIBUTION_ID_TIMEOUT_MS, done)),
-    readId((done) => Adjust.getGoogleAdId(done)),
-  ]);
-  return { adjustAdid, gaid };
-}
-
 /** Crashlytics non-fatal for an ad that never reported `hidden`: format and network only (§8). */
 export function reportMissingHiddenEvent(format: string, networkName?: string): void {
+  if (!measurementAllowed()) return;
   const sdk = loadCrashlytics();
   if (!sdk) return;
   try {
@@ -214,4 +231,5 @@ export function reportMissingHiddenEvent(format: string, networkName?: string): 
 
 export function resetRevenueForTesting(): void {
   adjustInitialized = false;
+  adjustRestricted = false;
 }

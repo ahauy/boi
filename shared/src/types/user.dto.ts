@@ -1,5 +1,3 @@
-import { AuthProvider } from '../enums';
-
 export interface UserSummaryDto {
   id: string;
   displayName: string;
@@ -30,8 +28,6 @@ export interface UserDto {
   creditBalance: number;
   referralCode: string;
   referralLink: string;
-  hasPassword: boolean;
-  providers: AuthProvider[];
   /** Tài khoản tạo tự động theo thiết bị, không có email hay mật khẩu */
   isAnonymous: boolean;
   referral: UserReferralInfoDto;
@@ -48,16 +44,4 @@ export type MeResponseDto = UserDto;
 
 export interface UpdateProfileRequestDto {
   displayName: string;
-}
-
-export interface ChangePasswordRequestDto {
-  currentPassword: string;
-  newPassword: string;
-}
-
-export interface IdentityDto {
-  provider: AuthProvider;
-  providerUserId: string;
-  email: string | null;
-  linkedAt: string;
 }

@@ -50,8 +50,6 @@ describe('POST /api/v1/auth/device', () => {
       id: firstUserId,
       displayName: 'Khách',
       email: null,
-      hasPassword: false,
-      providers: [],
       isAnonymous: true,
       creditBalance: 3,
       referral: { canEnterCode: true, enteredCode: null },

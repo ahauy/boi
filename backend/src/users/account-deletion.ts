@@ -8,6 +8,8 @@ import {
   ReadingSchema,
   PlaySubscriptionSchema,
   BillingEventSchema,
+  DeviceSchema,
+  CreditTransactionSchema,
 } from '../schemas';
 import { CloudinaryService } from '../readings/cloudinary.service';
 
@@ -48,6 +50,10 @@ export async function deleteUserAccount(
     conn.models.PlaySubscription || conn.model('PlaySubscription', PlaySubscriptionSchema);
   const billingEventModel =
     conn.models.BillingEvent || conn.model('BillingEvent', BillingEventSchema);
+
+  const deviceModel = conn.models.Device || conn.model('Device', DeviceSchema);
+  const creditTransactionModel =
+    conn.models.CreditTransaction || conn.model('CreditTransaction', CreditTransactionSchema);
 
   const secret =
     identitySecret || process.env.IDENTITY_HASH_SECRET || 'palmsight-identity-secret';
@@ -185,16 +191,57 @@ export async function deleteUserAccount(
 
     await sessionModel.deleteMany({ userId: userObjectId }, { session });
 
+    // Lần xem PROCESSING có thể vừa ghi ảnh giữa lúc xoá ảnh ở trên và transaction này. Đọc lại
+    // trong transaction để gỡ nốt ảnh đó trước khi xoá tham chiếu; nếu nó ghi sau snapshot thì
+    // updateMany bên dưới xung đột ghi và transaction bị huỷ để người dùng thử lại.
+    const lateReadings = await readingModel
+      .find({ userId: userObjectId })
+      .select('imagePublicId annotatedImagePublicId')
+      .session(session)
+      .lean();
+    const alreadyRemoved = new Set(imagePublicIds);
+    const lateImageIds = lateReadings
+      .flatMap((doc: any) => [doc.imagePublicId, doc.annotatedImagePublicId])
+      .filter(
+        (id): id is string =>
+          typeof id === 'string' &&
+          Boolean(id.trim()) &&
+          !id.startsWith('local:') &&
+          !alreadyRemoved.has(id),
+      );
+    if (lateImageIds.length > 0) {
+      const lateResults = await Promise.allSettled(
+        lateImageIds.map((id) => cloudinary.deleteImage(id)),
+      );
+      const lateFailed = lateImageIds.filter((_, index) => {
+        const res = lateResults[index];
+        return res.status === 'rejected' || !res.value;
+      });
+      if (lateFailed.length > 0) {
+        await session.abortTransaction();
+        return {
+          ok: false,
+          deleted: false,
+          message: `Account for user ${userId} NOT deleted: ${lateFailed.length} images failed to delete on Cloudinary: ${lateFailed.join(', ')}. Nothing was changed in the database; run again.`,
+          identitiesRecorded: 0,
+          unremovedImages: lateFailed,
+        };
+      }
+    }
+
     await readingModel.updateMany(
       { userId: userObjectId },
       {
         $set: {
           result: null,
+          rejectReason: null,
           imageUrl: null,
           annotatedImageUrl: null,
           imagePublicId: null,
           annotatedImagePublicId: null,
           palmLines: null,
+          // Chủ đề đã chọn lộ mối quan tâm; bản ghi đã xoá không có nơi nào đọc lại (mọi truy vấn lọc deletedAt:null).
+          topics: [],
           deletedAt: now,
         },
       },
@@ -234,10 +281,36 @@ export async function deleteUserAccount(
       );
     }
 
+    // Sổ GEM giữ nguyên số tiền, loại và số dư; chỉ bỏ ghi chú tự do vì có thể chứa định danh.
+    await creditTransactionModel.updateMany(
+      { userId: userObjectId, note: { $exists: true } },
+      { $unset: { note: '' } },
+      { session },
+    );
+
+    // Dấu thiết bị (quà khởi đầu, điểm danh, vòng quay, mã giới thiệu) phải còn để chống farm;
+    // chỉ hash IP lúc nhận quà là không có nơi nào đọc nên xoá.
+    if (user.deviceIdHash) {
+      await deviceModel.updateOne(
+        { deviceIdHash: user.deviceIdHash },
+        { $set: { starterIpHash: null } },
+        { session },
+      );
+    }
+
     await userModel.updateOne(
       { _id: userObjectId },
       {
         $set: {
+          billingRef: null,
+          vipExpiresAt: null,
+          vipProductId: null,
+          vipWillRenew: false,
+          vipDailyDay: null,
+          checkinDay: null,
+          checkinStreak: 0,
+          lastCheckinAmount: 0,
+          freeSpinDay: null,
           displayName: 'Người dùng đã xoá',
           username: null,
           email: null,

@@ -578,7 +578,6 @@ const STATUS_META: Record<ReadingStatus, { label: string; color: string; icon: S
   [ReadingStatus.PROCESSING]: { label: 'status.processing', color: colors.warning, icon: 'clock-outline' },
   [ReadingStatus.FAILED]: { label: 'status.failed', color: colors.danger, icon: 'alert-circle-outline' },
   [ReadingStatus.REJECTED]: { label: 'status.rejected', color: colors.danger, icon: 'alert-circle-outline' },
-  [ReadingStatus.GUEST_PREVIEW]: { label: 'status.preview', color: colors.violetSoft, icon: 'star-four-points-outline' },
 };
 
 export function StatusPill({ status }: { status: ReadingStatus }) {

@@ -14,8 +14,13 @@ INTERNAL_RANGES.addAddress('::1', 'ipv6');
 INTERNAL_RANGES.addSubnet('fc00::', 7, 'ipv6');
 INTERNAL_RANGES.addSubnet('fe80::', 10, 'ipv6');
 
-export function hashIp(value: string): string {
-  return crypto.createHash('sha256').update(value).digest('hex');
+/**
+ * Hash IP bằng HMAC với khoá bí mật của máy chủ (cùng IDENTITY_HASH_SECRET với hash thiết bị).
+ * SHA-256 trần không đủ: IPv4 chỉ có 2^32 giá trị nên dò ngược được. Tiền tố `ip:` tách miền với
+ * hash thiết bị để hai loại hash không bao giờ trùng nhau.
+ */
+export function hashIp(secret: string, value: string): string {
+  return crypto.createHmac('sha256', secret).update(`ip:${value}`).digest('hex');
 }
 
 /**

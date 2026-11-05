@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const appJson = require('./app.json');
 const { ADMOB_APP_ID, validateReleaseHygiene } = require('./plugins/withMonetization');
+const { blockedPermissionsFor } = require('./plugins/blocked-permissions');
 
 /**
  * Dynamic Expo Configuration (Playbook §1.2, §11.11)
@@ -36,6 +37,7 @@ module.exports = ({ config } = {}) => {
 
   const androidConfig = {
     ...(baseExpo.android || {}),
+    blockedPermissions: blockedPermissionsFor(process.env, (baseExpo.android || {}).blockedPermissions || []),
     ...(hasGoogleServicesFile ? { googleServicesFile: './google-services.json' } : {}),
   };
 

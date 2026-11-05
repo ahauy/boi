@@ -17,6 +17,8 @@ import {
   ECONOMY_DEFAULTS,
 } from '@palmsight/shared';
 import { User, UserDocument } from '../schemas/user.schema';
+import { Device, DeviceDocument } from '../schemas/device.schema';
+import { isVipDailyBlockedByDevice, markVipDailyOnDevice } from '../common/vip-daily-device';
 import {
   PlaySubscription,
   PlaySubscriptionDocument,
@@ -77,6 +79,8 @@ export class BillingService {
     private readonly playSubscriptionModel: Model<PlaySubscriptionDocument>,
     @InjectModel(BillingEvent.name)
     private readonly billingEventModel: Model<BillingEventDocument>,
+    @InjectModel(Device.name)
+    private readonly deviceModel: Model<DeviceDocument>,
     @InjectConnection()
     private readonly connection: Connection,
     private readonly configService: ConfigService,
@@ -238,8 +242,6 @@ export class BillingService {
             priceCurrencyCode: verified.priceCurrencyCode,
             acknowledged: verified.acknowledged,
             supersededBy: staysSuperseded ? existingSub?.supersededBy : null,
-            adjustAdid: dto.adjustAdid ?? existingSub?.adjustAdid ?? null,
-            gaid: dto.gaid ?? existingSub?.gaid ?? null,
             firstPurchaseCounted,
             rawResponse: verified.rawResponse ?? null,
             updatedAt: now,
@@ -265,11 +267,20 @@ export class BillingService {
       let grantedNow = false;
       let vipDailyGranted: number | undefined;
 
-      if (
+      // Cùng thiết bị, khác tài khoản, cùng ngày thì không cấp thêm quà VIP hằng ngày.
+      const vipDailyDue =
         vip.active &&
         lockedUser.vipDailyDay !== currentRewardDay &&
-        vipDaily > 0
-      ) {
+        vipDaily > 0 &&
+        !(await isVipDailyBlockedByDevice(
+          this.deviceModel,
+          lockedUser.deviceIdHash,
+          lockedUser._id,
+          currentRewardDay,
+          session,
+        ));
+
+      if (vipDailyDue) {
         const tx = await this.creditLedgerService.credit(
           {
             userId: lockedUser._id,
@@ -281,6 +292,13 @@ export class BillingService {
               vipDailyDay: currentRewardDay,
             },
           },
+          session,
+        );
+        await markVipDailyOnDevice(
+          this.deviceModel,
+          lockedUser.deviceIdHash,
+          lockedUser._id,
+          currentRewardDay,
           session,
         );
         currentBalance = tx.balanceAfter;
@@ -339,7 +357,7 @@ export class BillingService {
 
     if (!latestSub) {
       await this.userModel.updateOne(
-        { _id: userId },
+        { _id: userId, deletedAt: null },
         {
           $set: {
             vipExpiresAt: null,
@@ -356,7 +374,7 @@ export class BillingService {
     const active = latestSub.expiresAt.getTime() > now.getTime();
     const willRenew = active ? latestSub.willRenew : false;
     await this.userModel.updateOne(
-      { _id: userId },
+      { _id: userId, deletedAt: null },
       {
         $set: {
           vipExpiresAt: latestSub.expiresAt,
@@ -543,6 +561,15 @@ export class BillingService {
         };
       }
 
+      // Gói thuộc tài khoản đã xoá: vẫn ghi sự kiện để đối soát nhưng không lưu lại payload.
+      const ownerDeleted = knownSub
+        ? Boolean(
+            await this.userModel
+              .exists({ _id: knownSub.userId, deletedAt: { $ne: null } })
+              .session(session),
+          )
+        : false;
+
       await this.billingEventModel.create(
         [
           {
@@ -551,9 +578,11 @@ export class BillingService {
             notificationType,
             productId,
             processedAt: now,
-            payload: (decodedData && Object.keys(decodedData).length > 0
-              ? decodedData
-              : body) as Record<string, unknown>,
+            payload: ownerDeleted
+              ? null
+              : ((decodedData && Object.keys(decodedData).length > 0
+                  ? decodedData
+                  : body) as Record<string, unknown>),
           },
         ],
         { session },

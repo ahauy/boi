@@ -60,7 +60,13 @@ export class AuthService {
       return this.createAuthSession(existing, false);
     }
 
-    const signupIpHash = hashIp(clientIp || "127.0.0.1");
+    const signupIpHash = hashIp(
+      this.configService.get<string>(
+        "IDENTITY_HASH_SECRET",
+        DEFAULT_IDENTITY_HASH_SECRET
+      ),
+      clientIp || "127.0.0.1"
+    );
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     // CGNAT của mạng di động khiến nhiều người dùng chung một IP, nên mốc phải đủ rộng
     const dailyCap = Number(

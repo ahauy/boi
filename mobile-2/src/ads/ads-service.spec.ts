@@ -97,6 +97,18 @@ describe('ads-service against the MAX SDK surface', () => {
       expect(adsStore.getState().consentRegion).toBe('GDPR');
     });
 
+    it('hands MAX the real privacy and terms URLs from ADS_CONFIG', async () => {
+      const { appLovin } = fakeSdk();
+
+      await initializeAds();
+
+      expect(appLovin.setTermsAndPrivacyPolicyFlowEnabled).toHaveBeenCalledWith(true);
+      expect(appLovin.setPrivacyPolicyUrl).toHaveBeenCalledWith(ADS_CONFIG.urls.privacy);
+      expect(appLovin.setTermsOfServiceUrl).toHaveBeenCalledWith(ADS_CONFIG.urls.terms);
+      expect(ADS_CONFIG.urls.privacy).toMatch(/^https:\/\/[^/]+\/privacy$/);
+      expect(ADS_CONFIG.urls.terms).toMatch(/^https:\/\/[^/]+\/terms$/);
+    });
+
     it('shares one run between concurrent callers', async () => {
       const { appLovin } = fakeSdk();
 

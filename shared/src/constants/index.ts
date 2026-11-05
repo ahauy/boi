@@ -183,15 +183,6 @@ export const ECONOMY_DEFAULTS = {
   NO_AD_WAIT_SECONDS: 15,
 } as const;
 
-/** Một lượt xem quảng cáo đổi credit chỉ có hiệu lực trong khoảng này; quá hạn là claim hết giá trị. */
-export const REWARDED_AD_INTENT_TTL_MS = 10 * 60 * 1000;
-
-/** Cửa sổ đếm trần lượt xem quảng cáo: 24 giờ trượt, không phải theo ngày lịch. */
-export const REWARDED_AD_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
-
-/** Giá trị gửi cho AdMob ở `reward_item`; callback phải khớp mới được cấp credit. */
-export const REWARDED_AD_REWARD_ITEM = "palmsight-credit";
-
 export const REFERRAL_CODE_REGEX = /^[A-HJKMNP-Z2-9]{8}$/;
 export const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 

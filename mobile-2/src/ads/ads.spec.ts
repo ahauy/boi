@@ -224,6 +224,7 @@ describe('Phase 3 & Phase 4: Ads Core & Banner / Fill-space (Playbook §2.1, §3
     });
 
     it('sends a positive impression to Firebase as ad_impression', () => {
+      adsStore.setConsentRegion('OTHER');
       trackAdRevenue({ adUnitId: 'unit1', revenue: 0.0025, networkName: 'AppLovin' });
       expect(mockLogEvent).toHaveBeenCalledWith(
         'analytics',

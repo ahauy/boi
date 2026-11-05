@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { User, UserSchema } from '../schemas/user.schema';
+import { Device, DeviceSchema } from '../schemas/device.schema';
 import {
   PlaySubscription,
   PlaySubscriptionSchema,
@@ -21,6 +22,7 @@ import { BillingController } from './billing.controller';
       { name: User.name, schema: UserSchema },
       { name: PlaySubscription.name, schema: PlaySubscriptionSchema },
       { name: BillingEvent.name, schema: BillingEventSchema },
+      { name: Device.name, schema: DeviceSchema },
     ]),
     AuthModule,
     CreditsModule,
