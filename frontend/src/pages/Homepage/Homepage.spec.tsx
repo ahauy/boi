@@ -278,8 +278,9 @@ describe("Homepage (Landing Page)", () => {
     // Question 1 answer should be open initially (per screen.html)
     expect(screen.getByTestId("faq-answer-0")).toBeInTheDocument();
     expect(
-      screen.getByText(/Máy chủ xử lý ảnh tạm thời trên RAM để phân tích AI và không lưu trữ trên máy chủ hay dịch vụ đám mây nào theo ADR-0010/)
+      screen.getByText(/Ảnh của lần xem thành công được lưu trên Cloudinary cho tới khi bạn xoá lần xem đó hoặc xoá tài khoản/)
     ).toBeInTheDocument();
+    expect(screen.getByTestId("faq-answer-0")).not.toHaveTextContent(/ADR-00|RAM|không lưu trữ|tuyệt đối/);
 
     // Questions 2 & 3 answers should be closed initially
     expect(screen.queryByTestId("faq-answer-1")).not.toBeInTheDocument();

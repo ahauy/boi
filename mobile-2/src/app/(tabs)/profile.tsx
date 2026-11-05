@@ -30,6 +30,7 @@ import Avatar from '../../components/Avatar';
 import { useAuth } from '../../state/auth';
 import { colors, radius, shadow, spacing, text as type } from '../../theme';
 import { haptic } from '../../lib/haptics';
+import { openPrivacyPolicy } from '../../lib/open-privacy-policy';
 
 export default function ProfileScreen() {
   const { user, refreshUser } = useAuth();
@@ -41,6 +42,7 @@ export default function ProfileScreen() {
   const [langModalVisible, setLangModalVisible] = useState(false);
   const [manageVipFailed, setManageVipFailed] = useState(false);
   const [privacyFailed, setPrivacyFailed] = useState(false);
+  const [privacyPolicyFailed, setPrivacyPolicyFailed] = useState(false);
   const { billingEnabled, products } = useBillingStore();
   const { consentRegion } = useAdsStore();
 
@@ -106,6 +108,14 @@ export default function ProfileScreen() {
     setPrivacyFailed(false);
     const opened = await showPrivacyOptions();
     if (!opened) setPrivacyFailed(true);
+  }
+
+  async function handleOpenPrivacyPolicy() {
+    haptic.select();
+    markNoInterstitialTap();
+    setPrivacyPolicyFailed(false);
+    const opened = await openPrivacyPolicy();
+    if (!opened) setPrivacyPolicyFailed(true);
   }
 
   function handleMediationDebugger() {
@@ -337,6 +347,27 @@ export default function ProfileScreen() {
             {showPrivacyChoices && privacyFailed ? (
               <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.md }}>
                 <Banner variant="error" title={t('profile.adPrivacyFailed')} />
+              </View>
+            ) : null}
+
+            {/* Privacy policy (mở trình duyệt) */}
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={t('profile.privacyPolicyA11y')}
+              onPress={() => void handleOpenPrivacyPolicy()}
+              style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.75 : 1 }]}>
+              <View style={styles.menuIconCircle}>
+                <MaterialCommunityIcons name="file-document-outline" size={19} color={colors.goldLight} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[type.bodyBold, { color: colors.ink }]}>{t('profile.privacyPolicy')}</Text>
+                <Text style={[type.caption, { color: colors.mute }]}>{t('profile.privacyPolicyBody')}</Text>
+              </View>
+              <MaterialCommunityIcons name="open-in-new" size={18} color={colors.stone} />
+            </Pressable>
+            {privacyPolicyFailed ? (
+              <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.md }}>
+                <Banner variant="error" title={t('profile.privacyPolicyFailed')} />
               </View>
             ) : null}
 

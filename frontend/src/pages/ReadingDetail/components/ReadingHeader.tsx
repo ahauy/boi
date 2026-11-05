@@ -483,7 +483,7 @@ export const ReadingHeader: React.FC<ReadingHeaderProps> = ({
               ✦ {handLabel} ✦
             </span>
             <span className="relative z-10 text-[10px] text-mute mt-3 font-rune border border-[#d4af37]/30 bg-[#0b0716]/80 px-2.5 py-0.5 rounded-full">
-              NO_IMAGE_STORED // ADR-0010
+              Không có ảnh lưu cho lần xem này
             </span>
           </div>
         )}

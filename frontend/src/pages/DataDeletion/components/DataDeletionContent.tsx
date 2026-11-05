@@ -1,4 +1,6 @@
+import { Link } from "react-router-dom";
 import { Sparkles } from "lucide-react";
+import BaseUrl from "@/consts/baseUrl";
 
 export const DataDeletionContent = () => {
   return (
@@ -48,7 +50,7 @@ export const DataDeletionContent = () => {
         <div className="py-2.5 text-sm sm:text-base text-body flex items-baseline gap-2.5">
           <span className="font-bold font-rune text-[#d4af37] shrink-0">[+]</span>
           <span>
-            Ứng dụng <strong className="text-[#f7e7b4]">không có nút tự xoá tự phục vụ</strong> trong ứng dụng nhằm bảo vệ dữ liệu và ngăn ngừa việc lợi dụng vòng xoá – tạo tài khoản (theo quy định ADR-0009).
+            Ứng dụng <strong className="text-[#f7e7b4]">không có nút tự xoá tài khoản</strong>. Mục Hồ sơ trong ứng dụng chỉ mở trang này, nhằm bảo vệ dữ liệu và ngăn ngừa việc lợi dụng vòng xoá – tạo tài khoản.
           </span>
         </div>
       </section>
@@ -92,8 +94,15 @@ export const DataDeletionContent = () => {
           <span aria-hidden="true" className="text-[#d4af37] text-sm">✦</span>
           <span>Ảnh lòng bàn tay</span>
         </h2>
+        <p className="text-sm sm:text-base text-body leading-relaxed mb-3">
+          Toàn bộ siêu dữ liệu EXIF, gồm vị trí GPS, bị xoá khỏi ảnh trước khi xử lý.
+        </p>
+        <p className="text-sm sm:text-base text-body leading-relaxed mb-3">
+          Ảnh của lần xem thành công được lưu trên Cloudinary cho tới khi bạn{" "}
+          <strong className="text-[#f7e7b4]">xoá lần xem đó hoặc xoá tài khoản</strong>. Ảnh của lần xem bị từ chối hoặc lỗi không được lưu.
+        </p>
         <p className="text-sm sm:text-base text-body leading-relaxed m-0">
-          Máy chủ PalmSight <strong className="text-[#f7e7b4]">hoàn toàn không lưu trữ ảnh chụp lòng bàn tay</strong> trên máy chủ hay cơ sở dữ liệu (theo quyết định kiến trúc ADR-0010). Ảnh chỉ được phân tích tạm thời trên bộ nhớ đệm (RAM) trong quá trình xử lý với AI và bị xoá ngay lập tức. Mọi thông tin vị trí EXIF đều bị loại bỏ trước khi gửi.
+          Khi xoá tài khoản, chúng tôi xoá ảnh lòng bàn tay và ảnh đại diện của bạn.
         </p>
       </section>
 
@@ -102,13 +111,31 @@ export const DataDeletionContent = () => {
           <span aria-hidden="true" className="text-[#d4af37] text-sm">✦</span>
           <span>Những gì được giữ lại &amp; Cảnh báo khi đăng ký lại</span>
         </h2>
+        <div className="mb-3">
+          <div className="py-2.5 border-b border-hairline/60 text-sm sm:text-base text-body flex items-baseline gap-2.5">
+            <span className="font-bold font-rune text-[#d4af37] shrink-0">[+]</span>
+            <span>
+              <strong className="text-[#f7e7b4]">Mã băm của email, ID đăng nhập và định danh thiết bị:</strong> giữ sau khi xoá tài khoản để chặn nhận lại quà khuyến mãi. Không đảo ngược được thành dữ liệu gốc.
+            </span>
+          </div>
+          <div className="py-2.5 text-sm sm:text-base text-body flex items-baseline gap-2.5">
+            <span className="font-bold font-rune text-[#d4af37] shrink-0">[+]</span>
+            <span>
+              <strong className="text-[#f7e7b4]">Lịch sử GEM:</strong> giữ ở dạng ẩn danh để đối soát.
+            </span>
+          </div>
+        </div>
         <p className="text-sm sm:text-base text-body leading-relaxed mb-4">
-          Để ngăn ngừa việc lợi dụng chính sách tặng thưởng credits đăng ký và giới thiệu, chúng tôi lưu giữ một chuỗi mã băm một chiều bảo mật (HMAC-SHA256) của email hoặc ID mạng xã hội đã xoá trong bảng <code className="text-xs sm:text-sm bg-[#241842] border border-[#d4af37]/30 px-1.5 py-0.5 rounded text-[#f7e7b4] font-rune">deleted_identities</code>. Mã băm này không chứa thông tin nhận dạng gốc và không thể đảo ngược.
+          Chi tiết thời hạn lưu trữ nằm ở mục 6 của{" "}
+          <Link to={BaseUrl.Privacy} className="text-[#f7e7b4] underline underline-offset-4">
+            Chính sách riêng tư
+          </Link>
+          .
         </p>
         <div className="p-4 bg-[#241842]/80 border border-[#d4af37]/40 text-sm text-ink rounded-xl">
           <p className="font-bold text-[#f5d77f] mb-1.5 font-rune">[!] Cảnh báo khi tạo lại tài khoản:</p>
           <p className="text-body leading-relaxed m-0">
-            Nếu bạn đăng ký lại bằng địa chỉ email hoặc tài khoản Google/Facebook đã từng bị xoá, bạn vẫn có thể sử dụng bình thường nhưng <strong className="text-[#f7e7b4]">tài khoản sẽ bắt đầu với 0 GEM</strong> (không nhận quà tặng ban đầu) và <strong className="text-[#f7e7b4]">không được quyền nhập mã giới thiệu</strong> của người khác (theo ADR-0009).
+            Nếu bạn đăng ký lại bằng địa chỉ email hoặc tài khoản Google/Facebook đã từng bị xoá, bạn vẫn có thể sử dụng bình thường nhưng <strong className="text-[#f7e7b4]">tài khoản sẽ bắt đầu với 0 GEM</strong> (không nhận quà tặng ban đầu) và <strong className="text-[#f7e7b4]">không được quyền nhập mã giới thiệu</strong> của người khác.
           </p>
         </div>
       </section>

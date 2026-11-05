@@ -150,8 +150,9 @@ describe("ReadingDetail Page (/readings/:id)", () => {
 
     expect(screen.queryByAltText(/palm/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("reading-emblem")).toHaveTextContent(
-      "NO_IMAGE_STORED // ADR-0010"
+      "Không có ảnh lưu cho lần xem này"
     );
+    expect(screen.getByTestId("reading-emblem")).not.toHaveTextContent(/NO_IMAGE_STORED|ADR-00/);
   });
 
   it("should render palm image and AI palm lines toggle when imageUrl and palmLines are stored (ADR-0011)", async () => {

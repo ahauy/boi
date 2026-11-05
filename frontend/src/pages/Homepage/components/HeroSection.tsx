@@ -102,7 +102,7 @@ export const HeroSection = () => {
                 <span className="font-display text-xl sm:text-2xl font-bold text-[#f7e7b4]">
                   100% Ẩn Danh
                 </span>
-                <span className="text-xs text-mute">Không lưu ảnh gốc</span>
+                <span className="text-xs text-mute">Xoá ảnh bất cứ lúc nào</span>
               </div>
             </div>
           </div>

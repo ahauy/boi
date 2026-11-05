@@ -139,7 +139,7 @@ describe("Account Page", () => {
       });
     });
 
-    it("should have link to /data-deletion and NO in-app self-delete button per ADR-0009", async () => {
+    it("should have link to /data-deletion and NO in-app self-delete button", async () => {
       await renderComponent();
 
       const dataDeletionLinks = screen.getAllByRole("link", {
