@@ -15,7 +15,7 @@ const getDestination = (data: AuthResponseDto | null): string => {
     return `/readings/${data.claimedReadingId}`;
   }
   if (
-    data.user.creditBalance === 4 ||
+    data.referralApplied ||
     data.isNewUser === false ||
     data.user.creditBalance === 0
   ) {

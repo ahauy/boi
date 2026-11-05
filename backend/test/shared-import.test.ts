@@ -22,7 +22,7 @@ describe('Backend @palmsight/shared import test', () => {
   });
 
   it('should import constants properly', () => {
-    expect(CREDIT_AMOUNTS.SIGNUP_BONUS).toBe(3);
+    expect(CREDIT_AMOUNTS.REFEREE_REWARD).toBe(5);
     expect(READING_SCHOOLS[ReadingSchool.EASTERN].name).toBe('Chỉ tay phương Đông');
   });
 

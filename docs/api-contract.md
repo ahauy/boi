@@ -229,6 +229,7 @@ Danh sách trường phái và các mục bói không có endpoint riêng: web �
 - `isNewUser = true` chỉ khi request này **tạo** user mới. Khi đó client chuyển tới `/referral/enter`, trừ khi `GET /me` trả `referral.canEnterCode = false`.
 - User tạo lại từ email/Google/Facebook đã bị xoá vẫn là user mới (`isNewUser = true`), nhưng có `creditBalance = 0` và không được nhập mã. Xem [ADR-0009](adr/0009-manual-account-deletion.md).
 - Gộp vào user có sẵn thì `isNewUser = false`.
+- `POST /auth/verify-email` có thêm `referralApplied: true` khi mã giới thiệu nhập lúc đăng ký thực sự được áp dụng, kể cả `CAPPED`. Không áp dụng thì không có field này.
 - `username` là `null` với user chỉ đăng nhập bằng Google/Facebook.
 - Request gửi kèm cookie `rt` của một phiên cũ trên trình duyệt này: server thu hồi phiên cũ trước khi cấp phiên mới.
 
@@ -355,7 +356,7 @@ Lỗi: `VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `EMAIL_NOT_VERIFIED`, `RATE_LI
 
 ### POST /auth/device
 
-Mobile không có đăng ký/đăng nhập: mỗi thiết bị tự đổi `deviceId` (UUID lưu trong SecureStore) lấy phiên khách.
+Mobile không có đăng ký/đăng nhập: mỗi thiết bị tự đổi `deviceId` lấy phiên khách. Android dùng `android-<Android ID>` để giữ được qua lần cài lại; iOS và bản Android đã có mã lưu sẵn dùng mã trong SecureStore.
 
 | Vị trí | Trường | Kiểu | Bắt buộc | Ràng buộc |
 | --- | --- | --- | --- | --- |
@@ -373,11 +374,11 @@ X-Client: native
 | --- | --- |
 | Thiết bị mới | `200`, [Response đăng nhập](#response-đăng-nhập-dùng-chung), `isNewUser = true`; tạo user `isAnonymous: true`, tặng 3 credits, lưu `deviceIdHash` + `signupIpHash` |
 | Thiết bị đã có tài khoản khách | `200`, `isNewUser = false`, mở phiên mới cho đúng user đó |
-| Tài khoản của thiết bị đã bị xoá (`deletedAt`) | `403 DEVICE_SESSION_BLOCKED` |
+| Tài khoản của thiết bị đã bị xoá (`deletedAt`) | `200`, `isNewUser = true`; tạo guest mới, 0 GEM, `referralBlocked = true`, không nhận lại dữ liệu cũ. Ngoại lệ: gói Google Play còn hạn vẫn chuyển sang guest mới khi `/billing/verify` khôi phục cùng `purchaseToken`. Gọi lại cùng `deviceId` mở đúng guest mới này |
 | Vượt `ANONYMOUS_SIGNUP_DAILY_CAP` tài khoản khách/IP/24h | `429 DEVICE_SESSION_LIMIT_REACHED` |
 | `deviceId` sai định dạng | `400 VALIDATION_ERROR` |
 
-`deviceId` chỉ lưu dạng HMAC-SHA256 (`deviceIdHash`), không lưu bản rõ. App gọi lại cùng `deviceId` sẽ mở lại đúng tài khoản; cài lại app trên Android tạo `deviceId` mới nên là tài khoản khách mới.
+`deviceId` chỉ lưu dạng HMAC-SHA256 (`deviceIdHash`), không lưu bản rõ. App gọi lại cùng `deviceId` sẽ mở lại đúng tài khoản, kể cả sau khi cài lại app trên Android. Android ID đổi khi factory reset hoặc khi app ký bằng khoá khác; khi đó là tài khoản khách mới.
 
 ### POST /auth/forgot-password
 
@@ -489,6 +490,7 @@ Không cần đăng nhập. Trả `200 { "status": "ok", "db": "ok" }`, hoặc `
   "hasPassword": true,
   "providers": ["GOOGLE"],
   "isAnonymous": false,
+  "hasCustomAvatar": false,
   "referral": {
     "canEnterCode": true,
     "enteredCode": null
@@ -498,6 +500,7 @@ Không cần đăng nhập. Trả `200 { "status": "ok", "db": "ok" }`, hoặc `
 
 | Trường | Ghi chú |
 | --- | --- |
+| `hasCustomAvatar` | `true` khi `avatarUrl` là ảnh người dùng tự tải lên qua `POST /me/avatar` (gỡ được bằng `DELETE /me/avatar`). `false` với ảnh lấy từ Google/Facebook hoặc khi không có ảnh |
 | `username` | `null` nếu user chưa từng đăng ký bằng mật khẩu |
 | `email` | `null` nếu user chỉ đăng nhập Facebook và Facebook không trả email |
 | `hasPassword` | `true` khi đăng nhập được bằng email/username + mật khẩu. `/account` dựa vào trường này để hiện "Đổi mật khẩu" hay "Đặt mật khẩu" |
@@ -506,6 +509,38 @@ Không cần đăng nhập. Trả `200 { "status": "ok", "db": "ok" }`, hoặc `
 | `id` | Hiện ở `/account` (web) và tab Hồ sơ (mobile) dưới tên "Mã/ID tài khoản". Người dùng gửi kèm ID này khi yêu cầu xoá tài khoản |
 | `referral.canEnterCode` | `true` khi user chưa từng nhập mã **và** không bị `referralBlocked` |
 | `referral.enteredCode` | Mã đã nhập, hoặc `null` |
+
+### PATCH /me
+
+Đổi tên hiển thị của chính mình. Không đổi được `username` (là định danh đăng nhập).
+
+| Vị trí | Trường | Kiểu | Bắt buộc | Ràng buộc |
+| --- | --- | --- | --- | --- |
+| header | `Authorization` | — | có | |
+| body | `displayName` | string | có | Cắt khoảng trắng hai đầu, thu gọn khoảng trắng liên tiếp, 1–50 ký tự; không nhận chuỗi chỉ gồm khoảng trắng và ký tự điều khiển hay ký tự ẩn |
+
+Body có field lạ bị từ chối. Trả `200` cùng dạng [GET /me](#get-me). Giới hạn 10 lần/phút/user.
+
+Lỗi: `VALIDATION_ERROR`, `RATE_LIMITED`.
+
+Tài khoản khách (`isAnonymous = true`) tạo mới có `displayName = "Khách"`. Client hiển thị tên mặc định này theo ngôn ngữ người dùng và không dịch tên do người dùng tự đặt.
+
+### POST /me/avatar
+
+Tải ảnh đại diện. Body `multipart/form-data`, một file ở field `avatar`.
+
+| Ràng buộc | Giá trị |
+| --- | --- |
+| Định dạng | JPEG, PNG, WebP; kiểm tra theo nội dung file, không theo phần mở rộng |
+| Kích thước | Tối đa 5 MB |
+
+Server xoay ảnh theo EXIF rồi bỏ toàn bộ metadata, cắt vuông tối đa 512×512 (không phóng to ảnh nhỏ) và tải lên Cloudinary trong thư mục avatar riêng. Ảnh mới thay ảnh cũ thì ảnh cũ bị xoá sau khi ảnh mới đã lưu. Upload lỗi thì avatar cũ giữ nguyên. Trả `200` cùng dạng [GET /me](#get-me) với `avatarUrl` mới và `hasCustomAvatar = true`. Giới hạn 5 lần/phút/user.
+
+Lỗi: `VALIDATION_ERROR` (thiếu file, sai tên field hoặc nhiều file), `AVATAR_TOO_LARGE` (413), `AVATAR_INVALID_TYPE` (415), `AVATAR_UPLOAD_FAILED` (502), `AVATAR_UNAVAILABLE` (503, Cloudinary chưa cấu hình), `RATE_LIMITED`.
+
+### DELETE /me/avatar
+
+Gỡ ảnh đại diện đã tải lên: xoá ảnh trên Cloudinary rồi đặt `avatarUrl = null`. Cloudinary xoá lỗi thì giữ nguyên avatar và trả `502 AVATAR_DELETE_FAILED` để thử lại. Nếu avatar đến từ Google/Facebook (không phải ảnh tự tải lên) thì không làm gì và vẫn trả `200` với `avatarUrl` giữ nguyên. Trả `200` cùng dạng [GET /me](#get-me).
 
 ### PUT /me/password
 
@@ -556,19 +591,21 @@ Content-Type: application/json
 {
   "accepted": true,
   "referrer": { "displayName": "Trần B" },
-  "creditsEarned": 1,
-  "creditBalance": 4
+  "creditsEarned": 5,
+  "creditBalance": 10
 }
 ```
 
 | Trường | Ghi chú |
 | --- | --- |
-| `creditsEarned` | Credits **người nhập** vừa nhận (`REFEREE_REWARD_CREDITS`, mặc định 1). Luôn có, kể cả khi chủ mã đã hết lượt thưởng trong ngày |
+| `creditsEarned` | Credits **người nhập** vừa nhận (`CREDIT_AMOUNTS.REFEREE_REWARD`, hiện là 5). Luôn có, kể cả khi chủ mã đã hết lượt thưởng trong ngày |
 | `creditBalance` | Số dư của người nhập sau khi cộng; client dùng để cập nhật số credits trên màn hình |
 
 Server trả `201` khi mã được ghi nhận, kể cả khi chủ mã đã hết lượt thưởng trong ngày (`CAPPED`). Response không cho người nhập biết chủ mã có được cộng hay không. Thứ tự kiểm tra theo [business-rules.md](business-rules.md#kiểm-tra-khi-nhập-mã-giới-thiệu). Mã của tài khoản đã xoá được coi là không tồn tại.
 
-Lỗi: `VALIDATION_ERROR` (thiếu `code` hoặc `code` không phải chuỗi), `REFERRAL_NOT_ALLOWED`, `REFERRAL_CODE_NOT_FOUND`, `REFERRAL_SELF`, `REFERRAL_ALREADY_USED`, `REFERRAL_CYCLE`, `RATE_LIMITED`.
+Lỗi: `VALIDATION_ERROR` (thiếu `code` hoặc `code` không phải chuỗi), `REFERRAL_NOT_ALLOWED`, `REFERRAL_CODE_NOT_FOUND`, `REFERRAL_SELF`, `REFERRAL_ALREADY_USED`, `REFERRAL_CYCLE`, `REFERRAL_DEVICE_USED`, `REFERRAL_NETWORK_LIMIT` (429), `RATE_LIMITED`.
+
+Header tuỳ chọn `x-device-id`: mobile gửi để giới hạn mỗi thiết bị một lần nhập; web không gửi.
 
 ### GET /me/referrals
 
@@ -576,16 +613,17 @@ Query: `cursor`, `limit` (xem [Phân trang](#phân-trang)).
 
 ```json
 {
-  "totalRewarded": 3,
-  "totalCreditsEarned": 6,
+  "totalRewarded": 1,
+  "totalCreditsEarned": 3,
   "items": [
-    { "displayName": "Lê C***", "status": "REWARDED", "creditsEarned": 2, "createdAt": "2026-10-12T02:10:00Z" },
+    { "displayName": "Lê C***", "status": "REWARDED", "creditsEarned": 3, "createdAt": "2026-10-12T02:10:00Z" },
     { "displayName": "Phạm D***", "status": "CAPPED", "creditsEarned": 0, "createdAt": "2026-10-13T09:00:00Z" }
   ],
   "nextCursor": null
 }
 ```
 
+- `creditsEarned` là số GEM thực nhận lúc đó; bản ghi trước khi đổi mức thưởng vẫn là 2.
 - Tên người được giới thiệu bị che một phần.
 - Người được giới thiệu đã xoá tài khoản (có `deletedAt`), hoặc không còn document user, hiện là `"Người dùng đã xoá"`. Không bao giờ trả `500` vì thiếu user.
 - `totalRewarded` và `totalCreditsEarned` tính trên toàn bộ danh sách, không chỉ trang hiện tại.

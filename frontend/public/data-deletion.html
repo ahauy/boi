@@ -56,7 +56,7 @@
           <div class="row"><span class="marker">[+]</span><span>Gửi email từ chính địa chỉ email của tài khoản tới: <strong>support@palmsight.app</strong></span></div>
           <div class="row"><span class="marker">[+]</span><span>Tiêu đề: <code>[Yêu cầu xoá dữ liệu] - &lt;email của bạn&gt;</code></span></div>
           <div class="row"><span class="marker">[+]</span><span>Tài khoản Facebook không có email: Sao chép ID tài khoản tại mục Tài khoản (/account) và gửi kèm trong email để đối soát.</span></div>
-          <div class="row"><span class="marker">[+]</span><span>Không có nút tự xoá tự phục vụ trong ứng dụng nhằm đảm bảo an toàn và ngăn chặn trục lợi credits (ADR-0009).</span></div>
+          <div class="row"><span class="marker">[+]</span><span>Ứng dụng không có nút tự xoá tài khoản. Mục Hồ sơ trong ứng dụng chỉ mở trang này, nhằm đảm bảo an toàn và ngăn chặn trục lợi credits.</span></div>
         </div>
 
         <div class="section">
@@ -73,14 +73,18 @@
 
         <div class="section">
           <div class="section-title">Ảnh lòng bàn tay</div>
-          <p>Máy chủ PalmSight <strong>hoàn toàn không lưu trữ ảnh lòng bàn tay</strong> (ADR-0010). Ảnh chỉ được phân tích tạm thời trên RAM và xoá ngay lập tức.</p>
+          <p>Toàn bộ siêu dữ liệu EXIF, gồm vị trí GPS, bị xoá khỏi ảnh trước khi xử lý.</p>
+          <p>Ảnh của lần xem thành công được lưu trên Cloudinary cho tới khi bạn xoá lần xem đó hoặc xoá tài khoản. Ảnh của lần xem bị từ chối hoặc lỗi không được lưu.</p>
+          <p>Khi xoá tài khoản, chúng tôi xoá ảnh lòng bàn tay và ảnh đại diện của bạn.</p>
         </div>
 
         <div class="section">
           <div class="section-title">Những gì được giữ lại & Cảnh báo khi đăng ký lại</div>
-          <p>Hệ thống chỉ lưu một mã băm một chiều bảo mật (HMAC-SHA256) của định danh đã xoá để ngăn chặn farm credits khuyến mãi.</p>
+          <div class="row"><span class="marker">[+]</span><span>Mã băm của email, ID đăng nhập và định danh thiết bị: giữ sau khi xoá tài khoản để chặn nhận lại quà khuyến mãi. Không đảo ngược được thành dữ liệu gốc.</span></div>
+          <div class="row"><span class="marker">[+]</span><span>Lịch sử GEM: giữ ở dạng ẩn danh để đối soát.</span></div>
+          <p>Chi tiết thời hạn lưu trữ nằm ở mục 6 của <a href="/privacy">Chính sách riêng tư</a>.</p>
           <div class="alert-box">
-            <strong>[!] Cảnh báo:</strong> Nếu đăng ký lại bằng định danh đã từng yêu cầu xoá, tài khoản sẽ bắt đầu với 0 credit (không nhận 3 credits đăng ký) và không thể nhập mã giới thiệu của người khác (ADR-0009).
+            <strong>[!] Cảnh báo:</strong> Nếu đăng ký lại bằng định danh đã từng yêu cầu xoá, tài khoản sẽ bắt đầu với 0 GEM (không nhận quà đăng ký) và không thể nhập mã giới thiệu của người khác.
           </div>
         </div>
       </div>

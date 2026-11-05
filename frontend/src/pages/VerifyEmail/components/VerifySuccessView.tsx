@@ -1,3 +1,4 @@
+import { CREDIT_AMOUNTS } from "@palmsight/shared";
 import { TarotCorners } from "@/components/mystic/MysticDivider";
 import type { AuthResponseDto } from "../types";
 
@@ -12,6 +13,9 @@ export const VerifySuccessView = ({
   countdown,
   onNavigateNow,
 }: VerifySuccessViewProps) => {
+  const { REFEREE_REWARD } = CREDIT_AMOUNTS;
+  const balance = authData.user.creditBalance;
+
   return (
     <div
       data-testid="verify-success"
@@ -34,15 +38,15 @@ export const VerifySuccessView = ({
               🎉 Đã mở khóa 100% bài bói vận mệnh của bạn!
             </p>
             <p className="leading-relaxed">
-              Hệ thống đã tặng 3 credits chào mừng và sử dụng 1 credit để mở khóa bài bói thử. Số dư ví hiện tại là{" "}
-              <span className="font-bold text-gold-light">2 credits</span>.
+              Hệ thống đã dùng GEM để mở khóa bài bói thử. Số dư ví hiện tại là{" "}
+              <span className="font-bold text-gold-light">{balance} GEM</span>.
             </p>
           </div>
-        ) : authData.user.creditBalance === 4 ? (
+        ) : authData.referralApplied ? (
           <p>
             Chúc mừng! Bạn đã nhận{" "}
-            <span className="font-bold text-gold-light">4 credits</span> miễn phí (3
-            khởi tạo + 1 giới thiệu).
+            <span className="font-bold text-gold-light">{balance} GEM</span> miễn phí, gồm{" "}
+            {REFEREE_REWARD} GEM thưởng giới thiệu.
           </p>
         ) : !authData.isNewUser ? (
           <p>Tài khoản của bạn đã được gắn mật khẩu thành công.</p>
@@ -51,7 +55,7 @@ export const VerifySuccessView = ({
         ) : (
           <p>
             Tài khoản của bạn đã sẵn sàng. Bạn đã nhận{" "}
-            <span className="font-bold text-gold-light">3 credits</span>.
+            <span className="font-bold text-gold-light">{balance} GEM</span>.
           </p>
         )}
       </div>

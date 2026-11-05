@@ -16,7 +16,7 @@ const getTransactionTypeName = (tx: CreditTransactionDto): string => {
     case CreditTransactionType.READING_SPEND:
       return "Xem bói";
     case CreditTransactionType.READING_REFUND:
-      return "Hoàn credit";
+      return "Hoàn GEM";
     case CreditTransactionType.REWARDED_AD:
       return "Xem quảng cáo";
     case CreditTransactionType.ADMIN_ADJUST:
@@ -59,7 +59,7 @@ export const TransactionList = ({
         data-testid="empty-transactions"
         className="py-12 mystic-card rounded-xl text-center text-sm text-mute font-mono border border-dashed border-gold/25"
       >
-        Chưa có giao dịch credits nào.
+        Chưa có giao dịch GEM nào.
       </div>
     );
   }
@@ -70,7 +70,7 @@ export const TransactionList = ({
         <div className="pb-3 border-b border-gold/25 text-xs uppercase tracking-wider text-gold-dim grid grid-cols-[160px_1fr_100px_100px]">
           <div>Ngày</div>
           <div>Loại</div>
-          <div>Credits</div>
+          <div>GEM</div>
           <div>Số dư</div>
         </div>
 

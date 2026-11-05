@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PalmSight - PalmSight - Lời mời</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #fdfcfc;
+      color: #201d1d;
+      font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+      font-size: 16px;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .container { width: 100%; max-width: 960px; margin: 0 auto; padding: 0 16px; }
+    .header { height: 56px; border-bottom: 1px solid rgba(15, 0, 0, 0.12); display: flex; align-items: center; }
+    .header a { font-weight: 700; text-decoration: none; color: #201d1d; }
+    .main { flex: 1; padding: 48px 0 64px 0; }
+    .content { max-width: 640px; }
+    h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+    .meta { font-size: 14px; color: #646262; margin-bottom: 32px; }
+    .lead { font-size: 16px; color: #424245; margin-bottom: 40px; }
+    .section { margin-bottom: 40px; }
+    .section-title { font-size: 16px; font-weight: 700; border-bottom: 1px solid rgba(15, 0, 0, 0.12); padding-bottom: 8px; margin-bottom: 16px; }
+    .row { padding: 10px 0; border-bottom: 1px solid rgba(15, 0, 0, 0.12); display: flex; gap: 10px; font-size: 15px; color: #424245; }
+    .row:last-child { border-bottom: none; }
+    .marker { font-weight: 700; color: #201d1d; }
+    .section p { font-size: 15px; color: #424245; margin-bottom: 12px; }
+    .section ul, .section ol { margin: 0 0 12px 20px; font-size: 15px; color: #424245; }
+    .section li { margin-bottom: 6px; }
+    .table-wrap { overflow-x: auto; margin-bottom: 16px; -webkit-overflow-scrolling: touch; }
+    table { border-collapse: collapse; width: 100%; min-width: 480px; font-size: 14px; color: #424245; }
+    th, td { text-align: left; vertical-align: top; padding: 8px 10px; border: 1px solid rgba(15, 0, 0, 0.12); overflow-wrap: anywhere; }
+    th { background: rgba(15, 0, 0, 0.04); color: #201d1d; font-weight: 700; }
+    footer { border-top: 1px solid rgba(15, 0, 0, 0.12); padding: 24px 0; font-size: 14px; color: #646262; margin-top: auto; }
+    .footer-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .footer-links a { color: #646262; text-decoration: underline; margin-right: 16px; }
+      .code { font-size: 28px; font-weight: 700; letter-spacing: 4px; border: 1px solid rgba(15,0,0,0.12); padding: 16px; text-align: center; margin: 16px 0; overflow-wrap: anywhere; }
+    .btn { display: inline-block; border: 1px solid #201d1d; padding: 10px 16px; color: #201d1d; text-decoration: none; font-weight: 700; margin: 4px 8px 4px 0; background: transparent; font-family: inherit; font-size: 15px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <a href="/">PALMSIGHT</a>
+    </div>
+  </header>
+  <main class="main">
+    <div class="container">
+      <div class="content">
+        <h1>Lời mời dùng PalmSight</h1>
+        <p class="lead">Bạn được mời xem chỉ tay bằng AI trên PalmSight (ứng dụng Android).</p>
+        <div class="section">
+          <div class="section-title">Mã giới thiệu</div>
+          <div class="code" id="code">------</div>
+          <p><button class="btn" id="copy" type="button">Sao chép mã</button><a class="btn" id="play" href="https://play.google.com/store/apps/details?id=com.palmsight.mobile2">Cài trên Google Play</a></p>
+        </div>
+        <div class="section">
+          <div class="section-title">Cách nhận thưởng</div>
+          <div class="row"><span class="marker">[1]</span><span>Cài PalmSight và mở ứng dụng.</span></div>
+          <div class="row"><span class="marker">[2]</span><span>Vào tab Hồ sơ, chọn <strong>Nhập mã giới thiệu</strong>.</span></div>
+          <div class="row"><span class="marker">[3]</span><span>Dán mã ở trên rồi xác nhận để nhận GEM thưởng.</span></div>
+          <p>Mỗi tài khoản chỉ nhập mã một lần. Thiết bị từng xoá tài khoản không đủ điều kiện nhập mã.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <div class="container footer-inner">
+      <div>Kết quả mang tính giải trí, không thay thế tư vấn chuyên môn.</div>
+      <div class="footer-links">
+        <a href="/privacy">Chính sách riêng tư</a>
+        <a href="/terms">Điều khoản</a>
+        <a href="/data-deletion">Xoá dữ liệu</a>
+      </div>
+      <div>© PALMSIGHT</div>
+    </div>
+  </footer>
+<script>
+(function () {
+  var m = location.pathname.match(/^\/r\/([A-Za-z0-9]{4,16})\/?$/);
+  var code = m ? m[1].toUpperCase() : '';
+  var el = document.getElementById('code');
+  var copy = document.getElementById('copy');
+  var play = document.getElementById('play');
+  if (!code) { el.textContent = 'Liên kết không hợp lệ'; copy.style.display = 'none'; return; }
+  el.textContent = code;
+  play.href = play.href + '&referrer=' + encodeURIComponent('utm_source=referral&utm_content=' + code);
+  copy.addEventListener('click', function () {
+    if (navigator.clipboard) navigator.clipboard.writeText(code).then(function () { copy.textContent = 'Đã sao chép'; });
+  });
+})();
+</script>
+</body>
+</html>

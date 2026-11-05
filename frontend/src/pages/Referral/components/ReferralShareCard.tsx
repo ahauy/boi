@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CREDIT_AMOUNTS } from "@palmsight/shared";
 import { showSuccess } from "@/helpers/toast";
 import { TarotCorners } from "@/components/mystic/MysticDivider";
 
@@ -14,9 +15,9 @@ export const ReferralShareCard = ({ referralCode }: ReferralShareCardProps) => {
   const domain =
     typeof window !== "undefined" && window.location.origin
       ? window.location.origin
-      : "https://palmsight.app";
+      : "https://palm-sight-theta.vercel.app";
   const shareLink = `${domain}/r/${referralCode}`;
-  const sampleMessage = `Nhập mã ${referralCode} trên PalmSight: bạn được thêm 1 credit xem bói miễn phí`;
+  const sampleMessage = `Nhập mã ${referralCode} trên PalmSight: bạn được thêm ${CREDIT_AMOUNTS.REFEREE_REWARD} GEM xem bói miễn phí`;
 
   const handleCopyCode = () => {
     if (!referralCode) return;
@@ -123,11 +124,11 @@ export const ReferralShareCard = ({ referralCode }: ReferralShareCardProps) => {
       </div>
 
       <div className="mt-8 max-w-[540px] p-5 rounded-xl bg-surface-soft/50 border border-gold/20">
-        <h3 className="text-base font-display font-bold text-gold-light mb-3">Cách nhận credits</h3>
+        <h3 className="text-base font-display font-bold text-gold-light mb-3">Cách nhận GEM</h3>
         <div className="flex flex-col gap-2 text-xs sm:text-sm text-body">
-          <div><span className="text-gold font-mono mr-1.5">[+]</span> Mỗi người đăng ký bằng mã của bạn, bạn nhận +2 credits</div>
-          <div><span className="text-gold font-mono mr-1.5">[+]</span> Tối đa 10 lượt thưởng mỗi ngày</div>
-          <div><span className="text-gold font-mono mr-1.5">[+]</span> Người được bạn mời nhận +1 credit khi nhập mã của bạn</div>
+          <div><span className="text-gold font-mono mr-1.5">[+]</span> Mỗi người đăng ký bằng mã của bạn, bạn nhận +{CREDIT_AMOUNTS.REFERRAL_REWARD} GEM</div>
+          <div><span className="text-gold font-mono mr-1.5">[+]</span> Tối đa {CREDIT_AMOUNTS.REFERRAL_DAILY_CAP} lượt thưởng mỗi ngày</div>
+          <div><span className="text-gold font-mono mr-1.5">[+]</span> Người được bạn mời nhận +{CREDIT_AMOUNTS.REFEREE_REWARD} GEM khi nhập mã của bạn</div>
         </div>
       </div>
     </div>

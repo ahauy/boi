@@ -7,7 +7,9 @@ import { CreditsModule } from "./credits/credits.module";
 import { AuthModule } from "./auth/auth.module";
 import { UsersModule } from "./users/users.module";
 import { ReadingsModule } from "./readings/readings.module";
-import { AdsModule } from "./ads/ads.module";
+import { AppConfigModule } from "./config/app-config.module";
+import { CurrencyModule } from "./currency/currency.module";
+import { BillingModule } from "./billing/billing.module";
 
 @Module({
   imports: [
@@ -26,7 +28,9 @@ import { AdsModule } from "./ads/ads.module";
     AuthModule,
     UsersModule,
     ReadingsModule,
-    AdsModule,
+    AppConfigModule,
+    CurrencyModule,
+    BillingModule,
   ],
 })
 export class AppModule {}

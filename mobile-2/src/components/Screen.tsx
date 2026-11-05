@@ -4,9 +4,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, text as type } from '../theme';
+import { t } from '../i18n';
 import Text from './AppText';
 import CosmicBackground from './CosmicBackground';
 import { Eyebrow, IconButton, Subtitle, Title } from './ui';
+import { useAdsStore } from '../ads/ads-store';
 
 interface ScreenProps {
   children?: React.ReactNode;
@@ -16,21 +18,26 @@ interface ScreenProps {
   footer?: React.ReactNode;
   contentStyle?: StyleProp<ViewStyle>;
   scrollRef?: React.RefObject<ScrollViewInstance | null>;
+  onScroll?: () => void;
   /** Bịt bàn phím khi nhập (iOS; Android dùng softwareKeyboardLayoutMode=resize đã khai báo ở app.json). */
   avoidKeyboard?: boolean;
   /** Tắt nền cho màn có nền riêng. */
   background?: boolean;
 }
 
-export default function Screen({ children, scroll = true, header, footer, contentStyle, scrollRef, avoidKeyboard = true, background = true }: ScreenProps) {
+export default function Screen({ children, scroll = true, header, footer, contentStyle, scrollRef, onScroll, avoidKeyboard = true, background = true }: ScreenProps) {
   const insets = useSafeAreaInsets();
+  const adsState = useAdsStore();
+  const bottomInset = adsState.bannerVisible ? 0 : insets.bottom;
 
   const body = scroll ? (
     <ScrollView
       ref={scrollRef}
+      onScroll={onScroll}
+      scrollEventThrottle={onScroll ? 200 : undefined}
       style={{ flex: 1 }}
       contentContainerStyle={[
-        { paddingHorizontal: spacing.xl, paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.lg },
+        { paddingHorizontal: spacing.xl, paddingTop: insets.top + spacing.md, paddingBottom: bottomInset + spacing.xxl, gap: spacing.lg },
         contentStyle,
       ]}
       keyboardShouldPersistTaps="handled"
@@ -42,7 +49,7 @@ export default function Screen({ children, scroll = true, header, footer, conten
   ) : (
     <View
       style={[
-        { flex: 1, paddingHorizontal: spacing.xl, paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.md, gap: spacing.lg },
+        { flex: 1, paddingHorizontal: spacing.xl, paddingTop: insets.top + spacing.md, paddingBottom: bottomInset + spacing.md, gap: spacing.lg },
         contentStyle,
       ]}>
       {header}
@@ -55,7 +62,7 @@ export default function Screen({ children, scroll = true, header, footer, conten
       style={{
         paddingHorizontal: spacing.xl,
         paddingTop: spacing.md,
-        paddingBottom: insets.bottom + spacing.md,
+        paddingBottom: bottomInset + spacing.md,
         backgroundColor: colors.tabBar,
         borderTopWidth: 1,
         borderTopColor: colors.glassBorder,
@@ -99,7 +106,7 @@ export function ScreenHeader({ eyebrow, title, subtitle, right, onBack, compact 
   if (compact) {
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 46 }}>
-        {onBack ? <IconButton icon="chevron-left" size={42} accessibilityLabel="Quay lại" onPress={onBack} /> : null}
+        {onBack ? <IconButton icon="chevron-left" size={42} accessibilityLabel={t('reading.back')} onPress={onBack} /> : null}
         <Text
           style={[type.headingMd, { color: colors.ink, flex: 1 }]}
           accessibilityRole="header"
@@ -115,7 +122,7 @@ export function ScreenHeader({ eyebrow, title, subtitle, right, onBack, compact 
   return (
     <View style={{ gap: spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 46, gap: spacing.sm }}>
-        {onBack ? <IconButton icon="chevron-left" size={42} accessibilityLabel="Quay lại" onPress={onBack} /> : <View />}
+        {onBack ? <IconButton icon="chevron-left" size={42} accessibilityLabel={t('reading.back')} onPress={onBack} /> : <View />}
         {right}
       </View>
 

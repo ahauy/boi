@@ -20,14 +20,14 @@ pnpm install
 docker compose up -d mongodb mailpit
 pnpm --filter backend dev
 
-# mobile-2 (Expo, port 8082)
+# mobile-2 (Expo, port 8081, tự mở hầm adb nếu đã bật emulator)
 pnpm start:mobile2
 
 # hoặc bản web
 pnpm start:mobile2:web
 ```
 
-Nếu chạy web, backend đã cho phép CORS ở `localhost:8082` (và `5173`). Nếu frontend web cũ đang chiếm `5173`, dùng `8082` cho mobile-2.
+Cổng Metro là `8081` để khớp với cổng ghi sẵn trong APK debug. Nếu chạy web, backend đã cho phép CORS ở `localhost:8081` (và `5173`).
 
 ### API URL
 
@@ -41,25 +41,27 @@ EXPO_PUBLIC_WEB_URL=http://localhost:5173
 - Web và iOS simulator dùng thẳng `localhost`.
 - **Android emulator: phải mở hầm `adb reverse`, không dùng `10.0.2.2`.**
 
+  `pnpm start:mobile2` tự mở hầm cho cổng `4000` và `8081` nếu emulator đã bật. Chạy tay trong
+  `mobile-2`:
+
   ```bash
-  ~/Android/Sdk/platform-tools/adb reverse tcp:4000 tcp:4000
-  ~/Android/Sdk/platform-tools/adb reverse tcp:8082 tcp:8082
+  node scripts/adb-reverse.js
   ```
 
   `src/lib/api.ts` giữ nguyên `localhost`, không còn tự đổi sang `10.0.2.2` như trước. Lý do: trên
   máy ảo đang dùng, OkHttp của app không nối được `10.0.2.2` dù TCP thô tới được — mọi request chết
   ngay với `NETWORK_ERROR`, và Expo Go cũng tải bundle thất bại qua ngả đó. `adb reverse` đưa
   `localhost` của thiết bị về đúng máy dev, miễn nhiễm với việc đổi IP LAN.
-  Hầm mất khi khởi động lại emulator hoặc `adb kill-server` — chạy lại hai lệnh trên.
+  Hầm mất khi khởi động lại emulator hoặc `adb kill-server` — chạy lại lệnh trên, không cần tắt Metro.
 - Máy thật: đổi `EXPO_PUBLIC_API_URL` sang IP LAN của máy dev (xem `hostname -I`) hoặc URL ngrok.
 - Muốn trỏ Render: đổi `EXPO_PUBLIC_API_URL` thành `https://<service>.onrender.com/api/v1`.
 
 ### Mở app trong Expo Go
 
-Sau khi Metro chạy ở 8082, nạp project bằng chính `localhost` (nhờ hầm ở trên):
+Sau khi Metro chạy ở 8081, nạp project bằng chính `localhost` (nhờ hầm ở trên):
 
 ```bash
-~/Android/Sdk/platform-tools/adb shell am start -a android.intent.action.VIEW -d 'exp://127.0.0.1:8082'
+~/Android/Sdk/platform-tools/adb shell am start -a android.intent.action.VIEW -d 'exp://127.0.0.1:8081'
 ```
 
 Nếu app hiện "Chưa kết nối được", phân biệt hai nguyên nhân khác nhau: message đó giờ chỉ hiện khi

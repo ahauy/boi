@@ -21,9 +21,11 @@ import { ReadingStatus } from '@palmsight/shared';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, font, gradients, radius, shadow, spacing, text as type, MAX_FONT_SCALE } from '../theme';
+import { t } from '../i18n';
 import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { useAppActive, useReduceMotion } from '../lib/motion';
+import { runGatedTap } from '../ui/tap-gate';
 import Text from './AppText';
 import CosmicBackground from './CosmicBackground';
 import CosmicHand from './CosmicHand';
@@ -32,9 +34,9 @@ export const GOLD_GRADIENT = gradients.gold;
 
 type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'danger';
 
-interface ButtonProps {
+export interface ButtonProps {
   label: string;
-  onPress: () => void;
+  onPress: () => void | Promise<any>;
   variant?: ButtonVariant;
   disabled?: boolean;
   loading?: boolean;
@@ -42,9 +44,10 @@ interface ButtonProps {
   accessibilityLabel?: string;
   icon?: React.ReactNode;
   size?: 'md' | 'lg';
+  noInterstitial?: boolean;
 }
 
-export function Button({ label, onPress, variant = 'primary', disabled, loading, style, accessibilityLabel, icon, size = 'md' }: ButtonProps) {
+export function Button({ label, onPress, variant = 'primary', disabled, loading, style, accessibilityLabel, icon, size = 'md', noInterstitial }: ButtonProps) {
   const inactive = Boolean(disabled || loading);
   const height = size === 'lg' ? 56 : 50;
   const contentColor = disabled
@@ -98,7 +101,7 @@ export function Button({ label, onPress, variant = 'primary', disabled, loading,
       accessibilityState={{ disabled: inactive, busy: Boolean(loading) }}
       onPress={() => {
         if (variant !== 'ghost') haptic.tap();
-        onPress();
+        runGatedTap(() => onPress?.(), { eligibleForAd: !noInterstitial, noInterstitial });
       }}
       disabled={inactive}
       android_ripple={{ color: 'rgba(255,244,208,0.16)', foreground: true }}
@@ -118,16 +121,29 @@ export function Button({ label, onPress, variant = 'primary', disabled, loading,
   );
 }
 
-interface IconButtonProps {
+export function GoldButton(props: Omit<ButtonProps, 'variant'>) {
+  return <Button {...props} variant="primary" />;
+}
+
+export function OutlineButton(props: Omit<ButtonProps, 'variant'>) {
+  return <Button {...props} variant="outline" />;
+}
+
+export function GhostButton(props: Omit<ButtonProps, 'variant'>) {
+  return <Button {...props} variant="ghost" />;
+}
+
+export interface IconButtonProps {
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  onPress: () => void;
+  onPress: () => void | Promise<any>;
   accessibilityLabel: string;
   selected?: boolean;
   size?: number;
   style?: StyleProp<ViewStyle>;
+  noInterstitial?: boolean;
 }
 
-export function IconButton({ icon, onPress, accessibilityLabel, selected, size = 46, style }: IconButtonProps) {
+export function IconButton({ icon, onPress, accessibilityLabel, selected, size = 46, style, noInterstitial }: IconButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -135,7 +151,7 @@ export function IconButton({ icon, onPress, accessibilityLabel, selected, size =
       accessibilityState={{ selected }}
       onPress={() => {
         haptic.select();
-        onPress();
+        runGatedTap(() => onPress?.(), { eligibleForAd: !noInterstitial, noInterstitial });
       }}
       hitSlop={6}
       style={({ pressed }) => [
@@ -252,7 +268,7 @@ export function Input({
         {secure ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={revealed ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+            accessibilityLabel={revealed ? t('ui.hidePassword') : t('ui.showPassword')}
             hitSlop={10}
             onPress={() => setRevealed((prev) => !prev)}
             style={{ position: 'absolute', right: spacing.md, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
@@ -558,11 +574,11 @@ export function SectionLabel({ children, right }: { children: string; right?: Re
 type StatusIcon = keyof typeof MaterialCommunityIcons.glyphMap;
 
 const STATUS_META: Record<ReadingStatus, { label: string; color: string; icon: StatusIcon }> = {
-  [ReadingStatus.DONE]: { label: 'Hoàn tất', color: colors.success, icon: 'check-circle-outline' },
-  [ReadingStatus.PROCESSING]: { label: 'Đang luận giải', color: colors.warning, icon: 'clock-outline' },
-  [ReadingStatus.FAILED]: { label: 'Lỗi · đã hoàn', color: colors.danger, icon: 'alert-circle-outline' },
-  [ReadingStatus.REJECTED]: { label: 'Ảnh mờ · đã hoàn', color: colors.danger, icon: 'alert-circle-outline' },
-  [ReadingStatus.GUEST_PREVIEW]: { label: 'Bói thử', color: colors.violetSoft, icon: 'star-four-points-outline' },
+  [ReadingStatus.DONE]: { label: 'status.done', color: colors.success, icon: 'check-circle-outline' },
+  [ReadingStatus.PROCESSING]: { label: 'status.processing', color: colors.warning, icon: 'clock-outline' },
+  [ReadingStatus.FAILED]: { label: 'status.failed', color: colors.danger, icon: 'alert-circle-outline' },
+  [ReadingStatus.REJECTED]: { label: 'status.rejected', color: colors.danger, icon: 'alert-circle-outline' },
+  [ReadingStatus.GUEST_PREVIEW]: { label: 'status.preview', color: colors.violetSoft, icon: 'star-four-points-outline' },
 };
 
 export function StatusPill({ status }: { status: ReadingStatus }) {
@@ -584,8 +600,8 @@ export function StatusPill({ status }: { status: ReadingStatus }) {
         paddingVertical: 3,
       }}>
       <MaterialCommunityIcons accessible={false} name={meta.icon} size={12} color={meta.color} />
-      <Text numberOfLines={1} style={[type.code, { color: meta.color, flexShrink: 1 }]} accessibilityLabel={`Trạng thái: ${meta.label}`}>
-        {meta.label}
+      <Text numberOfLines={1} style={[type.code, { color: meta.color, flexShrink: 1 }]} accessibilityLabel={t('status.a11y', { status: t(meta.label) })}>
+        {t(meta.label)}
       </Text>
     </View>
   );
@@ -625,7 +641,7 @@ function ScanBeam({ height }: { height: number }) {
   );
 }
 
-const SCAN_STAGES = ['Đánh thức thiên đài', 'Nhận diện bàn tay', 'Vẽ Sinh · Trí · Tâm đạo', 'Luận giải cùng AI'] as const;
+const SCAN_STAGES = ['ui.stage1', 'ui.stage2', 'ui.stage3', 'ui.stage4'] as const;
 
 interface LoadingOverlayProps {
   visible: boolean;
@@ -656,7 +672,7 @@ export function LoadingOverlay({ visible, title, message, progress, photoUri, ch
           style={{ flex: 1 }}
           contentContainerStyle={{ flexGrow: 1, paddingHorizontal: spacing.xl, alignItems: 'center', justifyContent: 'center', gap: spacing.lg }}
           showsVerticalScrollIndicator={false}>
-          <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 3 }]}>PALMSIGHT · THIÊN CƠ LUẬN GIẢI</Text>
+          <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 3 }]}>{t('ui.overlayEyebrow')}</Text>
 
           <View style={{ width: visualWidth, height: visualHeight, alignItems: 'center', justifyContent: 'center' }}>
             {photoUri ? (
@@ -671,7 +687,7 @@ export function LoadingOverlay({ visible, title, message, progress, photoUri, ch
                   backgroundColor: colors.obsidian,
                 }}>
                 <View style={{ width: '100%', height: '100%' }}>
-                  <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel="Ảnh lòng bàn tay đang được phân tích" />
+                  <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={t('ui.photoA11y')} />
                   <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(4,6,17,0.24)' }]} />
                   <ScanBeam height={visualHeight} />
                 </View>
@@ -684,10 +700,10 @@ export function LoadingOverlay({ visible, title, message, progress, photoUri, ch
 
           <View style={{ alignItems: 'center', gap: spacing.sm, maxWidth: 360 }}>
             <Text style={[type.displayLg, { color: colors.ink, textAlign: 'center' }]} accessibilityRole="header">
-              {title ?? 'Đang đọc chỉ tay'}
+              {title ?? t('ui.overlayTitle')}
             </Text>
             <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center' }]}>
-              {message ?? 'Hệ thống đang phân tích các đặc điểm lòng bàn tay của bạn.'}
+              {message ?? t('ui.overlayBody')}
             </Text>
           </View>
 
@@ -715,7 +731,7 @@ export function LoadingOverlay({ visible, title, message, progress, photoUri, ch
                     </Text>
                   </View>
                   <Text style={[active ? type.bodyBold : type.caption, { color: active ? colors.goldLight : done ? colors.body : colors.stone, flex: 1 }]}>
-                    {stage}
+                    {t(stage)}
                   </Text>
                 </View>
               );
@@ -724,10 +740,10 @@ export function LoadingOverlay({ visible, title, message, progress, photoUri, ch
 
           {children}
 
-          {onCancel ? <Button label={cancelLabel ?? 'Huỷ và quay lại'} variant="ghost" onPress={onCancel} /> : null}
+          {onCancel ? <Button label={cancelLabel ?? t('ui.cancelBack')} variant="ghost" onPress={onCancel} /> : null}
 
           <Text style={[type.code, { color: colors.stone, textAlign: 'center', letterSpacing: 1.2 }]}>
-            {onCancel ? 'CÓ THỂ HUỶ — QUẺ VẪN ĐƯỢC LƯU TRONG LỊCH SỬ' : 'ĐỪNG ĐÓNG ỨNG DỤNG · THƯỜNG DƯỚI 60 GIÂY'}
+            {onCancel ? t('ui.canCancel') : t('ui.dontClose')}
           </Text>
         </ScrollView>
       </View>

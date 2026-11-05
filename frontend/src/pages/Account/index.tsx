@@ -17,7 +17,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { id: "ho-so", label: "Hồ sơ" },
   { id: "bao-mat", label: "Bảo mật" },
   { id: "nhap-ma", label: "Nhập mã" },
-  { id: "vi-credits", label: "Ví credits" },
+  { id: "vi-credits", label: "Ví GEM" },
   { id: "gioi-thieu", label: "Giới thiệu" },
 ];
 

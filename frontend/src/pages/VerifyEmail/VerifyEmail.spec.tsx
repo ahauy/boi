@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import VerifyEmailPage from './index';
+import type { AuthResponseDto } from './types';
 import authService from '@/services/authService';
 import { AuthenticationProvider, useAuth } from '@/providers/AuthenticationProvider';
 
@@ -39,6 +40,25 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
     });
   });
 
+  const buildAuthResponse = (
+    userOverride: Partial<AuthResponseDto['user']> = {},
+    override: Partial<AuthResponseDto> = {}
+  ): AuthResponseDto => ({
+    accessToken: 'valid-jwt-token',
+    expiresIn: 900,
+    isNewUser: true,
+    user: {
+      id: '6710a1b2c3d4e5f6a7b8c9d0',
+      displayName: 'Nguyễn Văn A',
+      username: 'nguyenvana',
+      avatarUrl: null,
+      creditBalance: 5,
+      referralCode: 'K7QX4MZP',
+      ...userOverride,
+    },
+    ...override,
+  });
+
   const renderComponent = (initialQuery = '') => {
     return render(
       <QueryClientProvider client={queryClient}>
@@ -63,7 +83,7 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
         displayName: 'Nguyễn Văn A',
         username: 'nguyenvana',
         avatarUrl: null,
-        creditBalance: 3,
+        creditBalance: 5,
         referralCode: 'K7QX4MZP',
       },
     });
@@ -81,7 +101,7 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
     });
   });
 
-  it('should show success state with 3 credits and redirect to /referral/enter (TC-015, TC-030)', async () => {
+  it('should show success state with 5 GEM and redirect to /referral/enter (TC-015, TC-030)', async () => {
     vi.spyOn(authService, 'postVerifyEmail').mockResolvedValue({
       accessToken: 'valid-jwt-token-123',
       expiresIn: 900,
@@ -91,9 +111,10 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
         displayName: 'Nguyễn Văn A',
         username: 'nguyenvana',
         avatarUrl: null,
-        creditBalance: 3,
+        creditBalance: 5,
         referralCode: 'K7QX4MZP',
       },
+      referralApplied: false,
     });
 
     renderComponent('?token=VALID_TOKEN_123');
@@ -108,7 +129,7 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
     expect(
       screen.getByText(/Tài khoản của bạn đã sẵn sàng\. Bạn đã nhận/)
     ).toBeInTheDocument();
-    expect(screen.getByText('3 credits')).toBeInTheDocument();
+    expect(screen.getByText('5 GEM')).toBeInTheDocument();
     expect(screen.getByText(/Tự động chuyển tiếp sau/)).toBeInTheDocument();
 
     // Verify token stored in-memory
@@ -120,7 +141,7 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
     expect(mockedNavigate).toHaveBeenCalledWith('/referral/enter');
   });
 
-  it('should show 4 credits celebration and redirect to /scan for referral signups (TC-019, TC-031)', async () => {
+  it('should show 10 GEM celebration and redirect to /scan for referral signups (TC-019, TC-031)', async () => {
     vi.spyOn(authService, 'postVerifyEmail').mockResolvedValue({
       accessToken: 'valid-jwt-referral',
       expiresIn: 900,
@@ -130,9 +151,10 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
         displayName: 'Vip Referee',
         username: 'vipreferee',
         avatarUrl: null,
-        creditBalance: 4,
+        creditBalance: 10,
         referralCode: 'VIPREF88',
       },
+      referralApplied: true,
     });
 
     renderComponent('?token=REFERRAL_TOKEN_999');
@@ -141,13 +163,63 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
       expect(screen.getByTestId('verify-success')).toBeInTheDocument();
     });
 
-    // Subtitle displays 4 credits bonus message
-    expect(
-      screen.getByText(/Chúc mừng! Bạn đã nhận/i)
-    ).toBeInTheDocument();
-    expect(screen.getByText('4 credits')).toBeInTheDocument();
+    // Số dư lấy từ API, chỉ nêu phần thưởng giới thiệu, không diễn giải phép cộng
+    expect(screen.getByText('10 GEM').closest('p')).toHaveTextContent(
+      'Chúc mừng! Bạn đã nhận 10 GEM miễn phí, gồm 5 GEM thưởng giới thiệu.'
+    );
+    expect(screen.queryByText(/khởi tạo/)).not.toBeInTheDocument();
 
     // Clicking "Bỏ qua chờ đợi" redirects directly to /scan
+    fireEvent.click(screen.getByRole('button', { name: 'Bỏ qua chờ đợi' }));
+    expect(mockedNavigate).toHaveBeenCalledWith('/scan');
+  });
+
+  it('should not treat a balance of 10 as a referral signup', async () => {
+    vi.spyOn(authService, 'postVerifyEmail').mockResolvedValue(
+      buildAuthResponse({ creditBalance: 10 })
+    );
+
+    renderComponent('?token=BALANCE_TEN');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('verify-success')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/Chúc mừng!/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Bỏ qua chờ đợi' }));
+    expect(mockedNavigate).toHaveBeenCalledWith('/referral/enter');
+  });
+
+  it('should keep the password-linked branch and go to /scan when isNewUser is false', async () => {
+    vi.spyOn(authService, 'postVerifyEmail').mockResolvedValue(
+      buildAuthResponse({ creditBalance: 4 }, { isNewUser: false })
+    );
+
+    renderComponent('?token=EXISTING_USER');
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Tài khoản của bạn đã được gắn mật khẩu thành công.')
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bỏ qua chờ đợi' }));
+    expect(mockedNavigate).toHaveBeenCalledWith('/scan');
+  });
+
+  it('should keep the activated branch and go to /scan when a new user has 0 balance', async () => {
+    vi.spyOn(authService, 'postVerifyEmail').mockResolvedValue(
+      buildAuthResponse({ creditBalance: 0 })
+    );
+
+    renderComponent('?token=DELETED_IDENTITY');
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Tài khoản của bạn đã được kích hoạt thành công.')
+      ).toBeInTheDocument();
+    });
+
     fireEvent.click(screen.getByRole('button', { name: 'Bỏ qua chờ đợi' }));
     expect(mockedNavigate).toHaveBeenCalledWith('/scan');
   });
@@ -199,7 +271,7 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
     });
   });
 
-  it('should forward claimToken, show 2 credits celebration banner, and redirect to claimed reading (US-GUEST-001)', async () => {
+  it('should forward claimToken, show 0 GEM celebration banner, and redirect to claimed reading (US-GUEST-001)', async () => {
     sessionStorage.setItem('ps_claim_token', 'claim-uuid-456');
     const postVerifySpy = vi.spyOn(authService, 'postVerifyEmail').mockResolvedValue({
       accessToken: 'claimed-jwt-token',
@@ -210,7 +282,7 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
         displayName: 'Guest Claimer',
         username: 'guestclaimer',
         avatarUrl: null,
-        creditBalance: 2,
+        creditBalance: 0,
         referralCode: 'CLAIMED1',
       },
       claimedReadingId: '67139f7e-c885-4463-a62a-3a5e1fb83001',
@@ -224,7 +296,10 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
         claimToken: 'claim-uuid-456',
       });
       expect(screen.getByTestId('claim-success-celebration')).toBeInTheDocument();
-      expect(screen.getByText('2 credits')).toBeInTheDocument();
+      expect(screen.getByTestId('claim-success-celebration')).toHaveTextContent(
+        'Hệ thống đã dùng GEM để mở khóa bài bói thử. Số dư ví hiện tại là 0 GEM.'
+      );
+      expect(screen.getByText('0 GEM')).toBeInTheDocument();
       expect(
         screen.getByText(/Tự động chuyển tiếp đến bài đọc sau/)
       ).toBeInTheDocument();
@@ -236,5 +311,60 @@ describe('VerifyEmailPage (Stitch Screen 1d106024adaa426eadcacab751819351)', () 
     // Click "Bỏ qua chờ đợi" redirects to /readings/:id
     fireEvent.click(screen.getByRole('button', { name: 'Bỏ qua chờ đợi' }));
     expect(mockedNavigate).toHaveBeenCalledWith('/readings/67139f7e-c885-4463-a62a-3a5e1fb83001');
+  });
+
+  it('should show 5 GEM when a claim comes with an applied referral', async () => {
+    vi.spyOn(authService, 'postVerifyEmail').mockResolvedValue(
+      buildAuthResponse(
+        { creditBalance: 5 },
+        {
+          referralApplied: true,
+          claimedReadingId: '67139f7e-c885-4463-a62a-3a5e1fb83002',
+        }
+      )
+    );
+
+    renderComponent('?token=VERIFY_TOKEN_888&claimToken=claim-uuid-789');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('claim-success-celebration')).toBeInTheDocument();
+    });
+
+    const celebration = screen.getByTestId('claim-success-celebration');
+    expect(celebration).toHaveTextContent(
+      'Hệ thống đã dùng GEM để mở khóa bài bói thử. Số dư ví hiện tại là 5 GEM.'
+    );
+    // Không ghi số tặng hay số trừ vì không suy ra chắc chắn được từ phản hồi
+    expect(celebration).not.toHaveTextContent(/tặng|chào mừng|giới thiệu/);
+    expect(screen.getByText('5 GEM')).toBeInTheDocument();
+
+    // Claim thắng nhánh referral: vẫn về bài đọc, không về /scan
+    fireEvent.click(screen.getByRole('button', { name: 'Bỏ qua chờ đợi' }));
+    expect(mockedNavigate).toHaveBeenCalledWith('/readings/67139f7e-c885-4463-a62a-3a5e1fb83002');
+  });
+
+  it('should not mention a welcome bonus when an existing account claims a reading', async () => {
+    vi.spyOn(authService, 'postVerifyEmail').mockResolvedValue(
+      buildAuthResponse(
+        { creditBalance: 9 },
+        {
+          isNewUser: false,
+          claimedReadingId: '67139f7e-c885-4463-a62a-3a5e1fb83003',
+        }
+      )
+    );
+
+    renderComponent('?token=VERIFY_TOKEN_999&claimToken=claim-uuid-790');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('claim-success-celebration')).toBeInTheDocument();
+    });
+
+    const celebration = screen.getByTestId('claim-success-celebration');
+    expect(celebration).not.toHaveTextContent(/tặng|chào mừng/);
+    expect(celebration).toHaveTextContent(
+      'Hệ thống đã dùng GEM để mở khóa bài bói thử. Số dư ví hiện tại là 9 GEM.'
+    );
+    expect(screen.getByText('9 GEM')).toBeInTheDocument();
   });
 });

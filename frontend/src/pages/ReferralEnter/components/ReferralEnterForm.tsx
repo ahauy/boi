@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Formik, Form, FormikHelpers } from "formik";
-import { enterReferralSchema } from "@palmsight/shared";
+import { CREDIT_AMOUNTS, enterReferralSchema } from "@palmsight/shared";
 import { getCookie, deleteCookie } from "@/helpers/cookie";
 import { showSuccess } from "@/helpers/toast";
 import { useAuth } from "@/providers/AuthenticationProvider";
@@ -17,6 +17,9 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   REFERRAL_SELF: "Bạn không thể nhập mã của chính mình",
   REFERRAL_ALREADY_USED: "Tài khoản đã nhập mã giới thiệu trước đó",
   REFERRAL_CYCLE: "Không thể nhập mã của người bạn đã mời",
+  REFERRAL_DEVICE_USED: "Thiết bị này đã nhập mã giới thiệu trước đó",
+  REFERRAL_NETWORK_LIMIT:
+    "Mạng này đã đạt giới hạn nhập mã hôm nay, vui lòng thử lại sau",
 };
 
 export const ReferralEnterForm = () => {
@@ -61,7 +64,7 @@ export const ReferralEnterForm = () => {
 
       const referrerName = response.referrer?.displayName || "bạn bè";
       showSuccess(
-        `Đã ghi nhận mã của ${referrerName}. Bạn nhận được ${response.creditsEarned} credit!`
+        `Đã ghi nhận mã của ${referrerName}. Bạn nhận được ${response.creditsEarned} GEM!`
       );
 
       navigate(BaseUrl.Scan);
@@ -103,8 +106,8 @@ export const ReferralEnterForm = () => {
           </h1>
           <div className="h-4" />
           <p className="text-base text-body leading-relaxed m-0 p-0">
-            Nếu có người mời bạn, nhập mã để họ nhận 2 credits. Bạn có thể bỏ
-            qua bước này.
+            Nếu có người mời bạn, nhập mã để bạn nhận {CREDIT_AMOUNTS.REFEREE_REWARD} GEM và họ nhận{" "}
+            {CREDIT_AMOUNTS.REFERRAL_REWARD} GEM. Bạn có thể bỏ qua bước này.
           </p>
           <div className="h-4" />
           <p className="text-sm text-mute leading-relaxed m-0 p-0">

@@ -4,61 +4,93 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import Text from './AppText';
 import { Button } from './ui';
-import { post } from '../lib/api';
-import type { RewardedAdOutcome, RewardedAdPlayRequest } from '../lib/ads';
-import { setRewardedAdPlayer } from '../lib/ads';
+import {
+  setSimulatedInterstitialPlayer,
+  setSimulatedRewardedPlayer,
+} from '../ads/ads-service';
 import { colors, font, radius, spacing, text as type } from '../theme';
 
-/** Ngắn hơn quảng cáo thật: đủ để đi qua nhánh "đã xem trọn" mà không bắt người dev chờ 30 giây. */
-const AD_SECONDS = 12;
-
 /**
- * Cờ bật quảng cáo mô phỏng. `__DEV__` nằm ở đây vì ship một nút "xem quảng cáo" giả lên user thật
- * là lỗi nghiêm trọng hơn nhiều so với việc không test được luồng credit.
+ * 16 giây cho quảng cáo thưởng để vượt qua ngưỡng `minWatchSeconds = 15` trên server (§2.2, §5.5).
+ * 5 giây cho quảng cáo xen kẽ (interstitial).
  */
+const REWARDED_AD_SECONDS = 16;
+const INTERSTITIAL_AD_SECONDS = 5;
+
 export function adsMockEnabled(): boolean {
-  return __DEV__ && process.env.EXPO_PUBLIC_ADS_MOCK === 'true';
+  return typeof __DEV__ !== 'undefined' && Boolean(__DEV__) && process.env.EXPO_PUBLIC_ADS_MOCK !== 'false';
 }
 
-/**
- * Trình phát quảng cáo thay thế cho Expo Go.
- *
- * SDK ads là native module nên không tồn tại trong Expo Go, trong khi phần còn lại của luồng
- * (xin nonce, trần 24 giờ, cộng credit, ledger, số dư) lại chạy được hết. Linh kiện này phát một
- * màn đếm giờ rồi gọi `POST /ads/rewarded/dev-grant` — endpoint mô phỏng callback của Google — để
- * khoá tín dụng đóng được trên máy ảo mà chưa cần development build.
- */
+type ActiveMockAd =
+  | {
+      mode: 'max_rewarded';
+      placement?: string;
+      resolve: (res: { rewarded: boolean; completed: boolean }) => void;
+    }
+  | {
+      mode: 'max_interstitial';
+      placement?: string;
+      resolve: () => void;
+    };
+
 export default function SimulatedAdHost() {
-  const [request, setRequest] = useState<RewardedAdPlayRequest | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(AD_SECONDS);
-  const resolveRef = useRef<((outcome: RewardedAdOutcome) => void) | null>(null);
+  const [activeAd, setActiveAd] = useState<ActiveMockAd | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(REWARDED_AD_SECONDS);
   const grantingRef = useRef(false);
 
   useEffect(() => {
     if (!adsMockEnabled()) return;
 
-    setRewardedAdPlayer(
-      (nextRequest) =>
-        new Promise<RewardedAdOutcome>((resolve) => {
-          resolveRef.current = resolve;
+    // AppLovin MAX Rewarded player for Expo Go / Web
+    setSimulatedRewardedPlayer(
+      (placement) =>
+        new Promise<{ rewarded: boolean; completed: boolean }>((resolve) => {
           grantingRef.current = false;
-          setSecondsLeft(AD_SECONDS);
-          setRequest(nextRequest);
+          setSecondsLeft(REWARDED_AD_SECONDS);
+          setActiveAd({
+            mode: 'max_rewarded',
+            placement,
+            resolve,
+          });
         })
     );
 
-    return () => setRewardedAdPlayer(null);
+    // AppLovin MAX Interstitial player for Expo Go / Web
+    setSimulatedInterstitialPlayer(
+      (placement) =>
+        new Promise<void>((resolve) => {
+          grantingRef.current = false;
+          setSecondsLeft(INTERSTITIAL_AD_SECONDS);
+          setActiveAd({
+            mode: 'max_interstitial',
+            placement,
+            resolve,
+          });
+        })
+    );
+
+    return () => {
+      setSimulatedRewardedPlayer(null);
+      setSimulatedInterstitialPlayer(null);
+    };
   }, []);
 
-  const close = useCallback((outcome: RewardedAdOutcome) => {
-    const resolve = resolveRef.current;
-    resolveRef.current = null;
-    setRequest(null);
-    resolve?.(outcome);
-  }, []);
+  const closeAd = useCallback(
+    (completed: boolean) => {
+      if (!activeAd) return;
+      const current = activeAd;
+      setActiveAd(null);
+      if (current.mode === 'max_rewarded') {
+        current.resolve({ rewarded: completed, completed });
+      } else {
+        current.resolve();
+      }
+    },
+    [activeAd]
+  );
 
   useEffect(() => {
-    if (!request) return;
+    if (!activeAd) return;
 
     if (secondsLeft > 0) {
       const timer = setTimeout(() => setSecondsLeft((left) => left - 1), 1000);
@@ -67,23 +99,28 @@ export default function SimulatedAdHost() {
 
     if (grantingRef.current) return;
     grantingRef.current = true;
-    void post('/ads/rewarded/dev-grant', { nonce: request.nonce })
-      .catch((error: unknown) => {
-        // Không đổi thành 'skipped': người dùng đã xem trọn, chỉ là chưa có xác nhận. Để luồng thật
-        // tự báo 'pending' là cách đúng để lộ ra cờ dev-grant chưa bật trên backend.
-        console.warn('[ads-mock] dev-grant thất bại, claim sẽ ở trạng thái chờ xác nhận:', error);
-      })
-      .finally(() => close('earned'));
-  }, [close, request, secondsLeft]);
 
-  if (!request) return null;
+    if (activeAd.mode === 'max_rewarded') {
+      const timer = setTimeout(() => closeAd(true), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [activeAd, closeAd, secondsLeft]);
 
+  if (!activeAd) return null;
+
+  const isInterstitial = activeAd.mode === 'max_interstitial';
   const finished = secondsLeft <= 0;
+  const placementLabel = activeAd.placement ?? 'rewarded_video';
 
   return (
-    <Modal visible onRequestClose={() => close('skipped')} animationType="fade" statusBarTranslucent>
-      <View style={{ flex: 1, backgroundColor: colors.canvas, padding: spacing.xl, gap: spacing.lg }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+    <Modal
+      visible
+      onRequestClose={() => closeAd(isInterstitial ? true : finished)}
+      animationType="fade"
+      statusBarTranslucent
+    >
+      <View style={{ flex: 1, backgroundColor: colors.canvas, padding: spacing.xl, gap: spacing.lg, justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingTop: spacing.xl }}>
           <View
             style={{
               paddingHorizontal: spacing.sm,
@@ -92,13 +129,14 @@ export default function SimulatedAdHost() {
               borderWidth: 1,
               borderColor: colors.gold,
               backgroundColor: colors.goldWash,
-            }}>
+            }}
+          >
             <Text style={[type.code, { color: colors.goldLight, fontFamily: font.monoMedium }]}>
-              MÔ PHỎNG
+              {isInterstitial ? 'INTERSTITIAL AD (MÔ PHỎNG)' : 'REWARDED AD (MÔ PHỎNG)'}
             </Text>
           </View>
-          <Text style={[type.caption, { color: colors.mute, flex: 1 }]}>
-            Màn quảng cáo giả để test luồng credit. Chưa nối AdMob.
+          <Text style={[type.caption, { color: colors.mute, flex: 1 }]} numberOfLines={1}>
+            {`Vị trí: ${placementLabel}`}
           </Text>
         </View>
 
@@ -109,27 +147,43 @@ export default function SimulatedAdHost() {
             justifyContent: 'center',
             gap: spacing.md,
             paddingHorizontal: spacing.md,
-          }}>
+          }}
+        >
           <MaterialCommunityIcons
             name={finished ? 'check-circle-outline' : 'play-circle-outline'}
             size={92}
             color={finished ? colors.goldLight : colors.gold}
           />
           <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>
-            {finished ? 'Đã xem trọn vẹn' : `Quảng cáo ${secondsLeft}s`}
+            {finished
+              ? isInterstitial
+                ? 'Có thể đóng quảng cáo'
+                : 'Đã xem trọn vẹn! Đang cộng thưởng...'
+              : `Đang phát quảng cáo (${secondsLeft}s)`}
           </Text>
           <Text style={[type.caption, { color: colors.stone, textAlign: 'center' }]}>
-            {finished
-              ? 'Đang chờ máy chủ xác nhận phần thưởng...'
-              : 'Với quảng cáo thật, credit chỉ về khi Google xác nhận bạn đã xem hết.'}
+            {isInterstitial
+              ? 'Quảng cáo xen kẽ mô phỏng trên Expo Go / Web.'
+              : finished
+                ? 'Đang gửi xác nhận vé thưởng lên máy chủ...'
+                : 'Xem hết 15 giây để máy chủ xác nhận vé thưởng (minWatchSeconds = 15s).'}
           </Text>
         </View>
 
         <Button
-          label={finished ? 'Đang xác nhận...' : 'Bỏ qua (không nhận credit)'}
-          variant="outline"
-          disabled={finished}
-          onPress={() => close('skipped')}
+          label={
+            isInterstitial
+              ? finished
+                ? 'Đóng quảng cáo (X)'
+                : `Chờ ${secondsLeft}s...`
+              : finished
+                ? 'Hoàn tất nhận thưởng'
+                : 'Đóng sớm (Huỷ vé thưởng)'
+          }
+          variant={finished ? 'primary' : 'outline'}
+          disabled={isInterstitial && !finished}
+          noInterstitial
+          onPress={() => closeAd(isInterstitial ? true : finished)}
         />
       </View>
     </Modal>

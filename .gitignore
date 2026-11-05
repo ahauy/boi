@@ -9,6 +9,7 @@ out/
 .next/
 .turbo/
 coverage/
+backend/.test-tmp/
 *.tsbuildinfo
 
 # Expo local state (mobile has its own .gitignore too)
@@ -68,3 +69,5 @@ AGENTS.md
 .docs/architecture/
 
 .impeccable/
+MONETIZATION_PLAYBOOK.md
+docs/MONETIZATION_PLAYBOOK.md

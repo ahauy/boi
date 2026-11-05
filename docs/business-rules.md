@@ -6,10 +6,10 @@ Mọi thay đổi credits đều ghi một document vào sổ cái `credit_trans
 
 | `type` | Khi nào phát sinh | Credits | Người nhận | Điều kiện |
 | --- | --- | --- | --- | --- |
-| `SIGNUP_BONUS` | User được tạo: khi bấm link xác minh email đăng ký, hoặc lần đầu đăng nhập Google/Facebook. Đăng ký chưa xác minh không có credits | +3 | Người dùng mới | 1 lần/tài khoản (unique index). **Không** cộng nếu tài khoản được tạo lại từ email/Google/Facebook đã bị xoá |
-| `REFERRAL_BONUS` | Người khác nhập mã giới thiệu hợp lệ | +2 | Chủ mã (referrer) | Cộng ngay khi nhập mã; qua đủ kiểm tra ở mục dưới; tối đa `REFERRAL_DAILY_CAP` lượt/ngày |
-| `REFEREE_BONUS` | Mình nhập mã giới thiệu hợp lệ của người khác | +1 | Người nhập mã (referee) | Cộng ngay khi nhập mã; một lần/tài khoản. **Không** bị ảnh hưởng bởi trần của chủ mã |
-| `READING_SPEND` | Bắt đầu một lần xem bói | −1 | Người xem | `creditBalance >= 1` |
+| `SIGNUP_BONUS` | User được tạo: khi bấm link xác minh email đăng ký, hoặc lần đầu đăng nhập Google/Facebook. Đăng ký chưa xác minh không có credits | +`STARTER_GRANT` (5) | Người dùng mới | 1 lần/tài khoản (unique index). **Không** cộng nếu tài khoản được tạo lại từ email/Google/Facebook đã bị xoá |
+| `REFERRAL_BONUS` | Người khác nhập mã giới thiệu hợp lệ | +3 | Chủ mã (referrer) | Cộng ngay khi nhập mã; qua đủ kiểm tra ở mục dưới; tối đa `REFERRAL_DAILY_CAP` lượt/ngày |
+| `REFEREE_BONUS` | Mình nhập mã giới thiệu hợp lệ của người khác | +5 | Người nhập mã (referee) | Cộng ngay khi nhập mã; một lần/tài khoản và một lần/thiết bị. **Không** bị ảnh hưởng bởi trần của chủ mã |
+| `READING_SPEND` | Bắt đầu một lần xem bói | −`PRICE_PER_ACTION` (5) | Người xem | Đủ số dư |
 | `READING_REFUND` | AI lỗi, timeout hoặc trả sai định dạng; ảnh không phải lòng bàn tay (người dùng không mất credit) | +1 | Người xem | Tối đa 1 lần cho mỗi reading |
 | `REWARDED_AD` | Người dùng xem trọn một rewarded ad và Google xác minh bằng callback có chữ ký | +1 | Người xem | Tối đa `REWARDED_AD_DAILY_CAP` lượt/24 giờ/tài khoản |
 | `ADMIN_ADJUST` | Dev cộng/trừ tay bằng script (không có trang admin) | ±n | Bất kỳ | Bắt buộc có `note` |
@@ -18,11 +18,11 @@ Mọi thay đổi credits đều ghi một document vào sổ cái `credit_trans
 
 | Biến | Giá trị mặc định |
 | --- | --- |
-| `SIGNUP_BONUS_CREDITS` | 3 |
-| `REFERRAL_REWARD_CREDITS` | 2 |
-| `REFEREE_REWARD_CREDITS` | 1 |
-| `READING_COST_CREDITS` | 1 |
-| `REFERRAL_DAILY_CAP` | 10 |
+| `STARTER_GRANT` (bí danh `SIGNUP_BONUS_CREDITS`) | 5 |
+| `PRICE_PER_ACTION` (bí danh `READING_COST_CREDITS`) | 5 |
+| `REFERRAL_DAILY_CAP` | 5 |
+| `REFERRAL_NETWORK_DAILY_CAP` | 5 |
+| `CLIENT_IP_HEADER` | rỗng (dùng `req.ip`); Render đặt `x-forwarded-for` |
 | `REWARDED_ADS_ENABLED` | `false` |
 | `REWARDED_AD_REWARD_CREDITS` | 1 |
 | `REWARDED_AD_DAILY_CAP` | 3 |
@@ -68,7 +68,8 @@ cho một lượt xem.
 - **Không có tính năng tự xoá tài khoản.** Người dùng gửi yêu cầu xoá qua email; dev xoá bằng script `users:delete`. Xem [ADR-0009](adr/0009-manual-account-deletion.md).
   - Khi xoá, email và ID Google/Facebook được ghi vào `deleted_identities` dạng HMAC.
   - Đăng ký lại hoặc đăng nhập lại bằng một định danh đã bị xoá vẫn tạo được tài khoản mới, nhưng bắt đầu với **0 credits** (không `SIGNUP_BONUS`) và **không được nhập mã giới thiệu**.
-  - Mục đích: chặn vòng xoá–đăng ký lại để farm +3 và +1/+2.
+  - Guest đã xoá: mở app lại trên cùng thiết bị tạo guest mới với **0 GEM** và **không được nhập mã giới thiệu**. Giới hạn check-in, lượt quay miễn phí và quà khởi đầu theo thiết bị vẫn giữ. Dữ liệu của tài khoản cũ không được gắn lại.
+  - Mục đích: chặn vòng xoá–đăng ký lại để farm +5 và +5/+3.
 - Chỉnh credits tay: `pnpm --filter backend credits:adjust --user <id> --amount <n> --note "<lý do>"`, script này cũng đi qua `CreditLedgerService`.
 
 **Mã giới thiệu**: 8 ký tự in hoa, bảng chữ bỏ ký tự dễ nhầm (`0 O 1 I L`), sinh ngẫu nhiên khi tạo user, unique. Link chia sẻ `https://<domain>/r/<CODE>` lưu mã vào cookie `ref_code` (7 ngày), rồi chuyển tới trang đăng ký. Mã được nhập theo một trong hai cách:
@@ -89,19 +90,23 @@ Các kiểm tra chạy theo thứ tự; kiểm tra đầu tiên thất bại quy
 | 3 | Không phải mã của chính mình | Từ chối | `REFERRAL_SELF` (422) |
 | 4 | Tài khoản chưa từng nhập mã (unique `referrals.refereeId`) | Từ chối | `REFERRAL_ALREADY_USED` (409) |
 | 5 | Chủ mã không phải người do mình giới thiệu (chặn hai người nhập mã của nhau) | Từ chối | `REFERRAL_CYCLE` (422) |
-| 6 | Chủ mã chưa nhận đủ `REFERRAL_DAILY_CAP` lượt thưởng trong ngày (theo giờ Việt Nam) | Vẫn ghi nhận; người nhập **+1**, chủ mã không được cộng | `status = CAPPED` |
-| — | Qua tất cả | Người nhập **+1**, chủ mã **+2**, cộng ngay | `status = REWARDED` |
+| 6 | Thiết bị chưa từng nhập mã (`devices.referralRedeemedAt`). Định danh lấy từ `users.deviceIdHash`, nếu không có thì từ header `x-device-id`; không có cả hai (web) thì bỏ qua kiểm tra này | Từ chối | `REFERRAL_DEVICE_USED` (409) |
+| 7 | Mạng chưa nhận đủ `REFERRAL_NETWORK_DAILY_CAP` lượt `REFEREE_BONUS` trong ngày (theo giờ Việt Nam). Đếm theo hash IP trong `referral_network_counters`; không xác định được IP công khai thì bỏ qua kiểm tra này | Từ chối, không ghi referral, không ai được cộng | `REFERRAL_NETWORK_LIMIT` (429) |
+| 8 | Chủ mã chưa nhận đủ `REFERRAL_DAILY_CAP` lượt thưởng trong ngày (theo giờ Việt Nam) | Vẫn ghi nhận; người nhập **+5**, chủ mã không được cộng | `status = CAPPED` |
+| — | Qua tất cả | Người nhập **+5**, chủ mã **+3**, cộng ngay | `status = REWARDED` |
 
-Ghi `referrals` và cộng credits cho cả hai người chạy trong **một** MongoDB transaction: hoặc cả hai cùng được cộng, hoặc không ai được.
+Ghi `referrals`, đánh dấu thiết bị và cộng credits cho cả hai người chạy trong **một** MongoDB transaction: hoặc tất cả cùng thành công, hoặc không có gì được ghi.
+
+Đăng ký email kèm mã (`processReferralReward`) không có định danh thiết bị nên không qua kiểm tra 6. Kiểm tra 7 dùng IP lúc đăng ký, không có thì dùng IP lúc xác minh; quá giới hạn thì tài khoản vẫn được tạo, chỉ bỏ qua thưởng. Mức thưởng lấy từ `CREDIT_AMOUNTS` trong `shared`, không đọc từ env.
 
 | Trạng thái | Người nhập mã | Chủ mã |
 | --- | --- | --- |
-| `REWARDED` | +1 (`REFEREE_BONUS`) | +2 (`REFERRAL_BONUS`) |
-| `CAPPED` | +1 (`REFEREE_BONUS`) | 0 |
+| `REWARDED` | +5 (`REFEREE_BONUS`) | +3 (`REFERRAL_BONUS`) |
+| `CAPPED` | +5 (`REFEREE_BONUS`) | 0 |
 
-Thưởng +1 để người nhập có lý do nhập mã của bạn bè. Không tạo thêm cách farm mới: tài khoản ảo tự nhập mã của chính mình thì +1 rơi vào tài khoản ảo, còn chủ mã vẫn bị giới hạn bởi trần 10 lượt/ngày.
+Thưởng +5 để người nhập có lý do nhập mã của bạn bè. Chủ mã bị giới hạn bởi trần 5 lượt/ngày; bản ghi cũ không có `referrerReward` vẫn hiển thị đúng mức +2 đã nhận.
 
-Trần 10 lượt/ngày là trần mềm: hai lượt nhập đúng cùng lúc có thể cùng được tính là lượt thứ 10. Với dự án nhỏ, chấp nhận sai lệch này thay vì thêm cơ chế khoá.
+Trần 5 lượt/ngày là trần cứng: transaction ghi vào document chủ mã trước khi đếm nên các lượt nhập đồng thời được tuần tự hoá, và trạng thái được tính lại ở mỗi lần retry. Đường đăng ký email kèm mã dùng chung trần.
 
 ## Quy tắc toàn vẹn (MongoDB)
 

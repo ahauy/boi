@@ -17,6 +17,10 @@ export const registerValidationSchema = registerFormSchema.shape({
     .boolean()
     .oneOf([true], "Bạn cần đồng ý với Điều khoản dịch vụ và Chính sách riêng tư.")
     .required("Bạn cần đồng ý với Điều khoản dịch vụ và Chính sách riêng tư."),
+  ageConfirmed: yup
+    .boolean()
+    .oneOf([true], "Bạn phải từ 16 tuổi trở lên để đăng ký tài khoản.")
+    .required("Bạn phải từ 16 tuổi trở lên để đăng ký tài khoản."),
 });
 
 const handleSubmissionError = (
@@ -92,6 +96,7 @@ export const RegisterForm = () => {
     confirmPassword: "",
     referralCode: initialReferralCode,
     termsAccepted: false,
+    ageConfirmed: false,
   };
 
   const onSubmit = async (

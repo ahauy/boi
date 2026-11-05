@@ -110,23 +110,24 @@ describe("Wallet Page", () => {
   it("should render large terminal-style balance and invitation link", async () => {
     renderComponent();
 
-    expect(screen.getByRole("heading", { name: "Ví credits" })).toBeInTheDocument();
-    expect(screen.getByTestId("wallet-balance-large")).toHaveTextContent("4 credits");
-    expect(screen.getByText("Credits không hết hạn. Mỗi lần xem bói tiêu thụ 1 credit.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ví GEM" })).toBeInTheDocument();
+    expect(screen.getByTestId("wallet-balance-large")).toHaveTextContent("4 GEM");
+    expect(screen.getByText("GEM không hết hạn. Mỗi lần xem bói tiêu thụ 5 GEM.")).toBeInTheDocument();
 
     const inviteLink = screen.getByRole("link", {
-      name: /Mời bạn bè nhận thêm credits/i,
+      name: /Mời bạn bè nhận thêm GEM/i,
     });
     expect(inviteLink).toHaveAttribute("href", "/referral");
+    expect(screen.getByRole("link", { name: "Xem bói ngay (−5 GEM)" })).toBeInTheDocument();
   });
 
-  it("should display 'Nhập mã giới thiệu (+1)' when canEnterCode is true", async () => {
+  it("should display 'Nhập mã giới thiệu (+5 GEM)' when canEnterCode is true", async () => {
     renderComponent(mockTransactions, {
       referral: { canEnterCode: true, enteredCode: null },
     });
 
     const enterRefLink = screen.getByRole("link", {
-      name: /Nhập mã giới thiệu \(\+1\)/i,
+      name: /Nhập mã giới thiệu \(\+5 GEM\)/i,
     });
     expect(enterRefLink).toHaveAttribute("href", "/referral/enter");
   });
@@ -139,7 +140,7 @@ describe("Wallet Page", () => {
       expect(screen.getByText("Thưởng giới thiệu")).toBeInTheDocument();
       expect(screen.getByText("Thưởng nhập mã")).toBeInTheDocument();
       expect(screen.getByText("Xem bói")).toBeInTheDocument();
-      expect(screen.getByText("Hoàn credit")).toBeInTheDocument();
+      expect(screen.getByText("Hoàn GEM")).toBeInTheDocument();
       expect(screen.getByText("Điều chỉnh (Bù sự cố mạng)")).toBeInTheDocument();
 
       // Check amounts
@@ -155,7 +156,7 @@ describe("Wallet Page", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("empty-transactions")).toHaveTextContent(
-        "Chưa có giao dịch credits nào."
+        "Chưa có giao dịch GEM nào."
       );
     });
   });

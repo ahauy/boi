@@ -83,6 +83,8 @@ export interface AuthResponseDto {
   user: UserSummaryDto;
   claimedReadingId?: string | null;
   claimFailed?: boolean;
+  /** Chỉ `POST /auth/verify-email`: true khi mã giới thiệu được áp dụng, kể cả khi chủ mã đã hết lượt trong ngày. */
+  referralApplied?: boolean;
   /** Chỉ có khi client gửi header `X-Client: native` (app mobile); web nhận qua cookie HttpOnly */
   refreshToken?: string;
 }

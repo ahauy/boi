@@ -4,23 +4,26 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { HandOrientation, LIFE_ASPECTS, READING_SCHOOL_LIST } from '@palmsight/shared';
+import { CORE_READING_COST_GEM, HandOrientation, LIFE_ASPECTS, READING_SCHOOL_LIST } from '@palmsight/shared';
 
 import Text from './AppText';
 import HandChoice from './HandChoice';
 import { Banner, Button, Chip, RadioCard, SectionLabel } from './ui';
 import { colors, radius, spacing, text as type } from '../theme';
+import { t, useI18n } from '../i18n';
 import { haptic } from '../lib/haptics';
 import { handLabel } from '../lib/format';
 import { useAuth } from '../state/auth';
 import { useReadingDraft } from '../state/readingDraft';
 import { useReduceMotion } from '../lib/motion';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
+import { billingStore } from '../billing';
+import { triggerPaywall } from '../premium/paywall-triggers';
 
 const STEPS = [
-  { title: 'Trường phái', short: 'Cổ phái' },
-  { title: 'Mục muốn bói', short: 'Mục bói' },
-  { title: 'Bàn tay', short: 'Bàn tay' },
+  { title: 'setup.stepSchool', short: 'setup.stepSchoolShort' },
+  { title: 'setup.stepTopics', short: 'setup.stepTopicsShort' },
+  { title: 'setup.stepHand', short: 'setup.stepHand' },
 ] as const;
 
 const SCHOOL_GLYPHS: Record<string, string> = { WESTERN: '☼', EASTERN: '☯', VEDIC: '✦' };
@@ -33,12 +36,18 @@ interface ReadingSetupSheetProps {
 }
 
 export default function ReadingSetupSheet({ visible, onClose, onStartScan }: ReadingSetupSheetProps) {
+  useI18n();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const { user } = useAuth();
   const draft = useReadingDraft();
   const reduceMotion = useReduceMotion();
   const [step, setStep] = useState(0);
+  const [vipUnavailable, setVipUnavailable] = useState(false);
+
+  const isVip = Boolean((user as any)?.isVip || user?.vip?.active);
+  const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
+
   // Yoga không tự tính chiều cao cho `flex: 1` khi cha chỉ có maxHeight, nên sheet phải có height rõ ràng.
   const sheetMax = Math.round(height * 0.9);
   // Bước 1 tràn ngập chip nên cần gần hết màn hình; hai bước còn lại ít nội dung hơn nhiều.
@@ -88,12 +97,12 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
   }
 
   const canContinue = step !== 1 || draft.selected.length > 0;
-  const summary = `${draft.schoolConfig.name} · ${handLabel(draft.hand)} · ${draft.selected.length}/${draft.allTopics.length} mục`;
+  const summary = t('setup.summary', { school: draft.schoolConfig.name, hand: handLabel(draft.hand), selected: draft.selected.length, total: draft.allTopics.length });
   return (
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={close} onShow={() => setStep(0)} accessibilityViewIsModal>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Animated.View style={{ ...absoluteFill, backgroundColor: colors.scrim, opacity: backdrop }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Đóng thiết lập" onPress={close} style={{ flex: 1 }} />
+          <Pressable accessibilityRole="button" accessibilityLabel={t('setup.closeSetup')} onPress={close} style={{ flex: 1 }} />
         </Animated.View>
 
         <Animated.View
@@ -111,12 +120,12 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
           <LinearGradient colors={['rgba(124,108,246,0.16)', 'rgba(8,13,30,0.96)']} style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingTop: spacing.lg, paddingHorizontal: spacing.xl }}>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[type.eyebrow, { color: colors.gold }]}>THIẾT LẬP QUẺ</Text>
-                <Text style={[type.headingMd, { color: colors.ink }]}>{STEPS[step].title}</Text>
+                <Text style={[type.eyebrow, { color: colors.gold }]}>{t('setup.eyebrow')}</Text>
+                <Text style={[type.headingMd, { color: colors.ink }]}>{t(STEPS[step].title)}</Text>
               </View>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Đóng"
+                accessibilityLabel={t('setup.close')}
                 onPress={close}
                 hitSlop={8}
                 style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.glassBorder, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.glassFill }}>
@@ -131,7 +140,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                   <Pressable
                     key={item.title}
                     accessibilityRole="tab"
-                    accessibilityLabel={item.title}
+                    accessibilityLabel={t(item.title)}
                     accessibilityState={{ selected: position === step, disabled: unavailable }}
                     aria-selected={position === step}
                     aria-disabled={unavailable}
@@ -143,7 +152,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                     style={{ flex: 1, gap: 4, minHeight: 44, justifyContent: 'center', opacity: unavailable ? 0.4 : 1 }}>
                     <View style={{ height: 3, borderRadius: 2, backgroundColor: position <= step ? colors.gold : colors.glassBorder }} />
                     <Text style={[type.captionStrong, { color: position === step ? colors.goldLight : colors.stone, fontSize: 11 }]} numberOfLines={1}>
-                      {item.short}
+                      {t(item.short)}
                     </Text>
                   </Pressable>
                 );
@@ -156,34 +165,50 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled">
               {step === 0 ? (
-                <View accessibilityRole="radiogroup" accessibilityLabel="Chọn trường phái" style={{ gap: spacing.sm }}>
-                  {READING_SCHOOL_LIST.map((config) => (
-                    <RadioCard
-                      key={config.id}
-                      label={config.name}
-                      description={config.description}
-                      glyph={SCHOOL_GLYPHS[config.id]}
-                      selected={config.id === draft.school}
-                      onPress={() => {
-                        haptic.select();
-                        draft.pickSchool(config.id);
-                      }}
-                    />
-                  ))}
+                <View accessibilityRole="radiogroup" accessibilityLabel={t('setup.pickSchool')} style={{ gap: spacing.sm }}>
+                  {READING_SCHOOL_LIST.map((config) => {
+                    const isVipSchool = config.id === 'EASTERN' || config.id === 'VEDIC';
+                    const isLocked = !isVip && isVipSchool;
+
+                    return (
+                      <RadioCard
+                        key={config.id}
+                        label={config.name}
+                        description={config.description}
+                        glyph={SCHOOL_GLYPHS[config.id]}
+                        badge={isLocked ? 'VIP' : undefined}
+                        selected={config.id === draft.school}
+                        onPress={() => {
+                          if (isLocked) {
+                            haptic.warning();
+                            if (billingStore.getState().billingEnabled) {
+                              setVipUnavailable(false);
+                              void triggerPaywall('locked_feature');
+                            } else {
+                              setVipUnavailable(true);
+                            }
+                            return;
+                          }
+                          haptic.select();
+                          draft.pickSchool(config.id);
+                        }}
+                      />
+                    );
+                  })}
                 </View>
               ) : null}
 
               {step === 1 ? (
                 <View style={{ gap: spacing.md }}>
-                  <Chip label="Bói toàn bộ" selected={draft.selected.length === draft.allTopics.length} onPress={() => { haptic.select(); draft.toggleAll(); }} style={{ alignSelf: 'flex-start' }} />
+                  <Chip label={t('setup.all')} selected={draft.selected.length === draft.allTopics.length} onPress={() => { haptic.select(); draft.toggleAll(); }} style={{ alignSelf: 'flex-start' }} />
                   <TopicGroup
-                    label="ĐƯỜNG CHỈ & DẤU HIỆU"
+                    label={t('setup.linesSigns')}
                     items={draft.schoolConfig.sections.map((section) => ({ key: section.key, label: section.label }))}
                     selected={draft.selected}
                     onToggle={draft.toggleTopic}
                   />
                   <TopicGroup
-                    label="KHÍA CẠNH CUỘC SỐNG"
+                    label={t('reading.lifeAspects')}
                     items={LIFE_ASPECTS.map((aspect) => ({ key: aspect.key, label: aspect.label }))}
                     selected={draft.selected}
                     onToggle={draft.toggleTopic}
@@ -193,7 +218,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
 
               {step === 2 ? (
                 <View style={{ gap: spacing.lg }}>
-                  <View accessibilityRole="radiogroup" accessibilityLabel="Chọn tay" style={{ flexDirection: 'row', gap: spacing.md }}>
+                  <View accessibilityRole="radiogroup" accessibilityLabel={t('setup.pickHand')} style={{ flexDirection: 'row', gap: spacing.md }}>
                     {[HandOrientation.LEFT, HandOrientation.RIGHT].map((side) => (
                       <HandChoice
                         key={side}
@@ -211,21 +236,23 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                   <View style={{ borderWidth: 1, borderColor: colors.hairline, borderRadius: radius.xl, backgroundColor: colors.goldWash, padding: spacing.md, gap: 6, flexDirection: 'row', alignItems: 'center' }}>
                     <MaterialCommunityIcons name="star-four-points" size={16} color={colors.gold} />
                     <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={[type.captionStrong, { color: colors.goldLight }]}>1 credit cho mỗi quẻ</Text>
+                      <Text style={[type.captionStrong, { color: colors.goldLight }]}>{t('setup.cost', { cost: CORE_READING_COST_GEM })}</Text>
                       <Text style={[type.caption, { color: colors.mute }]}>{summary}</Text>
                     </View>
                   </View>
 
-                  {user && user.creditBalance <= 0 ? (
+                  {vipUnavailable ? <Banner variant="warning" title={t('setup.vipUnavailable')} /> : null}
+
+                  {user && gemBalance < CORE_READING_COST_GEM ? (
                     <Banner
                       variant="warning"
-                      title="Bạn đã dùng hết credits"
-                      lines={['Mời bạn bè hoặc nhập mã giới thiệu để nhận thêm credits.']}
+                      title={t('setup.noGemTitle')}
+                      lines={[t('scan.notEnoughBody', { cost: CORE_READING_COST_GEM })]}
                       action={{
-                        label: 'Mở Hồ sơ',
+                        label: t('scan.openWallet'),
                         onPress: () => {
                           close();
-                          setTimeout(() => router.push('/profile'), 120);
+                          setTimeout(() => router.push('/(tabs)/currency'), 120);
                         },
                       }}
                     />
@@ -236,9 +263,9 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
 
             <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.lg, gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.glassBorder }}>
               <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                {step > 0 ? <Button label="Quay lại" variant="ghost" style={{ flex: 1 }} onPress={() => { haptic.tap(); setStep((current) => current - 1); }} /> : null}
+                {step > 0 ? <Button label={t('reading.back')} variant="ghost" style={{ flex: 1 }} onPress={() => { haptic.tap(); setStep((current) => current - 1); }} /> : null}
                 <Button
-                  label={step === STEPS.length - 1 ? 'Chụp bàn tay' : 'Tiếp tục'}
+                  label={step === STEPS.length - 1 ? t('setup.shootHand') : t('setup.continue')}
                   style={{ flex: step > 0 ? 2 : 1 }}
                   onPress={next}
                   disabled={!canContinue}
@@ -247,10 +274,10 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
               </View>
               <Text style={[type.caption, { color: step === 1 && draft.selected.length === 0 ? colors.danger : colors.stone, textAlign: 'center' }]}>
                 {step === 1 && draft.selected.length === 0
-                  ? 'Chọn ít nhất 1 mục để tiếp tục.'
+                  ? t('setup.needOne')
                   : step === 2
-                    ? 'Bạn sẽ chụp ảnh lòng bàn tay ở bước tiếp theo.'
-                    : 'Mọi lựa chọn có thể thay đổi trong phòng quét.'}
+                    ? t('setup.nextPhoto')
+                    : t('setup.changeLater')}
               </Text>
             </View>
           </LinearGradient>

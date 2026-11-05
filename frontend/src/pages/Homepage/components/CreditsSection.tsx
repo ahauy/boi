@@ -1,4 +1,5 @@
 import { Gem, Gift, Sparkles } from "lucide-react";
+import { CREDIT_AMOUNTS, ECONOMY_DEFAULTS } from "@palmsight/shared";
 import { TarotCorners } from "@/components/mystic/MysticDivider";
 
 export const CreditsSection = () => {
@@ -16,7 +17,7 @@ export const CreditsSection = () => {
             ✦ Linh Thạch Năng Lượng ✦
           </span>
           <h2 className="font-display text-2xl sm:text-3xl font-bold text-ink">
-            Credits
+            GEM
           </h2>
         </div>
         <p aria-hidden="true" className="text-sm text-mute">
@@ -32,7 +33,7 @@ export const CreditsSection = () => {
           </div>
           <div className="text-base leading-relaxed text-body">
             <span className="font-bold text-[#f7e7b4] block mb-0.5">
-              [+] 3 credits
+              [+] {ECONOMY_DEFAULTS.STARTER_GRANT} GEM
             </span>{" "}
             khi tạo tài khoản
           </div>
@@ -45,7 +46,7 @@ export const CreditsSection = () => {
           </div>
           <div className="text-base leading-relaxed text-body">
             <span className="font-bold text-[#f7e7b4] block mb-0.5">
-              [+] +2 credits
+              [+] +{CREDIT_AMOUNTS.REFERRAL_REWARD} GEM
             </span>{" "}
             mỗi khi có người nhập mã giới thiệu của bạn
           </div>
@@ -58,7 +59,7 @@ export const CreditsSection = () => {
           </div>
           <div className="text-base leading-relaxed text-body">
             <span className="font-bold text-[#f7e7b4] block mb-0.5">
-              [+] 1 lần xem = 1 credit
+              [+] 1 lần xem = {ECONOMY_DEFAULTS.PRICE_PER_ACTION} GEM
             </span>
             , dù chọn bao nhiêu mục
           </div>

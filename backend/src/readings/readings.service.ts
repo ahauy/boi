@@ -5,8 +5,12 @@ import {
   HttpStatus,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
+  BadGatewayException,
+  Logger,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { InjectModel, InjectConnection } from "@nestjs/mongoose";
 import { Model, Connection, Types, FilterQuery } from "mongoose";
 import * as crypto from "crypto";
@@ -43,7 +47,9 @@ import {
 
 @Injectable()
 export class ReadingsService {
+  private readonly logger = new Logger(ReadingsService.name);
   private readonly cloudinary: CloudinaryService;
+  private clockFn: () => Date = () => new Date();
 
   constructor(
     @InjectModel(Reading.name)
@@ -57,9 +63,30 @@ export class ReadingsService {
     private readonly creditLedgerService: CreditLedgerService,
     private readonly imageProcessorService: ImageProcessorService,
     private readonly aiService: AiService,
-    @Optional() cloudinaryService?: CloudinaryService
+    @Optional() cloudinaryService?: CloudinaryService,
+    @Optional() private readonly configService?: ConfigService
   ) {
     this.cloudinary = cloudinaryService ?? new CloudinaryService();
+  }
+
+  setClock(fn: () => Date): void {
+    this.clockFn = fn;
+  }
+
+  resetClock(): void {
+    this.clockFn = () => new Date();
+  }
+
+  private now(): Date {
+    return this.clockFn();
+  }
+
+  private isVipSchoolGatingEnabled(): boolean {
+    const raw = this.configService?.get<string | boolean>(
+      "ENFORCE_VIP_SCHOOLS",
+      "true"
+    );
+    return raw !== false && raw !== "false";
   }
 
   private async uploadReadingAssets(
@@ -143,7 +170,7 @@ export class ReadingsService {
         throw new HttpException(
           {
             code: "AI_UNAVAILABLE",
-            message: "Hệ thống bận, đã hoàn 1 credit. Thử lại sau ít phút.",
+            message: "Hệ thống bận, đã hoàn lại GEM. Vui lòng thử lại.",
             details: {
               readingId: existing._id.toString(),
               refunded: true,
@@ -184,6 +211,26 @@ export class ReadingsService {
       });
     }
 
+    if (
+      this.isVipSchoolGatingEnabled() &&
+      (validatedInput.school === ReadingSchool.EASTERN ||
+        validatedInput.school === ReadingSchool.VEDIC)
+    ) {
+      const requestingUser = await this.userModel.findById(userObjId).lean();
+      const now = this.now();
+      const vipActive = Boolean(
+        requestingUser?.vipExpiresAt &&
+          requestingUser.vipExpiresAt.getTime() > now.getTime()
+      );
+      if (!vipActive) {
+        throw new ForbiddenException({
+          code: "vip_required",
+          message:
+            "Trường phái chỉ tay Phương Đông và Ấn Độ (Vedic) chỉ dành cho thành viên VIP.",
+        });
+      }
+    }
+
     let palmLines: PalmLineDto[] | null = null;
     try {
       palmLines = parsePalmLinesInput(validatedInput.palmLines);
@@ -208,7 +255,8 @@ export class ReadingsService {
       await this.creditLedgerService.spendForReading(
         userObjId,
         readingId,
-        session
+        session,
+        validatedInput.actionCount ?? 1
       );
 
       await this.readingModel.create(
@@ -350,7 +398,7 @@ export class ReadingsService {
       throw new HttpException(
         {
           code: "AI_UNAVAILABLE",
-          message: "Hệ thống bận, đã hoàn 1 credit. Thử lại sau ít phút.",
+          message: "Hệ thống bận, đã hoàn lại GEM. Vui lòng thử lại.",
           details: {
             readingId: readingId.toString(),
             refunded: true,
@@ -494,23 +542,40 @@ export class ReadingsService {
       });
     }
 
-    await Promise.all([
-      this.cloudinary.deleteImage(doc.imagePublicId),
-      this.cloudinary.deleteImage(doc.annotatedImagePublicId),
-    ]);
+    const del1 = doc.imagePublicId
+      ? await this.cloudinary.deleteImage(doc.imagePublicId)
+      : true;
+    const del2 = doc.annotatedImagePublicId
+      ? await this.cloudinary.deleteImage(doc.annotatedImagePublicId)
+      : true;
 
-    await this.readingModel.updateOne(
-      { _id: readingObjId },
-      {
-        result: null,
-        imageUrl: null,
-        annotatedImageUrl: null,
-        imagePublicId: null,
-        annotatedImagePublicId: null,
-        palmLines: null,
-        deletedAt: new Date(),
+    const updates: Record<string, any> = {};
+
+    if (del1) {
+      updates.imageUrl = null;
+      updates.imagePublicId = null;
+    }
+    if (del2) {
+      updates.annotatedImageUrl = null;
+      updates.annotatedImagePublicId = null;
+    }
+
+    if (del1 && del2) {
+      updates.result = null;
+      updates.palmLines = null;
+      updates.deletedAt = new Date();
+      await this.readingModel.updateOne({ _id: readingObjId }, { $set: updates });
+    } else {
+      // Chưa xoá hết ảnh: giữ nguyên kết quả và deletedAt để lần xem vẫn dùng được
+      // và lần thử lại không mất dấu ảnh còn sót.
+      if (Object.keys(updates).length > 0) {
+        await this.readingModel.updateOne({ _id: readingObjId }, { $set: updates });
       }
-    );
+      throw new BadGatewayException({
+        code: "IMAGE_DELETE_FAILED",
+        message: "Không xoá được ảnh trên hệ thống lưu trữ. Vui lòng thử lại.",
+      });
+    }
   }
 
   private async cleanupStuckReadings(userId: Types.ObjectId): Promise<void> {
@@ -672,6 +737,7 @@ export class ReadingsService {
       file!
     );
 
+    const initialExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const [reading] = await this.readingModel.create([
       {
         userId: null,
@@ -681,6 +747,7 @@ export class ReadingsService {
         hand: validated.hand,
         topics,
         status: ReadingStatus.PROCESSING,
+        previewExpiresAt: initialExpiresAt,
       },
     ]);
 
@@ -916,4 +983,54 @@ export class ReadingsService {
     const truncated = truncatePalmResultForGuest(reading.result as any);
     return buildGuestPreviewResponse(reading, truncated, claimToken);
   }
+  async purgeExpiredGuestReadings(limit = 100): Promise<{
+    processed: number;
+    imagesDeleted: number;
+    failedImages: string[];
+  }> {
+    const now = new Date();
+    const expiredReadings = await this.readingModel
+      .find({
+        userId: null,
+        previewExpiresAt: { $lte: now, $ne: null },
+      })
+      .limit(limit)
+      .exec();
+
+    let processed = 0;
+    let imagesDeleted = 0;
+    const failedImages: string[] = [];
+
+    for (const doc of expiredReadings) {
+      const publicIds: string[] = [];
+      if (doc.imagePublicId && !doc.imagePublicId.startsWith("local:")) {
+        publicIds.push(doc.imagePublicId);
+      }
+      if (doc.annotatedImagePublicId && !doc.annotatedImagePublicId.startsWith("local:")) {
+        publicIds.push(doc.annotatedImagePublicId);
+      }
+
+      let allDeleted = true;
+      for (const pid of publicIds) {
+        const ok = await this.cloudinary.deleteImage(pid);
+        if (ok) {
+          imagesDeleted++;
+        } else {
+          allDeleted = false;
+          failedImages.push(pid);
+        }
+      }
+
+      if (allDeleted) {
+        await this.guestTrialModel.deleteMany({ readingId: doc._id }).exec();
+        await this.readingModel.deleteOne({ _id: doc._id }).exec();
+        processed++;
+      } else {
+        this.logger.warn(`Không thể xoá toàn bộ ảnh của guest reading ${doc._id.toString()} trên Cloudinary`);
+      }
+    }
+
+    return { processed, imagesDeleted, failedImages };
+  }
+
 }

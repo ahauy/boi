@@ -1,13 +1,27 @@
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import type { ApiErrorResponse, RefreshTokenResponseDto } from '@palmsight/shared';
+import { t } from '../i18n';
 import * as tokenStore from './tokenStore';
+import { getDeviceId } from './deviceId';
 
-// Backend NestJS chạy port 4000 với global prefix /api/v1. Trên máy thật phải là IP LAN hoặc ngrok.
-//
-// Không đổi localhost → 10.0.2.2 cho Android emulator như cách làm cũ: trên máy ảo hiện dùng,
-// OkHttp của app không nối được 10.0.2.2 (kể cả khi TCP thô tới được), nên mọi request chết ngay
-// với NETWORK_ERROR. Thay vào đó emulator truy qua host qua `adb reverse tcp:4000 tcp:4000`, giữ
-// nguyên localhost như cấu hình. Xem mobile-2/README.md.
-export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1').replace(/\/+$/, '');
+function resolveApiBaseUrl(): string {
+  const raw = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1').replace(/\/+$/, '');
+  if (Platform.OS !== 'web' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(raw)) {
+    const hostUri =
+      Constants.expoConfig?.hostUri ??
+      (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ??
+      (Constants as any).manifest?.debuggerHost ??
+      '';
+    const lanHost = typeof hostUri === 'string' ? hostUri.split(':')[0]?.trim() : '';
+    if (lanHost && lanHost !== 'localhost' && lanHost !== '127.0.0.1') {
+      return raw.replace(/\/\/(localhost|127\.0\.0\.1)/i, `//${lanHost}`);
+    }
+  }
+  return raw;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const REFRESH_TIMEOUT_MS = 15_000;
@@ -68,6 +82,14 @@ function endSession(): void {
   accessToken = null;
   void tokenStore.clearSession();
   for (const listener of [...expiredListeners]) listener();
+}
+
+/**
+ * Kết thúc phiên cục bộ sau khi server đã xoá tài khoản: bỏ token trong bộ nhớ và SecureStore,
+ * rồi báo cho AuthProvider mở phiên khách mới (thiết bị cũ không được nhận lại quà khởi đầu).
+ */
+export function endLocalSession(): void {
+  endSession();
 }
 
 export function onSessionExpired(listener: () => void): () => void {
@@ -136,7 +158,12 @@ async function refreshAccessToken(): Promise<string | null> {
 async function send(path: string, options: RequestOptions): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  const headers: Record<string, string> = { 'x-client': 'native', ...options.headers };
+  const deviceId = await getDeviceId().catch(() => null);
+  const headers: Record<string, string> = {
+    'x-client': 'native',
+    ...(deviceId ? { 'x-device-id': deviceId } : {}),
+    ...options.headers,
+  };
 
   let body: RequestInit['body'];
   if (options.form) {
@@ -161,9 +188,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
     throw new ApiError(
       0,
       aborted ? TIMEOUT_ERROR : NETWORK_ERROR,
-      aborted
-        ? 'Yêu cầu quá thời gian chờ. Vui lòng thử lại.'
-        : 'Không thể kết nối đến máy chủ. Vui lòng thử lại.',
+      t(aborted ? 'error.timeout' : 'error.network'),
       {},
       {},
       error
@@ -175,7 +200,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
 
 async function toApiError(response: Response): Promise<ApiError> {
   let code = 'UNKNOWN';
-  let message = 'Đã có lỗi xảy ra. Vui lòng thử lại.';
+  let message = t('error.generic');
   const fields: Record<string, string> = {};
   let details: Record<string, unknown> = {};
   try {
@@ -263,6 +288,10 @@ export function post<T>(path: string, body?: unknown, options?: Omit<RequestOpti
 
 export function put<T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'method' | 'body' | 'form'>) {
   return request<T>(path, { ...options, method: 'PUT', body });
+}
+
+export function patch<T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'method' | 'body' | 'form'>) {
+  return request<T>(path, { ...options, method: 'PATCH', body });
 }
 
 export function del<T>(path: string, options?: Omit<RequestOptions, 'method' | 'body' | 'form'>) {

@@ -152,10 +152,12 @@ Mỗi user phải đăng nhập được bằng ít nhất một cách: có `pas
 | `email` | string \| null | lowercase, unique | Luôn là email **đã xác minh** (qua link xác minh hoặc qua Google/Facebook). `null` nếu user chỉ có Facebook không trả email |
 | `passwordHash` | string \| null | | argon2id. `null` nếu chưa đặt mật khẩu |
 | `passwordUpdatedAt` | Date \| null | | |
-| `avatarUrl` | string \| null | | Chỉ có khi lấy từ Google/Facebook |
+| `avatarUrl` | string \| null | | Ảnh từ Google/Facebook, hoặc ảnh người dùng tự tải lên (khi đó có `avatarPublicId`) |
+| `avatarPublicId` | string \| null | không index | `public_id` trên Cloudinary của ảnh tự tải lên; `null` với ảnh Google/Facebook. Dùng để xoá ảnh khi thay, gỡ hoặc xoá tài khoản. Không trả ra API |
 | `referralCode` | string | 8 ký tự, unique | Mã của chính user để chia sẻ |
 | `creditBalance` | int | bắt buộc, validator `minimum: 0` | Cache của sổ cái |
 | `identities` | array | 0–2 phần tử | Xem bảng dưới |
+| `deletedDeviceIdHash` | string \| null | không index, không unique | `deviceIdHash` của tài khoản đã xoá, chuyển sang đây khi thiết bị mở guest mới |
 | `referralBlocked` | boolean | bắt buộc, mặc định `false` | `true` khi user được tạo lại từ một định danh có trong `deleted_identities`: không được nhập mã giới thiệu. User loại này cũng không có `SIGNUP_BONUS` |
 | `createdAt`, `updatedAt` | Date | | Mongoose `timestamps` |
 | `deletedAt` | Date \| null | | Đánh dấu tài khoản đã bị xoá bằng script `users:delete` |

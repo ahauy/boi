@@ -77,14 +77,17 @@ describe('POST /api/v1/auth/device', () => {
     expect(users).toBe(1);
   });
 
-  it('blocks a device whose anonymous account has been deleted', async () => {
+  it('opens a new guest with no starter when the anonymous account has been deleted', async () => {
     await testApp.connection
       .collection('users')
       .updateOne({ _id: new Types.ObjectId(firstUserId) }, { $set: { deletedAt: new Date() } });
 
-    const blocked = await createSession(firstDeviceId);
-    expect(blocked.status).toBe(403);
-    expect(((await blocked.json()) as any).error.code).toBe('DEVICE_SESSION_BLOCKED');
+    const reopened = await createSession(firstDeviceId);
+    expect(reopened.status).toBe(200);
+    const body = (await reopened.json()) as any;
+    expect(body.isNewUser).toBe(true);
+    expect(body.user.id).not.toBe(firstUserId);
+    expect(body.user.creditBalance).toBe(0);
   });
 
   it('rejects a missing or malformed device id with VALIDATION_ERROR', async () => {
@@ -98,7 +101,6 @@ describe('POST /api/v1/auth/device', () => {
   });
 
   it('caps anonymous account creation per IP at 3 per day', async () => {
-    expect((await createSession(crypto.randomUUID())).status).toBe(200);
     expect((await createSession(crypto.randomUUID())).status).toBe(200);
 
     const blocked = await createSession(crypto.randomUUID());

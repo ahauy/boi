@@ -1,3 +1,5 @@
+import { t } from '../i18n';
+
 interface SchemaLike {
   validate(value: unknown, options?: { abortEarly?: boolean }): Promise<unknown>;
 }
@@ -30,7 +32,7 @@ export async function validateForm(schema: SchemaLike, values: Record<string, un
 }
 
 /** Message hiển thị cho người dùng từ một lỗi bất kỳ (ApiError hoặc lỗi mạng). */
-export function errorMessageOf(error: unknown, fallback = 'Đã có lỗi xảy ra. Vui lòng thử lại.'): string {
+export function errorMessageOf(error: unknown, fallback: string = t('error.generic')): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = (error as { message?: unknown }).message;
     if (typeof message === 'string' && message.trim()) return message;

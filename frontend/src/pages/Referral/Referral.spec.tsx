@@ -40,7 +40,7 @@ describe("Referral Page", () => {
 
   const mockReferralData = {
     totalRewarded: 3,
-    totalCreditsEarned: 6,
+    totalCreditsEarned: 7,
     items: [
       {
         displayName: "Lê C***",
@@ -59,6 +59,12 @@ describe("Referral Page", () => {
         status: ReferralStatus.REWARDED,
         creditsEarned: 2,
         createdAt: "2026-10-08T06:00:00Z",
+      },
+      {
+        displayName: "Vũ E***",
+        status: ReferralStatus.REWARDED,
+        creditsEarned: 3,
+        createdAt: "2026-11-02T03:30:00Z",
       },
     ],
     nextCursor: null,
@@ -93,7 +99,7 @@ describe("Referral Page", () => {
 
     const sampleMessage = screen.getByTestId("sample-share-text");
     expect(sampleMessage).toHaveTextContent(
-      "Nhập mã K7QX4MZP trên PalmSight: bạn được thêm 1 credit xem bói miễn phí"
+      "Nhập mã K7QX4MZP trên PalmSight: bạn được thêm 5 GEM xem bói miễn phí"
     );
   });
 
@@ -151,7 +157,7 @@ describe("Referral Page", () => {
     fireEvent.click(copyMsgBtn);
 
     expect(clipboardSpy).toHaveBeenCalledWith(
-      "Nhập mã K7QX4MZP trên PalmSight: bạn được thêm 1 credit xem bói miễn phí"
+      "Nhập mã K7QX4MZP trên PalmSight: bạn được thêm 5 GEM xem bói miễn phí"
     );
     expect(showSuccessSpy).toHaveBeenCalledWith("Đã sao chép câu mời mẫu!");
   });
@@ -161,20 +167,35 @@ describe("Referral Page", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("referral-stats")).toHaveTextContent(
-        "3 lượt được thưởng · +6 credits"
+        "3 lượt được thưởng · +7 GEM"
       );
       expect(screen.getByText("Lê C***")).toBeInTheDocument();
       expect(screen.getByText("Phạm D***")).toBeInTheDocument();
       expect(screen.getByText("Người dùng đã xoá")).toBeInTheDocument();
 
-      // REWARDED items: +2 credits
-      expect(screen.getAllByText("+2 credits").length).toBe(2);
+      expect(screen.getByText("Vũ E***")).toBeInTheDocument();
+
+      // REWARDED items: bản ghi cũ giữ +2, bản ghi mới +3
+      expect(screen.getAllByText("+2 GEM").length).toBe(2);
+      expect(screen.getAllByText("+3 GEM").length).toBe(1);
 
       // CAPPED item
       expect(
         screen.getByText("Đã ghi nhận · không cộng (hết lượt hôm nay)")
       ).toBeInTheDocument();
     });
+  });
+
+  it("should list referral rewards using CREDIT_AMOUNTS and GEM", () => {
+    renderComponent();
+
+    expect(
+      screen.getByText(/Mỗi người đăng ký bằng mã của bạn, bạn nhận \+3 GEM/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Tối đa 5 lượt thưởng mỗi ngày/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Người được bạn mời nhận \+5 GEM khi nhập mã của bạn/)
+    ).toBeInTheDocument();
   });
 
   it("should show empty state when no referrals exist", async () => {
@@ -187,7 +208,7 @@ describe("Referral Page", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("empty-referrals")).toHaveTextContent(
-        "Chưa có ai sử dụng mã giới thiệu của bạn. Hãy chia sẻ mã để nhận thêm credits!"
+        "Chưa có ai sử dụng mã giới thiệu của bạn. Hãy chia sẻ mã để nhận thêm GEM!"
       );
     });
   });

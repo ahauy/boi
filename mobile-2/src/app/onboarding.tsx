@@ -1,215 +1,265 @@
-import React, { useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { READING_SCHOOL_LIST } from '@palmsight/shared';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  BackHandler,
+  StyleSheet,
+  View,
+} from 'react-native';
 
-import { Button } from '../components/ui';
 import Text from '../components/AppText';
 import CosmicBackground from '../components/CosmicBackground';
 import CosmicHand from '../components/CosmicHand';
-import { colors, font, radius, spacing, text as type } from '../theme';
+import { colors, spacing, text as type } from '../theme';
 import { haptic } from '../lib/haptics';
-import { useAnimatedValue } from '../lib/useAnimatedValue';
-import { useReduceMotion } from '../lib/motion';
+import { checkDeviceIntegrity, isDeviceBlocked } from '../lib/integrity-gate';
+import { initializeAds } from '../ads/ads-service';
+import { useAdsStore } from '../ads/ads-store';
+import { SupportedLanguage, useI18n } from '../i18n';
 import { useOnboarding } from '../state/onboarding';
-
-const SLIDES = [
-  {
-    tag: 'Khai mở thiên cơ',
-    title: 'Bàn tay bạn',
-    highlight: 'giữ một thiên mệnh.',
-    body: 'Chụp lòng bàn tay, để AI đọc những đường chỉ đã theo bạn từ thuở sinh ra. Không cần tài khoản, không cần mật khẩu.',
-  },
-  {
-    tag: 'Nghi thức ba bước',
-    title: 'Một nghi thức',
-    highlight: 'thật chậm và rõ.',
-    body: 'Chọn trường phái, chọn điều bạn muốn hỏi, rồi để camera ghi lại lòng bàn tay. PalmSight lo phần còn lại.',
-  },
-] as const;
-
-const RITUAL = [
-  { icon: 'compass-outline' as const, title: 'Chọn trường phái', body: 'Phương Tây, phương Đông hoặc Ấn Độ.' },
-  { icon: 'camera-iris' as const, title: 'Chụp lòng bàn tay', body: 'Camera hoặc ảnh có sẵn, AI tự căn khung.' },
-  { icon: 'star-four-points-outline' as const, title: 'Nhận luận giải', body: 'Bài đọc riêng cùng sơ đồ Sinh · Trí · Tâm đạo.' },
-];
-
-const GLYPHS: Record<string, string> = { WESTERN: '☼', EASTERN: '☯', VEDIC: '✦' };
+import IntroView from '../onboarding/IntroView';
+import FunnelView from '../onboarding/FunnelView';
+import {
+  advanceFunnelStep,
+  AgeBandOption,
+  CONSENT_GATE_TIMEOUT_MS,
+  createInitialOnboardingAnswers,
+  FocusOption,
+  GenderOption,
+  handleFunnelBack,
+  handleIntroBack,
+  handleIntroClose,
+  handleIntroNext,
+  HandOption,
+  InsightOptionId,
+  isConsentGateSettled,
+  OnboardingAnswers,
+  toggleFavoriteInsight,
+  TraditionOption,
+} from '../onboarding/onboarding-machine';
 
 export default function OnboardingScreen() {
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   const { complete } = useOnboarding();
-  const [index, setIndex] = useState(0);
-  const [finishing, setFinishing] = useState(false);
-  const reduceMotion = useReduceMotion();
-  const entrance = useAnimatedValue(1);
-  const last = index === SLIDES.length - 1;
+  const { language, setLanguage, t } = useI18n();
+  const adsState = useAdsStore();
 
+  // First-launch Ads Consent Loading Gate (§3)
+  const [consentTimedOut, setConsentTimedOut] = useState(false);
+  const [consentPromiseDone, setConsentPromiseDone] = useState(false);
+  const [deviceBlocked, setDeviceBlocked] = useState(false);
+
+  // In-memory only slide & funnel positions (§4.1)
+  const [phase, setPhase] = useState<'intro' | 'funnel'>('intro');
+  const [introSlideIndex, setIntroSlideIndex] = useState(0);
+  const [funnelStep, setFunnelStep] = useState(1);
+  const [finishing, setFinishing] = useState(false);
+
+  const [answers, setAnswers] = useState<OnboardingAnswers>(() =>
+    createInitialOnboardingAnswers(language)
+  );
+
+  // Sync initial language into answers if loaded from storage
   useEffect(() => {
-    if (reduceMotion) {
-      entrance.setValue(1);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- language arrives async from storage
+    setAnswers((prev) => ({ ...prev, language }));
+  }, [language]);
+
+  // Run Emulator / Play Integrity gate -> start Ads consent flow with 30s timeout (§3)
+  useEffect(() => {
+    let active = true;
+    const integrity = checkDeviceIntegrity();
+    if (integrity.blocked || isDeviceBlocked()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the integrity check is a device read
+      setDeviceBlocked(true);
+      setConsentPromiseDone(true);
       return;
     }
-    entrance.setValue(0);
-    Animated.timing(entrance, { toValue: 1, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-  }, [entrance, index, reduceMotion]);
 
-  async function begin() {
+    const timer = setTimeout(() => {
+      if (active) {
+        setConsentTimedOut(true);
+      }
+    }, CONSENT_GATE_TIMEOUT_MS);
+
+    void initializeAds().finally(() => {
+      if (active) {
+        setConsentPromiseDone(true);
+      }
+    });
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  const consentSettled =
+    consentPromiseDone ||
+    isConsentGateSettled(adsState.status, consentTimedOut, deviceBlocked);
+
+  // Android hardware Back button handling (§4.1)
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (!consentSettled) {
+          BackHandler.exitApp();
+          return true;
+        }
+
+        if (phase === 'intro') {
+          const result = handleIntroBack(introSlideIndex);
+          if (result.action === 'exit_app') {
+            BackHandler.exitApp();
+            return true;
+          }
+          setIntroSlideIndex(result.nextSlideIndex);
+          return true;
+        }
+
+        const funnelBack = handleFunnelBack(funnelStep);
+        setPhase(funnelBack.phase);
+        setIntroSlideIndex(funnelBack.slideIndex);
+        setFunnelStep(funnelBack.funnelStep);
+        return true;
+      }
+    );
+
+    return () => subscription.remove();
+  }, [consentSettled, phase, introSlideIndex, funnelStep]);
+
+  const onIntroNext = useCallback(() => {
+    const nextState = handleIntroNext(introSlideIndex);
+    setPhase(nextState.phase);
+    setIntroSlideIndex(nextState.slideIndex);
+    setFunnelStep(nextState.funnelStep);
+  }, [introSlideIndex]);
+
+  const onIntroCloseSlide4 = useCallback(() => {
+    const nextState = handleIntroClose();
+    setPhase(nextState.phase);
+    setIntroSlideIndex(nextState.slideIndex);
+    setFunnelStep(nextState.funnelStep);
+  }, []);
+
+  const handleSelectLanguage = useCallback(
+    (nextLang: SupportedLanguage) => {
+      setAnswers((prev) => ({ ...prev, language: nextLang }));
+      void setLanguage(nextLang);
+    },
+    [setLanguage]
+  );
+
+  const handleSelectGender = useCallback((gender: GenderOption) => {
+    setAnswers((prev) => ({ ...prev, gender }));
+  }, []);
+
+  const handleSelectAgeBand = useCallback((ageBand: AgeBandOption) => {
+    setAnswers((prev) => ({ ...prev, ageBand }));
+  }, []);
+
+  const handleSelectFocus = useCallback((focus: FocusOption) => {
+    setAnswers((prev) => ({ ...prev, focus }));
+  }, []);
+
+  const handleSelectTradition = useCallback((tradition: TraditionOption) => {
+    setAnswers((prev) => ({ ...prev, tradition }));
+  }, []);
+
+  const handleSelectHand = useCallback((dominantHand: HandOption) => {
+    setAnswers((prev) => ({ ...prev, dominantHand }));
+  }, []);
+
+  const handleToggleInsight = useCallback((insight: InsightOptionId) => {
+    setAnswers((prev) => ({
+      ...prev,
+      favoriteInsights: toggleFavoriteInsight(prev.favoriteInsights, insight),
+    }));
+  }, []);
+
+  const finishOnboarding = useCallback(async () => {
     if (finishing) return;
     setFinishing(true);
     haptic.success();
-    await complete();
-  }
+    await complete(answers);
+  }, [finishing, complete, answers]);
 
-  function next() {
-    if (last) {
-      void begin();
-      return;
+  const handleFunnelAdvance = useCallback(() => {
+    const next = advanceFunnelStep(funnelStep);
+    if (next.completed) {
+      void finishOnboarding();
+    } else {
+      setFunnelStep(next.nextStep);
     }
-    haptic.select();
-    setIndex((current) => Math.min(SLIDES.length - 1, current + 1));
+  }, [funnelStep, finishOnboarding]);
+
+  const handleFunnelBackPress = useCallback(() => {
+    const back = handleFunnelBack(funnelStep);
+    setPhase(back.phase);
+    setIntroSlideIndex(back.slideIndex);
+    setFunnelStep(back.funnelStep);
+  }, [funnelStep]);
+
+  // 1. First-launch Ads Consent Loading Gate (§3)
+  if (!consentSettled) {
+    return (
+      <View style={styles.loadingRoot} accessibilityRole="progressbar">
+        <CosmicBackground />
+        <View style={styles.loadingContent}>
+          <CosmicHand size={140} />
+          <ActivityIndicator size="large" color={colors.gold} />
+          <Text style={styles.loadingText}>{t('common.loading')}</Text>
+        </View>
+      </View>
+    );
   }
 
-  const slide = SLIDES[index];
+  // 2. 4-Slide Intro (§4.1)
+  if (phase === 'intro') {
+    return (
+      <IntroView
+        slideIndex={introSlideIndex}
+        onNext={onIntroNext}
+        onCloseSlide4={onIntroCloseSlide4}
+      />
+    );
+  }
 
+  // 3. 8-Screen Onboarding Funnel (§4.2)
   return (
-    <View style={{ flex: 1, backgroundColor: colors.canvas }}>
-      <CosmicBackground />
-      <View style={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ gap: 2 }}>
-          <Text style={{ fontFamily: font.display, fontSize: 25, letterSpacing: 1.2, color: colors.ink }}>PalmSight</Text>
-          <Text style={[type.eyebrow, { color: colors.stone, letterSpacing: 2.6, fontSize: 10 }]}>COSMIC EDITION</Text>
-        </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Bỏ qua giới thiệu" onPress={() => void begin()} hitSlop={10} style={{ minHeight: 44, justifyContent: 'center' }}>
-          <Text style={[type.captionStrong, { color: colors.mute }]}>Bỏ qua</Text>
-        </Pressable>
-      </View>
-
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: 220 }} showsVerticalScrollIndicator={false}>
-        <Animated.View
-          style={{
-            flex: 1,
-            gap: spacing.lg,
-            opacity: entrance,
-            transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
-          }}>
-          <View style={{ alignItems: 'center', gap: spacing.xs }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: spacing.sm,
-                borderWidth: 1,
-                borderColor: colors.glassBorder,
-                borderRadius: radius.full,
-                backgroundColor: colors.glassFill,
-                paddingHorizontal: spacing.md,
-                paddingVertical: 7,
-              }}>
-              <MaterialCommunityIcons name="star-four-points" size={12} color={colors.gold} />
-              <Text style={[type.code, { color: colors.goldLight, letterSpacing: 1.5 }]}>{slide.tag.toUpperCase()}</Text>
-            </View>
-            <CosmicHand size={index === 0 ? Math.min(width * 0.58, 230) : 100} />
-          </View>
-
-          <View style={{ alignItems: 'center', gap: spacing.sm }}>
-            <Text style={[type.displayXl, { color: colors.ink, textAlign: 'center' }]} accessibilityRole="header">
-              {slide.title}
-              {'\n'}
-              <Text style={{ fontFamily: font.displayItalic, color: colors.goldLight }}>{slide.highlight}</Text>
-            </Text>
-            <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center', maxWidth: 340 }]}>{slide.body}</Text>
-          </View>
-
-          {index === 1 ? (
-            <View style={{ gap: spacing.sm }}>
-              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                {READING_SCHOOL_LIST.map((school) => (
-                  <View
-                    key={school.id}
-                    style={{
-                      flex: 1,
-                      alignItems: 'center',
-                      gap: 4,
-                      borderWidth: 1,
-                      borderColor: colors.glassBorder,
-                      borderRadius: radius.lg,
-                      backgroundColor: colors.glassFill,
-                      paddingVertical: spacing.sm,
-                      paddingHorizontal: 4,
-                    }}>
-                    <Text style={{ fontFamily: font.display, fontSize: 20, color: colors.goldLight }}>{GLYPHS[school.id] ?? '✦'}</Text>
-                    <Text numberOfLines={1} style={[type.captionStrong, { color: colors.body, fontSize: 11 }]}>{school.name.replace('Chỉ tay ', '')}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {RITUAL.map((step, position) => (
-                <View key={step.title} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: colors.glassBorder, borderRadius: radius.lg, backgroundColor: colors.glassFill, padding: spacing.sm }}>
-                  <View style={{ width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.hairlineStrong, backgroundColor: colors.goldWash, alignItems: 'center', justifyContent: 'center' }}>
-                    <MaterialCommunityIcons name={step.icon} size={19} color={colors.goldLight} />
-                  </View>
-                  <View style={{ flex: 1, gap: 1 }}>
-                    <Text style={[type.bodyBold, { color: colors.ink }]}>{step.title}</Text>
-                    <Text style={[type.caption, { color: colors.mute }]}>{step.body}</Text>
-                  </View>
-                  <Text style={[type.code, { color: colors.stone }]}>{`0${position + 1}`}</Text>
-                </View>
-              ))}
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, justifyContent: 'center', paddingTop: spacing.xs }}>
-                <MaterialCommunityIcons name="gift-outline" size={15} color={colors.gold} />
-                <Text style={[type.caption, { color: colors.goldLight }]}>Tặng 3 credits ngay lần đầu · mỗi quẻ 1 credit</Text>
-              </View>
-            </View>
-          ) : (
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.lg, paddingTop: spacing.sm }}>
-              {[
-                { value: '3', label: 'HỆ PHÁI' },
-                { value: '<60s', label: 'LUẬN GIẢI' },
-                { value: '0', label: 'MẬT KHẨU' },
-              ].map((item) => (
-                <View key={item.label} style={{ alignItems: 'center', gap: 2 }}>
-                  <Text style={{ fontFamily: font.displayStrong, fontSize: 24, color: colors.goldLight }}>{item.value}</Text>
-                  <Text style={[type.code, { color: colors.stone, fontSize: 10 }]}>{item.label}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </Animated.View>
-      </ScrollView>
-
-      <View style={{ paddingHorizontal: spacing.xl, paddingBottom: insets.bottom + spacing.xl, gap: spacing.lg }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, minHeight: 8, alignItems: 'center' }}>
-          {SLIDES.map((item, position) => (
-            <Pressable
-              key={item.tag}
-              accessibilityRole="button"
-              accessibilityLabel={`Trang ${position + 1} trên ${SLIDES.length}`}
-              accessibilityState={{ selected: position === index }}
-              hitSlop={10}
-              onPress={() => {
-                haptic.select();
-                setIndex(position);
-              }}
-              style={{ minWidth: 32, minHeight: 32, alignItems: 'center', justifyContent: 'center' }}>
-              <View
-                style={{
-                  width: position === index ? 30 : 8,
-                  height: 4,
-                  borderRadius: 999,
-                  backgroundColor: position === index ? colors.gold : colors.glassBorder,
-                }}
-              />
-            </Pressable>
-          ))}
-        </View>
-
-        <Button label={last ? 'Bắt đầu xem bói' : 'Tiếp tục'} onPress={next} loading={finishing} size="lg" />
-        {last ? <Text style={[type.caption, { color: colors.stone, textAlign: 'center' }]}>3 credits miễn phí · không cần đăng ký</Text> : null}
-      </View>
-    </View>
+    <FunnelView
+      step={funnelStep}
+      answers={answers}
+      finishing={finishing}
+      onSelectLanguage={handleSelectLanguage}
+      onSelectGender={handleSelectGender}
+      onSelectAgeBand={handleSelectAgeBand}
+      onSelectFocus={handleSelectFocus}
+      onSelectTradition={handleSelectTradition}
+      onSelectHand={handleSelectHand}
+      onToggleInsight={handleToggleInsight}
+      onContinue={handleFunnelAdvance}
+      onSkip={handleFunnelAdvance}
+      onBack={handleFunnelBackPress}
+    />
   );
 }
+
+const styles = StyleSheet.create({
+  loadingRoot: {
+    flex: 1,
+    backgroundColor: colors.canvas,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    paddingHorizontal: spacing.xl,
+  },
+  loadingText: {
+    ...type.bodyMd,
+    color: colors.mute,
+    textAlign: 'center',
+  },
+});

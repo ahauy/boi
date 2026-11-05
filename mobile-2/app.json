@@ -24,7 +24,9 @@
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
-        "android.permission.CAMERA",
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
         "android.permission.RECORD_AUDIO"
       ]
     },
@@ -33,6 +35,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/withWindowsNativeBuild",
       [
         "expo-router",
         {
@@ -50,7 +53,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "PalmSight cần camera để chụp ảnh lòng bàn tay của bạn."
+          "cameraPermission": "PalmSight cần camera để chụp ảnh lòng bàn tay của bạn.",
+          "recordAudioAndroid": false
         }
       ],
       "expo-secure-store",

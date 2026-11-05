@@ -7,11 +7,15 @@ import {
   PasswordResetSchema,
   SessionSchema,
   ReferralSchema,
+  ReferralNetworkCounterSchema,
   ReadingSchema,
   CreditTransactionSchema,
   DeletedIdentitySchema,
   GuestTrialSchema,
-  RewardedAdClaimSchema,
+  DeviceSchema,
+  AdRewardSchema,
+  PlaySubscriptionSchema,
+  BillingEventSchema,
 } from '../src/schemas';
 
 // Load .env file if available
@@ -49,7 +53,11 @@ export const SYNC_TARGETS: SyncTarget[] = [
   { name: 'CreditTransaction', schema: CreditTransactionSchema },
   { name: 'DeletedIdentity', schema: DeletedIdentitySchema },
   { name: 'GuestTrial', schema: GuestTrialSchema },
-  { name: 'RewardedAdClaim', schema: RewardedAdClaimSchema },
+  { name: 'Device', schema: DeviceSchema },
+  { name: 'AdReward', schema: AdRewardSchema },
+  { name: 'PlaySubscription', schema: PlaySubscriptionSchema },
+  { name: 'BillingEvent', schema: BillingEventSchema },
+  { name: 'ReferralNetworkCounter', schema: ReferralNetworkCounterSchema },
 ];
 
 export async function syncGuestTrialIndexes(connection: Connection): Promise<void> {
@@ -186,7 +194,7 @@ export async function syncDatabaseIndexes(mongoUri?: string): Promise<void> {
       console.warn('⚠️ Note on "users" collection JSON validator collMod:', (err as Error).message);
     }
 
-    console.log('--- All 8 Collections & Indexes Synchronized Successfully! ---');
+    console.log('--- All Collections & Indexes Synchronized Successfully! ---');
   } finally {
     await mongoose.disconnect();
     console.log('Disconnected from MongoDB.');

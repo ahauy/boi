@@ -9,6 +9,7 @@ import {
   LIFE_ASPECTS,
   ReadingDto,
 } from "@palmsight/shared";
+import { showError } from "@/helpers/toast";
 import { TarotCorners } from "@/components/mystic/MysticDivider";
 import SchoolStep from "./components/SchoolStep";
 import TopicsStep from "./components/TopicsStep";
@@ -34,17 +35,24 @@ export const Scan: React.FC = () => {
           saved === ReadingSchool.EASTERN ||
           saved === ReadingSchool.VEDIC)
       ) {
+        if (
+          saved === ReadingSchool.EASTERN ||
+          saved === ReadingSchool.VEDIC
+        ) {
+          localStorage.setItem(LAST_SCHOOL_STORAGE_KEY, ReadingSchool.WESTERN);
+          return ReadingSchool.WESTERN;
+        }
         return saved as ReadingSchool;
       }
     } catch {
-      return ReadingSchool.EASTERN;
+      return ReadingSchool.WESTERN;
     }
-    return ReadingSchool.EASTERN;
+    return ReadingSchool.WESTERN;
   });
 
   const [isAllTopics, setIsAllTopics] = useState(true);
   const [selectedSections, setSelectedSections] = useState<string[]>(() =>
-    READING_SCHOOLS[ReadingSchool.EASTERN].sections.map((s) => s.key)
+    READING_SCHOOLS[ReadingSchool.WESTERN].sections.map((s) => s.key)
   );
   const [selectedAspects, setSelectedAspects] = useState<string[]>(() =>
     LIFE_ASPECTS.map((a) => a.key)
@@ -78,6 +86,12 @@ export const Scan: React.FC = () => {
   });
 
   const handleSelectSchool = useCallback((newSchool: ReadingSchool) => {
+    if (newSchool === ReadingSchool.EASTERN || newSchool === ReadingSchool.VEDIC) {
+      showError(
+        "Trường phái này chỉ dành cho tài khoản VIP. Bạn vui lòng nâng cấp VIP trên ứng dụng Android hoặc chọn trường phái Phương Tây."
+      );
+      return;
+    }
     setSchool(newSchool);
     const nextSections = READING_SCHOOLS[newSchool].sections.map((s) => s.key);
     setSelectedSections(nextSections);

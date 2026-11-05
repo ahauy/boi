@@ -7,6 +7,8 @@ import {
   ReadingSchool,
   HandOrientation,
   READING_SCHOOLS,
+  CREDIT_AMOUNTS,
+  ECONOMY_DEFAULTS,
 } from "@palmsight/shared";
 import { ScanStatus } from "../types";
 import { cn } from "@/lib/utils";
@@ -57,7 +59,9 @@ export const CaptureStep: React.FC<CaptureStepProps> = ({
   const topicsSummary = isAllTopics ? "Toàn bộ" : `${selectedCount} mục`;
 
   const creditBalance = user?.creditBalance ?? 0;
-  const isOutOfCredits = user ? creditBalance <= 0 : false;
+  const isOutOfCredits = user
+    ? creditBalance < ECONOMY_DEFAULTS.PRICE_PER_ACTION
+    : false;
   const canEnterCode = Boolean(user?.referral?.canEnterCode);
 
   useEffect(() => {
@@ -565,10 +569,10 @@ export const CaptureStep: React.FC<CaptureStepProps> = ({
         >
           <div className="font-bold flex items-center gap-1.5 text-warning">
             <span>[!]</span>
-            <span>Hết credits</span>
+            <span>Không đủ GEM</span>
           </div>
           <p className="m-0 text-body">
-            Mời bạn bè nhập mã để nhận 2 credits:{" "}
+            Mời bạn bè nhập mã để nhận {CREDIT_AMOUNTS.REFERRAL_REWARD} GEM:{" "}
             <Link
               to={BaseUrl.Referral}
               className="text-[#f7e7b4] underline hover:text-[#d4af37] font-medium"
@@ -583,7 +587,7 @@ export const CaptureStep: React.FC<CaptureStepProps> = ({
                 to={BaseUrl.ReferralEnter}
                 className="text-[#f7e7b4] underline hover:text-[#d4af37] font-medium"
               >
-                Nhập để nhận 1 credit
+                Nhập để nhận {CREDIT_AMOUNTS.REFEREE_REWARD} GEM
               </Link>
             </p>
           )}
@@ -601,9 +605,11 @@ export const CaptureStep: React.FC<CaptureStepProps> = ({
           <p className="m-0 text-body">
             {rejectReason || "Hãy chụp lại nơi đủ sáng, xoè thẳng bàn tay."}
           </p>
-          <p className="m-0 text-success text-xs font-rune">
-            [+] Đã hoàn 1 credit
-          </p>
+          {user && (
+            <p className="m-0 text-success text-xs font-rune">
+              [+] Đã hoàn {ECONOMY_DEFAULTS.PRICE_PER_ACTION} GEM
+            </p>
+          )}
           <button
             type="button"
             onClick={handleRetake}
@@ -620,7 +626,9 @@ export const CaptureStep: React.FC<CaptureStepProps> = ({
           data-testid="ai-unavailable-banner"
         >
           <div className="font-bold text-[#f7e7b4]">
-            [!] Hệ thống bận, đã hoàn 1 credit. Thử lại sau ít phút.
+            {user
+              ? `[!] Hệ thống bận, đã hoàn ${ECONOMY_DEFAULTS.PRICE_PER_ACTION} GEM. Thử lại sau ít phút.`
+              : "[!] Hệ thống bận. Thử lại sau ít phút."}
           </div>
           <button
             type="button"
@@ -722,7 +730,7 @@ export const CaptureStep: React.FC<CaptureStepProps> = ({
           data-testid="submit-reading-button"
         >
           <Sparkles aria-hidden="true" className="h-4 w-4" />
-          <span>{user ? "Xem bói (−1 credit)" : "Bói thử miễn phí"}</span>
+          <span>{user ? `Xem bói (−${ECONOMY_DEFAULTS.PRICE_PER_ACTION} GEM)` : "Bói thử miễn phí"}</span>
         </button>
       </div>
     </section>

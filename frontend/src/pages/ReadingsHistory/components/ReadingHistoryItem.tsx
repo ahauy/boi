@@ -58,13 +58,13 @@ export const ReadingHistoryItem: React.FC<ReadingHistoryItemProps> = ({
       case ReadingStatus.REJECTED:
         return (
           <span className="text-xs text-danger block leading-normal font-rune">
-            [!] Ảnh không rõ · đã hoàn 1 credit
+            [!] Ảnh không rõ · đã hoàn GEM
           </span>
         );
       case ReadingStatus.FAILED:
         return (
           <span className="text-xs text-danger block leading-normal font-rune">
-            [!] Hệ thống bận · đã hoàn 1 credit
+            [!] Hệ thống bận · đã hoàn GEM
           </span>
         );
       case ReadingStatus.PROCESSING:

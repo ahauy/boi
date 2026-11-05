@@ -18,6 +18,10 @@ export class Referral {
   @Prop({ type: String, required: true, enum: Object.values(ReferralStatus) })
   status: ReferralStatus;
 
+  // GEM chủ mã thực nhận. Bản ghi cũ không có field này và luôn tính là 2.
+  @Prop({ type: Number })
+  referrerReward?: number;
+
   createdAt: Date;
 }
 

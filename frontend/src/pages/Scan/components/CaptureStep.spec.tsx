@@ -12,7 +12,7 @@ describe("CaptureStep Component", () => {
     username: "testuser",
     avatarUrl: null,
     referralCode: "ABCDEF12",
-    creditBalance: 3,
+    creditBalance: 5,
     referral: {
       canEnterCode: true,
       enteredCode: null,

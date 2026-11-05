@@ -12,10 +12,13 @@ import { UsersModule } from "../src/users/users.module";
 import { CreditsModule } from "../src/credits/credits.module";
 import { HealthModule } from "../src/health/health.module";
 import { ReadingsModule } from "../src/readings/readings.module";
-import { AdsModule } from "../src/ads/ads.module";
+import { AppConfigModule } from "../src/config/app-config.module";
+import { CurrencyModule } from "../src/currency/currency.module";
+import { BillingModule } from "../src/billing/billing.module";
 import { MailService } from "../src/mail/mail.service";
 import { GoogleAuthVerifier } from "../src/auth/google-auth.verifier";
 import { FacebookAuthVerifier } from "../src/auth/facebook-auth.verifier";
+import { ReferralNetworkCounter } from "../src/schemas/referral-network-counter.schema";
 
 export interface TestAppInstance {
   app: INestApplication;
@@ -43,10 +46,13 @@ export interface TestAppOptions {
     Partial<Pick<GoogleAuthVerifier, "verifyCode">>;
   facebookVerifier?: Pick<FacebookAuthVerifier, "verify">;
   /** Nơi test phục bộ khoá công khai giả để chạy thật logic xác minh chữ ký SSV. */
-  adSsvKeysUrl?: string;
   rewardedAdsEnabled?: boolean;
   /** Bật cửa sau dev-grant, đường cấp credit không cần chữ ký dành cho máy dev. */
-  rewardedAdsDevGrant?: boolean;
+  starterGrant?: number;
+  pricePerAction?: number;
+  starterNetworkDailyCap?: number;
+  anonymousSignupDailyCap?: number;
+  referralNetworkDailyCap?: number;
 }
 
 export async function createTestApp(
@@ -55,6 +61,21 @@ export async function createTestApp(
   const replSet = await MongoMemoryReplSet.create({
     replSet: { count: 1, storageEngine: "wiredTiger" },
   });
+
+  try {
+    return await startTestApp(replSet, options);
+  } catch (error) {
+    // Lỗi khởi động không tới được closeTestApp, nên phải dừng mongod ở đây
+    await mongoose.disconnect().catch(() => undefined);
+    await replSet.stop().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function startTestApp(
+  replSet: MongoMemoryReplSet,
+  options: TestAppOptions
+): Promise<TestAppInstance> {
   const mongoUri = replSet.getUri();
 
   const sentEmails: Array<{
@@ -89,6 +110,8 @@ export async function createTestApp(
     imports: [
       ConfigModule.forRoot({
         isGlobal: true,
+        // Không đọc backend/.env: test không được gọi dịch vụ thật như Cloudinary
+        ignoreEnvFile: true,
         load: [
           () => ({
             MONGODB_URI: mongoUri,
@@ -98,23 +121,25 @@ export async function createTestApp(
             REFRESH_TOKEN_TTL_DAYS: 30,
             EMAIL_VERIFY_TTL_HOURS: 24,
             IDENTITY_HASH_SECRET: "test-identity-secret-at-least-32-chars-long",
-            SIGNUP_BONUS_CREDITS: 3,
-            REFERRAL_REWARD_CREDITS: 2,
-            REFEREE_REWARD_CREDITS: 1,
-            REFERRAL_DAILY_CAP: 10,
-            ANONYMOUS_SIGNUP_DAILY_CAP: 3,
+            SIGNUP_BONUS_CREDITS: options.starterGrant ?? 3,
+            STARTER_GRANT: options.starterGrant ?? 3,
+            READING_COST_CREDITS: options.pricePerAction ?? 1,
+            PRICE_PER_ACTION: options.pricePerAction ?? 1,
+            MAX_ACTIONS_PER_TAP: 5,
+            STARTER_NETWORK_DAILY_CAP: options.starterNetworkDailyCap ?? 5,
+            ANONYMOUS_SIGNUP_DAILY_CAP: options.anonymousSignupDailyCap ?? 3,
+            REFERRAL_DAILY_CAP: 5,
+            REFERRAL_NETWORK_DAILY_CAP: options.referralNetworkDailyCap ?? 5,
+            // Request không gửi header này được coi là không có IP nên không tính giới hạn mạng.
+            CLIENT_IP_HEADER: "cf-connecting-ip",
             PUBLIC_BASE_URL: "http://localhost:5173",
             GOOGLE_CLIENT_ID:
               "test-google-client-id.apps.googleusercontent.com",
             FACEBOOK_APP_ID: "test-facebook-app-id",
             FACEBOOK_APP_SECRET: "test-facebook-app-secret",
             REWARDED_ADS_ENABLED: options.rewardedAdsEnabled ? "true" : "false",
-            REWARDED_ADS_DEV_GRANT: options.rewardedAdsDevGrant
-              ? "true"
-              : "false",
-            REWARDED_AD_DAILY_CAP: 3,
-            AD_SSV_KEYS_URL: options.adSsvKeysUrl ?? "http://127.0.0.1:1/no-keys",
             NODE_ENV: "test",
+            RTDN_PUSH_TOKEN: "test-rtdn-token",
           }),
         ],
       }),
@@ -130,7 +155,9 @@ export async function createTestApp(
       AuthModule,
       UsersModule,
       ReadingsModule,
-      AdsModule,
+      AppConfigModule,
+      CurrencyModule,
+      BillingModule,
     ],
   })
     .overrideProvider(MailService)
@@ -170,6 +197,11 @@ export async function createTestApp(
     "readings",
     "guest_trials",
     "rewarded_ad_claims",
+    "devices",
+    "ad_rewards",
+    "play_subscriptions",
+    "billing_events",
+    "referral_network_counters",
   ];
   for (const col of collectionNames) {
     try {
@@ -178,6 +210,9 @@ export async function createTestApp(
       continue;
     }
   }
+
+  // autoIndex tắt, mà trần theo mạng cần unique index để upsert đồng thời không sinh hai bộ đếm.
+  await connection.model(ReferralNetworkCounter.name).syncIndexes();
 
   return {
     app,
@@ -190,7 +225,10 @@ export async function createTestApp(
   };
 }
 
-export async function closeTestApp(instance: TestAppInstance): Promise<void> {
+export async function closeTestApp(
+  instance: TestAppInstance | undefined
+): Promise<void> {
+  if (!instance) return;
   if (instance.app) {
     await instance.app.close();
   }

@@ -61,7 +61,7 @@ describe("ReferralEnter Page & ReferralRedirect", () => {
       screen.getByRole("heading", { name: "Nhập mã giới thiệu" })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Nếu có người mời bạn, nhập mã để họ nhận 2 credits/i)
+      screen.getByText(/Nếu có người mời bạn, nhập mã để bạn nhận 5 GEM và họ nhận 3 GEM/i)
     ).toBeInTheDocument();
     expect(
       screen.getByLabelText(/Mã giới thiệu/i)
@@ -100,8 +100,8 @@ describe("ReferralEnter Page & ReferralRedirect", () => {
       data: {
         accepted: true,
         referrer: { displayName: "Nguyễn A" },
-        creditsEarned: 1,
-        creditBalance: 4,
+        creditsEarned: 5,
+        creditBalance: 8,
       },
     } as any);
 
@@ -118,7 +118,7 @@ describe("ReferralEnter Page & ReferralRedirect", () => {
         code: "K7QX4MZP",
       });
       expect(showSuccessSpy).toHaveBeenCalledWith(
-        "Đã ghi nhận mã của Nguyễn A. Bạn nhận được 1 credit!"
+        "Đã ghi nhận mã của Nguyễn A. Bạn nhận được 5 GEM!"
       );
       expect(mockNavigate).toHaveBeenCalledWith("/scan");
     });
@@ -247,6 +247,57 @@ describe("ReferralEnter Page & ReferralRedirect", () => {
       expect(
         screen.getByText("Tài khoản này không thể nhập mã giới thiệu.")
       ).toBeInTheDocument();
+    });
+  });
+
+  it("should handle error REFERRAL_DEVICE_USED", async () => {
+    vi.spyOn(httpService, "post").mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          error: {
+            code: "REFERRAL_DEVICE_USED",
+            message: "Thiết bị này đã nhập mã giới thiệu trước đó.",
+          },
+        },
+      },
+    });
+
+    renderComponent();
+
+    const input = screen.getByLabelText(/Mã giới thiệu/i);
+    fireEvent.change(input, { target: { value: "K7QX4MZP" } });
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /^Thiết bị này đã nhập mã giới thiệu trước đó$/
+      );
+    });
+  });
+
+  it("should handle error REFERRAL_NETWORK_LIMIT", async () => {
+    vi.spyOn(httpService, "post").mockRejectedValue({
+      response: {
+        status: 429,
+        data: {
+          error: {
+            code: "REFERRAL_NETWORK_LIMIT",
+          },
+        },
+      },
+    });
+
+    renderComponent();
+
+    const input = screen.getByLabelText(/Mã giới thiệu/i);
+    fireEvent.change(input, { target: { value: "K7QX4MZP" } });
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /^Mạng này đã đạt giới hạn nhập mã hôm nay, vui lòng thử lại sau$/
+      );
     });
   });
 

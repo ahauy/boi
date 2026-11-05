@@ -4,30 +4,96 @@ import {
   HttpStatus,
   BadRequestException,
   NotFoundException,
-} from "@nestjs/common";
-import { InjectModel } from "@nestjs/mongoose";
-import { Model, Types, ClientSession, FilterQuery } from "mongoose";
+  ConflictException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types, ClientSession, FilterQuery } from 'mongoose';
 import {
   CreditTransaction,
   CreditTransactionDocument,
-} from "../schemas/credit-transaction.schema";
-import { User, UserDocument } from "../schemas/user.schema";
+} from '../schemas/credit-transaction.schema';
+import { User, UserDocument } from '../schemas/user.schema';
 import {
   CreditTransactionType,
-  CREDIT_AMOUNTS,
+  ECONOMY_DEFAULTS,
   CreditTransactionListResponseDto,
   PaginationQueryDto,
-} from "@palmsight/shared";
+} from '@palmsight/shared';
 
 export interface RecordCreditTransactionDto {
   userId: Types.ObjectId;
   amount: number;
   type: CreditTransactionType;
+  reason?: string;
   balanceAfter: number;
   readingId?: Types.ObjectId;
   referralId?: Types.ObjectId;
   adClaimId?: Types.ObjectId;
   note?: string;
+}
+
+export interface CreditOperationDto {
+  userId: Types.ObjectId;
+  amount: number;
+  type: CreditTransactionType;
+  reason?: string;
+  readingId?: Types.ObjectId;
+  referralId?: Types.ObjectId;
+  adClaimId?: Types.ObjectId;
+  note?: string;
+  extraUserSet?: Record<string, unknown>;
+}
+
+export interface DebitOperationDto {
+  userId: Types.ObjectId;
+  amount: number;
+  type: CreditTransactionType;
+  reason?: string;
+  readingId?: Types.ObjectId;
+  referralId?: Types.ObjectId;
+  adClaimId?: Types.ObjectId;
+  note?: string;
+}
+
+export function mapTypeToReason(type: CreditTransactionType, explicitReason?: string): string {
+  if (explicitReason) return explicitReason;
+  switch (type) {
+    case CreditTransactionType.SIGNUP_BONUS:
+    case CreditTransactionType.STARTER:
+      return 'starter';
+    case CreditTransactionType.READING_SPEND:
+    case CreditTransactionType.SINGLE:
+      return 'single';
+    case CreditTransactionType.READING_REFUND:
+    case CreditTransactionType.REFUND:
+      return 'refund';
+    case CreditTransactionType.REWARDED_AD:
+    case CreditTransactionType.AD_REWARD:
+      return 'ad_reward';
+    case CreditTransactionType.ADMIN_ADJUST:
+    case CreditTransactionType.OPERATOR:
+      return 'operator';
+    case CreditTransactionType.REFERRAL_BONUS:
+    case CreditTransactionType.REFEREE_BONUS:
+      return type.toLowerCase();
+    case CreditTransactionType.CHECKIN:
+      return 'checkin';
+    case CreditTransactionType.CHECKIN_MILESTONE:
+      return 'checkin_milestone';
+    case CreditTransactionType.CHECKIN_RESTORE:
+      return 'checkin_restore';
+    case CreditTransactionType.WHEEL:
+      return 'wheel';
+    case CreditTransactionType.WHEEL_SPIN:
+      return 'wheel_spin';
+    case CreditTransactionType.VIP_DAILY:
+      return 'vip_daily';
+    case CreditTransactionType.GUEST_MERGE:
+      return 'guest_merge';
+    default:
+      return String(type);
+  }
 }
 
 @Injectable()
@@ -36,19 +102,41 @@ export class CreditLedgerService {
     @InjectModel(CreditTransaction.name)
     private readonly creditTransactionModel: Model<CreditTransactionDocument>,
     @InjectModel(User.name)
-    private readonly userModel: Model<UserDocument>
+    private readonly userModel: Model<UserDocument>,
+    private readonly configService: ConfigService,
   ) {}
+
+  getStarterGrantAmount(): number {
+    const val =
+      this.configService.get<string | number>('STARTER_GRANT') ??
+      this.configService.get<string | number>('SIGNUP_BONUS_CREDITS');
+    return val !== undefined ? Number(val) : ECONOMY_DEFAULTS.STARTER_GRANT;
+  }
+
+  getPricePerAction(): number {
+    const val =
+      this.configService.get<string | number>('PRICE_PER_ACTION') ??
+      this.configService.get<string | number>('READING_COST_CREDITS');
+    return val !== undefined ? Number(val) : ECONOMY_DEFAULTS.PRICE_PER_ACTION;
+  }
+
+  getMaxActionsPerTap(): number {
+    const val = this.configService.get<string | number>('MAX_ACTIONS_PER_TAP');
+    return val !== undefined ? Number(val) : ECONOMY_DEFAULTS.MAX_ACTIONS_PER_TAP;
+  }
 
   async recordWithSession(
     dto: RecordCreditTransactionDto,
-    session: ClientSession
+    session?: ClientSession,
   ): Promise<CreditTransactionDocument> {
+    const reason = mapTypeToReason(dto.type, dto.reason);
     const [record] = await this.creditTransactionModel.create(
       [
         {
           userId: dto.userId,
           amount: dto.amount,
           type: dto.type,
+          reason,
           balanceAfter: dto.balanceAfter,
           readingId: dto.readingId,
           referralId: dto.referralId,
@@ -56,166 +144,250 @@ export class CreditLedgerService {
           note: dto.note,
         },
       ],
-      { session }
+      session ? { session } : undefined,
     );
 
     return record;
   }
 
-  async grantSignupBonus(
-    userId: Types.ObjectId,
-    session: ClientSession
+  async credit(
+    dto: CreditOperationDto,
+    session?: ClientSession,
   ): Promise<CreditTransactionDocument> {
-    const res = await this.userModel.updateOne(
-      { _id: userId, deletedAt: null },
-      { $inc: { creditBalance: CREDIT_AMOUNTS.SIGNUP_BONUS } },
-      { session }
-    );
-    if (res.matchedCount !== 1) {
-      throw new NotFoundException({
-        code: "USER_NOT_FOUND",
-        message: "Người dùng không tồn tại.",
+    if (!Number.isInteger(dto.amount) || dto.amount <= 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Amount must be a positive integer',
       });
     }
 
-    const user = await this.userModel.findById(userId).session(session).lean();
+    const updateObj: Record<string, unknown> = {
+      $inc: { creditBalance: dto.amount },
+    };
+    if (dto.extraUserSet && Object.keys(dto.extraUserSet).length > 0) {
+      updateObj.$set = dto.extraUserSet;
+    }
+
+    const updatedUser = await this.userModel
+      .findOneAndUpdate(
+        { _id: dto.userId, deletedAt: null },
+        updateObj,
+        session ? { session, new: true } : { new: true },
+      )
+      .lean();
+
+    if (!updatedUser) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'Người dùng không tồn tại.',
+      });
+    }
+
     return this.recordWithSession(
       {
-        userId,
-        amount: CREDIT_AMOUNTS.SIGNUP_BONUS,
-        type: CreditTransactionType.SIGNUP_BONUS,
-        balanceAfter: user!.creditBalance,
+        userId: dto.userId,
+        amount: dto.amount,
+        type: dto.type,
+        reason: dto.reason,
+        balanceAfter: updatedUser.creditBalance,
+        readingId: dto.readingId,
+        referralId: dto.referralId,
+        adClaimId: dto.adClaimId,
+        note: dto.note,
       },
-      session
+      session,
+    );
+  }
+
+  async debit(
+    dto: DebitOperationDto,
+    session?: ClientSession,
+  ): Promise<CreditTransactionDocument> {
+    if (!Number.isInteger(dto.amount) || dto.amount <= 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Amount must be a positive integer',
+      });
+    }
+
+    const updatedUser = await this.userModel
+      .findOneAndUpdate(
+        {
+          _id: dto.userId,
+          deletedAt: null,
+          creditBalance: { $gte: dto.amount },
+        },
+        { $inc: { creditBalance: -dto.amount } },
+        session ? { session, new: true } : { new: true },
+      )
+      .lean();
+
+    if (!updatedUser) {
+      const q = this.userModel.findById(dto.userId);
+      if (session) q.session(session);
+      const user = await q.lean();
+      throw new HttpException(
+        {
+          code: 'INSUFFICIENT_CREDITS',
+          message: 'Bạn không đủ credits để xem bói.',
+          details: {
+            required: dto.amount,
+            balance: user?.creditBalance ?? 0,
+          },
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
+
+    return this.recordWithSession(
+      {
+        userId: dto.userId,
+        amount: -dto.amount,
+        type: dto.type,
+        reason: dto.reason,
+        balanceAfter: updatedUser.creditBalance,
+        readingId: dto.readingId,
+        referralId: dto.referralId,
+        adClaimId: dto.adClaimId,
+        note: dto.note,
+      },
+      session,
+    );
+  }
+
+  async grantSignupBonus(
+    userId: Types.ObjectId,
+    session?: ClientSession,
+    amount?: number,
+  ): Promise<CreditTransactionDocument> {
+    const grantAmount = amount ?? this.getStarterGrantAmount();
+    return this.credit(
+      {
+        userId,
+        amount: grantAmount,
+        type: CreditTransactionType.SIGNUP_BONUS,
+        reason: 'starter',
+        extraUserSet: { starterGrantedAt: new Date() },
+      },
+      session,
     );
   }
 
   async spendForReading(
     userId: Types.ObjectId,
     readingId: Types.ObjectId,
-    session: ClientSession
+    session?: ClientSession,
+    actionCount = 1,
   ): Promise<CreditTransactionDocument> {
-    const res = await this.userModel.updateOne(
-      {
-        _id: userId,
-        deletedAt: null,
-        creditBalance: { $gte: CREDIT_AMOUNTS.READING_COST },
-      },
-      { $inc: { creditBalance: -CREDIT_AMOUNTS.READING_COST } },
-      { session }
-    );
-
-    if (res.matchedCount === 0 || res.modifiedCount === 0) {
-      const user = await this.userModel
-        .findById(userId)
-        .session(session)
-        .lean();
-      throw new HttpException(
-        {
-          code: "INSUFFICIENT_CREDITS",
-          message: "Bạn không đủ credits để xem bói.",
-          details: {
-            required: CREDIT_AMOUNTS.READING_COST,
-            balance: user?.creditBalance ?? 0,
-          },
-        },
-        HttpStatus.PAYMENT_REQUIRED
-      );
+    if (
+      !Number.isInteger(actionCount) ||
+      actionCount < 1 ||
+      actionCount > this.getMaxActionsPerTap()
+    ) {
+      throw new BadRequestException({
+        code: 'MAX_ACTIONS_EXCEEDED',
+        message: `Số lượng hành động phải từ 1 đến ${this.getMaxActionsPerTap()}.`,
+      });
     }
 
-    const user = await this.userModel.findById(userId).session(session).lean();
-    return this.recordWithSession(
+    const totalCost = actionCount * this.getPricePerAction();
+    return this.debit(
       {
         userId,
-        amount: -CREDIT_AMOUNTS.READING_COST,
+        amount: totalCost,
         type: CreditTransactionType.READING_SPEND,
-        balanceAfter: user!.creditBalance,
+        reason: 'single',
         readingId,
       },
-      session
+      session,
     );
   }
 
   async refundReading(
     userId: Types.ObjectId,
     readingId: Types.ObjectId,
-    session: ClientSession
+    session?: ClientSession,
   ): Promise<CreditTransactionDocument> {
-    const res = await this.userModel.updateOne(
-      { _id: userId, deletedAt: null },
-      { $inc: { creditBalance: CREDIT_AMOUNTS.READING_COST } },
-      { session }
-    );
-    if (res.matchedCount !== 1) {
-      throw new NotFoundException({
-        code: "USER_NOT_FOUND",
-        message: "Người dùng không tồn tại.",
+    const refundQuery = this.creditTransactionModel.findOne({
+      readingId,
+      type: {
+        $in: [
+          CreditTransactionType.READING_REFUND,
+          CreditTransactionType.REFUND,
+        ],
+      },
+    });
+    if (session) refundQuery.session(session);
+    const existingRefund = await refundQuery.lean();
+
+    if (existingRefund) {
+      throw new ConflictException({
+        code: 'ALREADY_REFUNDED',
+        message: 'Lượt xem bói này đã được hoàn trả trước đó.',
       });
     }
 
-    const user = await this.userModel.findById(userId).session(session).lean();
-    return this.recordWithSession(
+    const spendQuery = this.creditTransactionModel.findOne({
+      userId,
+      readingId,
+      type: {
+        $in: [
+          CreditTransactionType.READING_SPEND,
+          CreditTransactionType.SINGLE,
+        ],
+      },
+    });
+    if (session) spendQuery.session(session);
+    const spendTx = await spendQuery.lean();
+
+    const refundAmount = spendTx
+      ? Math.abs(spendTx.amount)
+      : this.getPricePerAction();
+
+    return this.credit(
       {
         userId,
-        amount: CREDIT_AMOUNTS.READING_COST,
+        amount: refundAmount,
         type: CreditTransactionType.READING_REFUND,
-        balanceAfter: user!.creditBalance,
+        reason: 'refund',
         readingId,
       },
-      session
+      session,
     );
   }
 
-  /**
-   * Credit chỉ được cộng khi callback xác minh quảng cáo của Google đã khớp chữ ký và nonce
-   * còn hiệu lực. `credits` lấy từ claim chứ không lấy từ cấu hình hiện tại: người dùng bấm nút
-   * theo mức thưởng nào thì nhận đúng mức đó, kể cả khi admin vừa đổi cấu hình giữa chừng.
-   */
   async grantRewardedAd(
     userId: Types.ObjectId,
     claimId: Types.ObjectId,
     credits: number,
-    session: ClientSession
+    session?: ClientSession,
   ): Promise<CreditTransactionDocument> {
-    const res = await this.userModel.updateOne(
-      { _id: userId, deletedAt: null },
-      { $inc: { creditBalance: credits } },
-      { session }
-    );
-    if (res.matchedCount !== 1) {
-      throw new NotFoundException({
-        code: "USER_NOT_FOUND",
-        message: "Người dùng không tồn tại.",
-      });
-    }
-
-    const user = await this.userModel.findById(userId).session(session).lean();
-    return this.recordWithSession(
+    return this.credit(
       {
         userId,
         amount: credits,
         type: CreditTransactionType.REWARDED_AD,
-        balanceAfter: user!.creditBalance,
+        reason: 'ad_reward',
         adClaimId: claimId,
       },
-      session
+      session,
     );
   }
 
   async getTransactions(
     userId: Types.ObjectId,
-    query?: PaginationQueryDto
+    query?: PaginationQueryDto,
   ): Promise<CreditTransactionListResponseDto> {
     const filter: FilterQuery<CreditTransactionDocument> = { userId };
 
     if (query?.cursor) {
       if (!Types.ObjectId.isValid(query.cursor)) {
         throw new BadRequestException({
-          code: "VALIDATION_ERROR",
-          message: "Cursor phân trang không hợp lệ.",
+          code: 'VALIDATION_ERROR',
+          message: 'Cursor phân trang không hợp lệ.',
           details: {
             fields: [
-              { field: "cursor", message: "Cursor phải là ObjectId hợp lệ" },
+              { field: 'cursor', message: 'Cursor phải là ObjectId hợp lệ' },
             ],
           },
         });
@@ -240,6 +412,7 @@ export class CreditLedgerService {
       items: items.map((doc) => ({
         id: doc._id.toString(),
         type: doc.type,
+        reason: doc.reason,
         amount: doc.amount,
         balanceAfter: doc.balanceAfter,
         readingId: doc.readingId ? doc.readingId.toString() : undefined,

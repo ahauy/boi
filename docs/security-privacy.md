@@ -10,6 +10,7 @@ Dự án nhỏ, repo công khai: mục tiêu là không lộ secret, bảo vệ 
 | Hash mật khẩu (argon2id) | Người dùng nhập | Đăng nhập | Tới khi xoá tài khoản |
 | Đăng ký chưa xác minh | Người dùng nhập | Chờ xác minh email | Tự xoá sau 24 giờ |
 | Tên, ảnh đại diện, email | Google / Facebook | Hiển thị hồ sơ, gộp tài khoản | Tới khi xoá tài khoản |
+| Tên hiển thị và ảnh đại diện tự đặt | Người dùng nhập, tải lên | Hiển thị hồ sơ. Ảnh được bỏ EXIF (gồm vị trí), cắt vuông 512×512 và lưu trên Cloudinary trong thư mục avatar riêng | Tới khi người dùng thay, gỡ ảnh, hoặc xoá tài khoản |
 | ID tài khoản Google/Facebook | Google / Facebook | Đăng nhập | Tới khi xoá tài khoản |
 | Ảnh lòng bàn tay & ảnh đã vẽ đường chỉ tay | Người dùng tải lên + Model ONNX vẽ chỉ tay | Hiển thị trực quan đường chỉ tay trên trang kết quả và lịch sử; gửi AI phân tích bói | **Lưu trên Cloudinary** sau khi đã xoá toàn bộ EXIF/GPS ([ADR-0011](adr/0011-cloudinary-image-storage-and-onnx-palm-lines.md)). Xoá ngay khỏi Cloudinary khi người dùng xoá reading, xoá tài khoản, hoặc khi bài bói thử hết hạn 7 ngày |
 | Kết quả bói & tọa độ đường chỉ tay (`palmLines`) | AI (Gemini/Groq) + Model ONNX | Hiển thị, lịch sử | Tới khi người dùng xoá reading/tài khoản |
@@ -28,7 +29,8 @@ Dự án nhỏ, repo công khai: mục tiêu là không lộ secret, bảo vệ 
   - Nếu ảnh không phải lòng bàn tay (`REJECTED`) hoặc AI lỗi (`FAILED`), server bỏ buffer ảnh ngay lập tức, **không** upload lên Cloudinary.
 - **Xoá đồng bộ khỏi Cloudinary**:
   - `DELETE /readings/{id}` gọi Cloudinary API (`cloudinary.uploader.destroy`) xoá ngay `imagePublicId` / `annotatedImagePublicId`, đồng thời đặt `result = null`, `imageUrl = null`, `annotatedImageUrl = null`, `palmLines = null` và ẩn reading khỏi API.
-  - Khi xoá tài khoản bằng `users:delete`, script xoá toàn bộ ảnh trên Cloudinary của user đó.
+  - Khi xoá tài khoản bằng `users:delete`, script xoá toàn bộ ảnh trên Cloudinary của user đó, gồm cả ảnh đại diện tự tải lên.
+  - `DELETE /me/avatar` và việc thay ảnh đại diện xoá ảnh cũ trên Cloudinary.
 - Không log ảnh, base64 ảnh hay toàn bộ response AI.
 
 ## Xoá tài khoản
@@ -52,6 +54,7 @@ Không có tính năng tự xoá trong app, để chặn vòng xoá–đăng ký
 
 - `_id` và sổ cái credits, để đối soát.
 - HMAC của các định danh, dùng khoá `IDENTITY_HASH_SECRET`. Nhờ đó tài khoản tạo lại từ cùng email/Google/Facebook bắt đầu với 0 credits và không được nhập mã giới thiệu.
+- HMAC của định danh thiết bị (`deviceIdHash`, `deletedDeviceIdHash`, bản ghi `devices`), để giữ giới hạn theo thiết bị sau khi xoá tài khoản.
 - Không giữ email, ID gốc hay ảnh bàn tay. Trang `/privacy` phải nói rõ việc giữ mã băm này.
 
 Facebook bắt buộc cung cấp **Data Deletion Instructions URL**: dùng trang `/data-deletion`.
@@ -96,10 +99,10 @@ Facebook bắt buộc cung cấp **Data Deletion Instructions URL**: dùng trang
 | Hai người nhập mã của nhau để cùng được thưởng | Chặn bằng `REFERRAL_CYCLE` |
 | Gắn cả mật khẩu + Google + Facebook để nhận bonus nhiều lần | Gộp theo email đã xác minh; bonus unique theo user |
 | Xoá tài khoản rồi đăng ký lại để nhận lại +3 và nhập mã lần nữa | Không có tự xoá; xoá thủ công ghi HMAC định danh vào `deleted_identities`; tài khoản tạo lại có 0 credits, `referralBlocked = true` |
-| Tạo tài khoản ảo nhập mã của chính mình để nhận +2 và +1 | +1 rơi vào tài khoản ảo, vô ích với tài khoản chính; +2 cho chủ mã bị giới hạn bởi trần 10 lượt/ngày; tài khoản ảo phải xác minh email thật |
+| Tạo tài khoản ảo nhập mã của chính mình để nhận +3 và +5 | +5 rơi vào tài khoản ảo, vô ích với tài khoản chính; +3 cho chủ mã bị giới hạn bởi trần 5 lượt/ngày; mỗi thiết bị chỉ nhập mã một lần |
 | Đăng ký hàng loạt bằng email giả để nhận +3 | Bắt buộc xác minh email trước khi tạo user; giới hạn 3 email/giờ cho mỗi địa chỉ. Email dùng một lần (temp mail) vẫn lọt; chấp nhận |
 | Dò mã giới thiệu | Rate limit 5 lần/giờ cho `POST /me/referral` |
-| Một người tạo nhiều tài khoản ảo để tự nhận thưởng | Chấp nhận rủi ro; trần 10 lượt/ngày giới hạn thiệt hại |
+| Một người tạo nhiều tài khoản ảo để tự nhận thưởng | Chấp nhận rủi ro; trần 5 lượt/ngày giới hạn thiệt hại |
 
 Script `credits:reconcile` so tổng sổ cái với `creditBalance` của từng user; chạy tay hoặc định kỳ.
 

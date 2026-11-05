@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, View, useWindowDimensions, type ScrollViewInstance } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, View, useWindowDimensions, type ScrollViewInstance, type ViewInstance } from 'react-native';
 import { Image } from 'expo-image';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
+  CORE_READING_COST_GEM,
   ImageQuality,
   LIFE_ASPECTS,
   LIFE_ASPECTS_MAP,
@@ -21,49 +22,69 @@ import {
 import Screen from '../../components/Screen';
 import Text from '../../components/AppText';
 import CosmicHand from '../../components/CosmicHand';
+import NativeAdSlot from '../../ads/native-ad-slot';
+import SaveShareGate from '../../earn/save-share-gate';
 import { Banner, Button, Card, Chip, IconButton, SectionLabel } from '../../components/ui';
 import { ApiError } from '../../lib/api';
-import { errorMessageOf } from '../../lib/forms';
+import { runExternalActivity } from '../../lib/external-activity';
+import { errorCodeOf, errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
 import { useAppActive } from '../../lib/motion';
 import { formatDateTime, handLabel, topicLabels, topicsLabel } from '../../lib/format';
 import { deleteReading, fetchReading } from '../../lib/readings';
-import { useAuthActions } from '../../state/auth';
+import { useAuth } from '../../state/auth';
+import { t, useI18n } from '../../i18n';
 import { colors, font, radius, spacing, text as type } from '../../theme';
 
 const TABS = [
-  { key: 'overview', label: 'Tổng quan', icon: 'text-box-outline' },
-  { key: 'lines', label: 'Đường chỉ', icon: 'gesture-swipe' },
-  { key: 'aspects', label: 'Khía cạnh', icon: 'compass-outline' },
-  { key: 'advice', label: 'Lời khuyên', icon: 'star-four-points-outline' },
+  { key: 'overview', labelKey: 'reading.tabOverview', icon: 'text-box-outline' },
+  { key: 'lines', labelKey: 'reading.tabLines', icon: 'gesture-swipe' },
+  { key: 'aspects', labelKey: 'reading.tabAspects', icon: 'compass-outline' },
+  { key: 'advice', labelKey: 'reading.tabAdvice', icon: 'star-four-points-outline' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
 
 const COMPACT_TAB_LABELS: Record<TabKey, string> = {
-  overview: 'Tổng',
-  lines: 'Đường',
-  aspects: 'Khía cạnh',
-  advice: 'Khuyên',
+  overview: 'reading.tabOverviewShort',
+  lines: 'reading.tabLinesShort',
+  aspects: 'reading.tabAspects',
+  advice: 'reading.tabAdviceShort',
 };
 
 const LINE_LEGEND = [
-  { key: 'heart', label: 'Tâm đạo', sub: 'Tình cảm', color: colors.danger },
-  { key: 'head', label: 'Trí đạo', sub: 'Trí tuệ', color: colors.violetSoft },
-  { key: 'life', label: 'Sinh đạo', sub: 'Sinh lực', color: colors.goldLight },
+  { key: 'heart', labelKey: 'reading.lineHeart', subKey: 'reading.lineHeartSub', color: colors.danger },
+  { key: 'head', labelKey: 'reading.lineHead', subKey: 'reading.lineHeadSub', color: colors.violetSoft },
+  { key: 'life', labelKey: 'reading.lineLife', subKey: 'reading.lineLifeSub', color: colors.goldLight },
 ] as const;
 
 export default function ReadingDetailScreen() {
+  useI18n();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { refreshUser } = useAuthActions();
+  const { user, refreshUser } = useAuth();
   const appActive = useAppActive();
   const scrollRef = useRef<ScrollViewInstance>(null);
+  const adSlotRef = useRef<ViewInstance>(null);
+  const { height: windowHeight } = useWindowDimensions();
+  const [adInViewport, setAdInViewport] = useState(false);
+
+  const checkAdInViewport = useCallback(() => {
+    adSlotRef.current?.measureInWindow((_x, y, _width, slotHeight) => {
+      setAdInViewport(y < windowHeight && y + slotHeight > 0);
+    });
+  }, [windowHeight]);
+
+  const isVip = Boolean((user as any)?.isVip || user?.vip?.active);
+
   const [reading, setReading] = useState<ReadingDto | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [sharingImage, setSharingImage] = useState(false);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
+
+  const [saveShareGateVisible, setSaveShareGateVisible] = useState(false);
+  const pendingShareActionRef = useRef<(() => void) | null>(null);
 
   function showShareNotice(message: string) {
     setShareNotice(message);
@@ -74,13 +95,14 @@ export default function ReadingDetailScreen() {
     if (!id) return;
     setLoading(true);
     try {
-      setReading(await fetchReading(id));
+      const data = await fetchReading(id);
+      setReading(data);
       setFailure(null);
     } catch (error) {
       setFailure(
         error instanceof ApiError && error.status === 404
-          ? 'Lần xem bói này không tồn tại hoặc đã bị xoá.'
-          : errorMessageOf(error, 'Đã có lỗi xảy ra khi tải kết quả xem bói.')
+          ? t('reading.notFoundBody')
+          : errorMessageOf(error, t('reading.loadFailed'))
       );
     } finally {
       setLoading(false);
@@ -122,15 +144,15 @@ export default function ReadingDetailScreen() {
 
   function confirmDelete() {
     haptic.warning();
-    const message = 'Bạn có chắc chắn muốn xoá lần xem bói này? Sau khi xoá, kết quả sẽ không thể khôi phục.';
+    const message = t('reading.deleteConfirm');
     if (Platform.OS === 'web') {
       const confirmFn = (globalThis as unknown as { confirm?: (text: string) => boolean }).confirm;
       if (confirmFn?.(message)) void performDelete();
       return;
     }
-    Alert.alert('Xác nhận xoá', message, [
-      { text: 'Huỷ', style: 'cancel' },
-      { text: deleting ? 'Đang xoá...' : 'Xoá vĩnh viễn', style: 'destructive', onPress: () => void performDelete() },
+    Alert.alert(t('reading.deleteTitle'), message, [
+      { text: t('reading.cancel'), style: 'cancel' },
+      { text: deleting ? t('reading.deleting') : t('reading.deleteForever'), style: 'destructive', onPress: () => void performDelete() },
     ]);
   }
 
@@ -142,10 +164,21 @@ export default function ReadingDetailScreen() {
       router.replace('/history');
     } catch (error) {
       haptic.warning();
-      setFailure(errorMessageOf(error, 'Không thể xoá lần xem bói.'));
+      setFailure(
+        errorCodeOf(error) === 'IMAGE_DELETE_FAILED' ? t('reading.deleteImageFailed') : errorMessageOf(error, t('reading.deleteFailed')),
+      );
     } finally {
       setDeleting(false);
     }
+  }
+
+  function executeShareGated(action: () => void) {
+    if (isVip) {
+      action();
+      return;
+    }
+    pendingShareActionRef.current = action;
+    setSaveShareGateVisible(true);
   }
 
   async function shareText() {
@@ -156,7 +189,7 @@ export default function ReadingDetailScreen() {
       await Share.share({ message });
     } catch {
       await Clipboard.setStringAsync(message);
-      showShareNotice('Đã sao chép nội dung chia sẻ vào bộ nhớ tạm.');
+      showShareNotice(t('reading.copiedShare'));
     }
   }
 
@@ -171,17 +204,19 @@ export default function ReadingDetailScreen() {
     setSharingImage(true);
     try {
       if (!(await Sharing.isAvailableAsync())) {
-        await Share.share({ message: buildShareText(reading) });
+        await runExternalActivity('share', () => Share.share({ message: buildShareText(reading) }));
         return;
       }
       const file = await File.downloadFileAsync(source, new File(Paths.cache, `palmsight-${reading.id}.jpg`), { idempotent: true });
-      await Sharing.shareAsync(file.uri, { mimeType: 'image/jpeg', UTI: 'public.jpeg', dialogTitle: 'Chia sẻ sơ đồ chỉ tay' });
+      await runExternalActivity('share', () =>
+        Sharing.shareAsync(file.uri, { mimeType: 'image/jpeg', UTI: 'public.jpeg', dialogTitle: t('reading.shareDiagram') })
+      );
     } catch {
       try {
-        await Share.share({ message: buildShareText(reading) });
+        await runExternalActivity('share', () => Share.share({ message: buildShareText(reading) }));
       } catch {
         await Clipboard.setStringAsync(buildShareText(reading));
-        showShareNotice('Đã sao chép nội dung chia sẻ vào bộ nhớ tạm.');
+        showShareNotice(t('reading.copiedShare'));
       }
     } finally {
       setSharingImage(false);
@@ -189,51 +224,78 @@ export default function ReadingDetailScreen() {
   }
 
   return (
-    <Screen
-      scrollRef={scrollRef}
-      contentStyle={{ paddingHorizontal: 0, gap: 0 }}
-      header={<ReadingTopBar onBack={() => router.back()} />}
-      footer={
-        reading && reading.status === ReadingStatus.DONE ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <IconButton icon="share-variant-outline" accessibilityLabel="Chia sẻ văn bản kết quả" onPress={() => void shareText()} />
-            <Button label="Bói thêm (−1 credit)" style={{ flex: 1 }} onPress={() => router.navigate('/scan')} />
-            <IconButton icon="trash-can-outline" accessibilityLabel="Xoá lần xem này" onPress={confirmDelete} style={{ borderColor: 'rgba(251,113,133,0.34)' }} />
+    <>
+      <Screen
+        scrollRef={scrollRef}
+        onScroll={checkAdInViewport}
+        contentStyle={{ paddingHorizontal: 0, gap: 0 }}
+        header={<ReadingTopBar onBack={() => router.back()} />}
+        footer={
+          reading && reading.status === ReadingStatus.DONE ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <IconButton
+                icon="share-variant-outline"
+                accessibilityLabel={t('reading.shareTextA11y')}
+                onPress={() => executeShareGated(() => void shareText())}
+              />
+              <Button label={t('reading.again', { cost: CORE_READING_COST_GEM })} style={{ flex: 1 }} onPress={() => router.navigate('/scan')} />
+              <IconButton icon="trash-can-outline" accessibilityLabel={t('reading.deleteThis')} onPress={confirmDelete} style={{ borderColor: 'rgba(251,113,133,0.34)' }} />
+            </View>
+          ) : null
+        }>
+        {shareNotice ? (
+          <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.sm }}>
+            <Banner variant="success" title={shareNotice} />
           </View>
-        ) : null
-      }>
-      {shareNotice ? (
-        <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.sm }}>
-          <Banner variant="success" title={shareNotice} />
-        </View>
-      ) : null}
+        ) : null}
 
-      {loading && !reading ? <ReadingSkeleton /> : null}
+        {loading && !reading ? <ReadingSkeleton /> : null}
 
-      {!loading && failure ? (
-        <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.lg }}>
-          <Card ornate glow style={{ alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }}>
-            <Text style={[type.eyebrow, { color: colors.danger }]}>KHÔNG MỞ ĐƯỢC QUẺ</Text>
-            <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>Không tìm thấy lần xem bói</Text>
-            <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center' }]}>{failure}</Text>
-            <Button label="Quay lại Lịch sử" onPress={() => router.replace('/history')} />
-          </Card>
-        </View>
-      ) : null}
+        {!loading && failure ? (
+          <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.lg }}>
+            <Card ornate glow style={{ alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }}>
+              <Text style={[type.eyebrow, { color: colors.danger }]}>{t('reading.cannotOpen')}</Text>
+              <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>{t('reading.notFoundTitle')}</Text>
+              <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center' }]}>{failure}</Text>
+              <Button label={t('reading.backHistory')} onPress={() => router.replace('/history')} />
+            </Card>
+          </View>
+        ) : null}
 
-      {reading ? (
-        <ReadingBody reading={reading} onDelete={confirmDelete} deleting={deleting} onShareImage={shareImage} sharingImage={sharingImage} scrollRef={scrollRef} />
-      ) : null}
-    </Screen>
+        {reading ? (
+          <ReadingBody
+            reading={reading}
+            onDelete={confirmDelete}
+            deleting={deleting}
+            onShareImage={() => executeShareGated(() => void shareImage())}
+            sharingImage={sharingImage}
+            scrollRef={scrollRef}
+            adSlotRef={adSlotRef}
+            adInViewport={adInViewport}
+            onAdSlotLayout={checkAdInViewport}
+          />
+        ) : null}
+      </Screen>
+
+      <SaveShareGate
+        visible={saveShareGateVisible}
+        onClose={() => setSaveShareGateVisible(false)}
+        onProceed={() => {
+          const action = pendingShareActionRef.current;
+          pendingShareActionRef.current = null;
+          action?.();
+        }}
+      />
+    </>
   );
 }
 
 function ReadingTopBar({ onBack }: { onBack: () => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xl, paddingBottom: spacing.sm, gap: spacing.sm }}>
-      <IconButton icon="chevron-left" accessibilityLabel="Quay lại" onPress={onBack} />
+      <IconButton icon="chevron-left" accessibilityLabel={t('reading.back')} onPress={onBack} />
       <Text numberOfLines={1} style={[type.eyebrow, { color: colors.gold, letterSpacing: 2, flex: 1, textAlign: 'center' }]}>
-        LUẬN GIẢI CHI TIẾT
+        {t('reading.detail')}
       </Text>
       <View style={{ width: 46, height: 46 }} />
     </View>
@@ -247,6 +309,9 @@ function ReadingBody({
   onShareImage,
   sharingImage,
   scrollRef,
+  adSlotRef,
+  adInViewport,
+  onAdSlotLayout,
 }: {
   reading: ReadingDto;
   onDelete?: () => void;
@@ -254,6 +319,9 @@ function ReadingBody({
   onShareImage?: () => void;
   sharingImage?: boolean;
   scrollRef: React.RefObject<ScrollViewInstance | null>;
+  adSlotRef: React.RefObject<ViewInstance | null>;
+  adInViewport: boolean;
+  onAdSlotLayout: () => void;
 }) {
   const { width, height } = useWindowDimensions();
   const compactTabs = width < 380;
@@ -271,13 +339,13 @@ function ReadingBody({
       <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.lg }}>
         <Card ornate glow tone="violet" style={{ alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }}>
           <ActivityIndicator color={colors.gold} size="large" />
-          <Text style={[type.eyebrow, { color: colors.gold }]}>THIÊN CƠ ĐANG MỞ</Text>
-          <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>Đang luận giải quẻ</Text>
+          <Text style={[type.eyebrow, { color: colors.gold }]}>{t('reading.opening')}</Text>
+          <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>{t('reading.processingTitle')}</Text>
           <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center', maxWidth: 300 }]}>
-            AI đang đọc các đường chỉ tay. Màn này sẽ tự cập nhật khi có kết quả.
+            {t('reading.processingBody')}
           </Text>
           <Text style={[type.code, { color: colors.goldLight }]}>{`${handLabel(reading.hand)} · ${schoolName}`}</Text>
-          <Button label="Về Lịch sử" variant="outline" onPress={() => router.replace('/history')} />
+          <Button label={t('reading.toHistory')} variant="outline" onPress={() => router.replace('/history')} />
         </Card>
       </View>
     );
@@ -287,20 +355,20 @@ function ReadingBody({
     return (
       <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.lg }}>
         <Card ornate glow style={{ alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xxl }}>
-          <Text style={[type.eyebrow, { color: colors.danger }]}>QUẺ CHƯA THÀNH</Text>
+          <Text style={[type.eyebrow, { color: colors.danger }]}>{t('reading.notDone')}</Text>
           <Text style={[type.headingMd, { color: colors.ink, textAlign: 'center' }]}>
-            {reading.status === ReadingStatus.REJECTED ? 'Không nhìn rõ lòng bàn tay' : 'Hệ thống bận'}
+            {reading.status === ReadingStatus.REJECTED ? t('reading.rejectedTitle') : t('reading.busyTitle')}
           </Text>
           <Text style={[type.bodyMd, { color: colors.mute, textAlign: 'center' }]}>
             {reading.status === ReadingStatus.REJECTED
-              ? reading.rejectReason || 'Hãy chụp lại nơi đủ sáng, xoè thẳng bàn tay.'
-              : 'PalmSight chưa thể luận giải lần này. Bạn có thể thử lại hoặc xoá quẻ.'}
+              ? reading.rejectReason || t('reading.rejectedBody')
+              : t('reading.busyBody')}
           </Text>
-          <Text style={[type.captionStrong, { color: colors.success }]}>Đã hoàn 1 credit</Text>
-          <Button label="Chụp lại ảnh" onPress={() => router.navigate('/scan')} />
+          <Text style={[type.captionStrong, { color: colors.success }]}>{t('reading.refunded', { cost: CORE_READING_COST_GEM })}</Text>
+          <Button label={t('reading.retakePhoto')} onPress={() => router.navigate('/scan')} />
           {onDelete ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Xoá lần xem này" onPress={onDelete} disabled={deleting} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg }}>
-              <Text style={[type.caption, { color: colors.danger, textAlign: 'center' }]}>{deleting ? 'Đang xoá...' : 'Xoá lần xem này'}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={t('reading.deleteThis')} onPress={onDelete} disabled={deleting} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg }}>
+              <Text style={[type.caption, { color: colors.danger, textAlign: 'center' }]}>{deleting ? t('reading.deleting') : t('reading.deleteThis')}</Text>
             </Pressable>
           ) : null}
         </Card>
@@ -328,30 +396,30 @@ function ReadingBody({
     <View>
       {imageUrl ? (
         <View style={{ width: '100%', height: heroHeight, backgroundColor: colors.obsidian }}>
-          <Image source={{ uri: imageUrl, cacheKey: reading.id }} style={{ width: '100%', height: '100%' }} contentFit="cover" transition={220} accessibilityLabel="Ảnh chỉ tay đã phân tích" />
+          <Image source={{ uri: imageUrl, cacheKey: reading.id }} style={{ width: '100%', height: '100%' }} contentFit="cover" transition={220} accessibilityLabel={t('reading.imageA11y')} />
           <LinearGradient colors={['rgba(4,6,17,0.08)', 'rgba(4,6,17,0.38)', 'rgba(4,6,17,0.98)']} locations={[0, 0.46, 1]} style={StyleSheet.absoluteFill} />
 
           <View style={{ position: 'absolute', top: spacing.md, left: spacing.md, right: spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={styles.imageBadge}>
-              <Text style={[type.code, { color: colors.goldLight, fontSize: 10 }]}>{usingAnnotated && annotated ? '✦ SƠ ĐỒ AI' : 'ẢNH CHỈ TAY'}</Text>
+              <Text style={[type.code, { color: colors.goldLight, fontSize: 10 }]}>{usingAnnotated && annotated ? t('reading.aiDiagramBadge') : t('reading.palmPhoto')}</Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: spacing.sm }}>
               {annotated ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={usingAnnotated ? 'Xem ảnh gốc' : 'Xem sơ đồ AI'}
+                  accessibilityLabel={usingAnnotated ? t('reading.viewOriginal') : t('reading.viewDiagram')}
                   onPress={() => {
                     haptic.select();
                     setUsingAnnotated((value) => !value);
                   }}
                   style={({ pressed }) => [styles.imageToggle, pressed && { opacity: 0.8 }]}>
-                  <Text style={[type.code, { color: colors.goldLight, fontSize: 10 }]}>{usingAnnotated ? 'ẢNH GỐC' : 'SƠ ĐỒ AI'}</Text>
+                  <Text style={[type.code, { color: colors.goldLight, fontSize: 10 }]}>{usingAnnotated ? t('reading.originalBadge') : t('reading.diagramBadge')}</Text>
                 </Pressable>
               ) : null}
               {onShareImage ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Chia sẻ ảnh chỉ tay"
+                  accessibilityLabel={t('reading.shareImageA11y')}
                   accessibilityState={{ busy: Boolean(sharingImage) }}
                   disabled={sharingImage}
                   onPress={onShareImage}
@@ -376,7 +444,7 @@ function ReadingBody({
         <View style={{ paddingHorizontal: spacing.xl }}>
           <Card ornate glow tone="violet" style={{ alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl }}>
             <CosmicHand size={190} />
-            <Text style={[type.eyebrow, { color: colors.gold }]}>ẤN CHỨNG THIÊN MỆNH</Text>
+            <Text style={[type.eyebrow, { color: colors.gold }]}>{t('reading.seal')}</Text>
             <Text style={[type.displayLg, { color: colors.ink, textAlign: 'center' }]} accessibilityRole="header">{schoolName}</Text>
             <Text style={[type.code, { color: colors.stone }]}>{`${handLabel(reading.hand)} · ${formatDateTime(reading.createdAt)}`}</Text>
           </Card>
@@ -387,12 +455,12 @@ function ReadingBody({
         <View accessibilityRole="tablist" style={styles.tabBar}>
           {TABS.map((item) => {
             const active = item.key === tab;
-            const label = compactTabs ? COMPACT_TAB_LABELS[item.key] : item.label;
+            const label = t(compactTabs ? COMPACT_TAB_LABELS[item.key] : item.labelKey);
             return (
               <Pressable
                 key={item.key}
                 accessibilityRole="tab"
-                accessibilityLabel={item.label}
+                accessibilityLabel={t(item.labelKey)}
                 accessibilityState={{ selected: active }}
                 aria-selected={active}
                 onPress={() => selectTab(item.key)}
@@ -408,7 +476,7 @@ function ReadingBody({
       </View>
 
       <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: spacing.xl, gap: spacing.lg }}>
-        {result?.imageQuality === ImageQuality.POOR ? <Banner variant="warning" title="Ảnh hơi mờ, kết quả có thể chưa chính xác." /> : null}
+        {result?.imageQuality === ImageQuality.POOR ? <Banner variant="warning" title={t('reading.poorImage')} /> : null}
 
         {tab === 'overview' ? (
           <>
@@ -416,18 +484,18 @@ function ReadingBody({
               <LinearGradient colors={['rgba(124,108,246,0.28)', 'rgba(18,27,58,0.9)', 'rgba(8,13,30,0.96)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: radius['2xl'], borderWidth: 1, borderColor: colors.hairlineStrong, padding: spacing.lg, gap: spacing.md, overflow: 'hidden' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
                   <MaterialCommunityIcons name="star-four-points" size={14} color={colors.gold} />
-                  <Text style={[type.eyebrow, { color: colors.gold }]}>TÓM TẮT THIÊN CƠ</Text>
+                  <Text style={[type.eyebrow, { color: colors.gold }]}>{t('reading.summary')}</Text>
                   <View style={{ height: 1, flex: 1, backgroundColor: colors.hairlineSoft }} />
                 </View>
                 <Text style={[type.quote, { color: colors.ink }]}>{result.summary}</Text>
               </LinearGradient>
             ) : (
-              <Card><Text style={[type.bodyMd, { color: colors.mute }]}>Quẻ này chưa có phần tóm tắt.</Text></Card>
+              <Card><Text style={[type.bodyMd, { color: colors.mute }]}>{t('reading.noSummary')}</Text></Card>
             )}
 
             {reading.topics.length > 0 ? (
               <Card style={{ gap: spacing.sm }}>
-                <SectionLabel>ĐIỀU BẠN ĐÃ HỎI</SectionLabel>
+                <SectionLabel>{t('reading.asked')}</SectionLabel>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
                   {reading.topics.map((topic) => (
                     <Chip key={topic} label={getTopicLabel(topic, reading.school)} />
@@ -437,13 +505,13 @@ function ReadingBody({
             ) : null}
 
             <Card style={{ gap: spacing.sm }}>
-              <SectionLabel>SƠ ĐỒ CHỈ TAY</SectionLabel>
+              <SectionLabel>{t('reading.diagram')}</SectionLabel>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
                 {LINE_LEGEND.map((line) => (
                   <View key={line.key} style={styles.legendPill}>
                     <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: line.color }} />
-                    <Text style={[type.captionStrong, { color: colors.ink }]}>{line.label}</Text>
-                    <Text style={[type.code, { color: colors.stone, fontSize: 9 }]}>{line.sub.toUpperCase()}</Text>
+                    <Text style={[type.captionStrong, { color: colors.ink }]}>{t(line.labelKey)}</Text>
+                    <Text style={[type.code, { color: colors.stone, fontSize: 9 }]}>{t(line.subKey).toUpperCase()}</Text>
                   </View>
                 ))}
               </View>
@@ -462,26 +530,26 @@ function ReadingBody({
                 </View>
                 <View style={{ borderLeftWidth: 2, borderLeftColor: colors.hairlineStrong, paddingLeft: spacing.md, gap: spacing.md }}>
                   <View style={{ gap: 4 }}>
-                    <Text style={[type.eyebrow, { color: colors.violetSoft, letterSpacing: 1.8 }]}>QUAN SÁT</Text>
+                    <Text style={[type.eyebrow, { color: colors.violetSoft, letterSpacing: 1.8 }]}>{t('reading.observation')}</Text>
                     <Text style={[type.bodyMd, { color: colors.body }]}>{section.observation}</Text>
                   </View>
                   <View style={{ height: 1, backgroundColor: colors.hairlineSoft }} />
                   <View style={{ gap: 4 }}>
-                    <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 1.8 }]}>Ý NGHĨA</Text>
+                    <Text style={[type.eyebrow, { color: colors.gold, letterSpacing: 1.8 }]}>{t('reading.meaning')}</Text>
                     <Text style={[type.bodyMd, { color: colors.body }]}>{section.meaning}</Text>
                   </View>
                 </View>
               </Card>
             ))
           ) : (
-            <EmptyTab text="Quẻ này chưa có phần luận giải từng đường chỉ." />
+            <EmptyTab text={t('reading.noLines')} />
           )
         ) : null}
 
         {tab === 'aspects' ? (
           aspects.length > 0 ? (
             <Card style={{ gap: spacing.md }}>
-              <SectionLabel>KHÍA CẠNH CUỘC SỐNG</SectionLabel>
+              <SectionLabel>{t('reading.lifeAspects')}</SectionLabel>
               {aspects.map((row, index) => (
                 <View key={row.key} style={{ gap: spacing.sm }}>
                   {index > 0 ? <View style={{ height: 1, backgroundColor: colors.hairlineSoft }} /> : null}
@@ -494,7 +562,7 @@ function ReadingBody({
               ))}
             </Card>
           ) : (
-            <EmptyTab text="Quẻ này không chọn khía cạnh cuộc sống riêng." />
+            <EmptyTab text={t('reading.noAspects')} />
           )
         ) : null}
 
@@ -504,26 +572,35 @@ function ReadingBody({
               <LinearGradient colors={['rgba(231,199,119,0.2)', 'rgba(24,34,68,0.92)', 'rgba(8,13,30,0.96)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: radius['2xl'], borderWidth: 1, borderColor: colors.hairlineStrong, padding: spacing.lg, gap: spacing.md }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
                   <MaterialCommunityIcons name="star-four-points" size={14} color={colors.gold} />
-                  <Text style={[type.eyebrow, { color: colors.gold }]}>LỜI KHUYÊN</Text>
+                  <Text style={[type.eyebrow, { color: colors.gold }]}>{t('reading.advice')}</Text>
                   <View style={{ height: 1, flex: 1, backgroundColor: colors.hairlineSoft }} />
                 </View>
                 <Text style={[type.headingMd, { color: colors.ink, lineHeight: 31 }]}>{result.advice}</Text>
               </LinearGradient>
             ) : (
-              <EmptyTab text="Quẻ này chưa có lời khuyên." />
+              <EmptyTab text={t('reading.noAdvice')} />
             )}
             <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.glassBorder, padding: spacing.md, backgroundColor: colors.glassFill }}>
               <Text style={[type.caption, { color: colors.stone }]}>
-                {result?.disclaimer ?? 'Kết quả mang tính giải trí, không thay thế tư vấn chuyên môn.'}
+                {result?.disclaimer ?? t('reading.disclaimer')}
               </Text>
             </View>
             {onDelete ? (
-              <Pressable accessibilityRole="button" accessibilityLabel="Xoá lần xem này" onPress={onDelete} disabled={deleting} style={({ pressed }) => ({ alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, opacity: pressed ? 0.7 : 1 })}>
-                <Text style={[type.caption, { color: colors.danger, textAlign: 'center' }]}>{deleting ? 'Đang xoá...' : 'Xoá lần xem này'}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={t('reading.deleteThis')} onPress={onDelete} disabled={deleting} style={({ pressed }) => ({ alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, opacity: pressed ? 0.7 : 1 })}>
+                <Text style={[type.caption, { color: colors.danger, textAlign: 'center' }]}>{deleting ? t('reading.deleting') : t('reading.deleteThis')}</Text>
               </Pressable>
             ) : null}
           </>
         ) : null}
+
+        {/* Native Ad Slot at bottom of scroll content (§5.2, §5.4) */}
+        <View ref={adSlotRef} onLayout={onAdSlotLayout} style={{ alignItems: 'center', paddingTop: spacing.md }}>
+          <NativeAdSlot
+            availableHeight={height}
+            availableWidth={Math.max(300, width - spacing.xl * 2)}
+            inViewport={adInViewport}
+          />
+        </View>
       </View>
     </View>
   );
@@ -548,7 +625,7 @@ function ReadingSkeleton() {
         ))}
       </View>
       <View style={{ height: 130, borderRadius: radius['2xl'], backgroundColor: colors.glassFill, borderWidth: 1, borderColor: colors.glassBorder }} />
-      <Text style={[type.caption, { color: colors.mute, textAlign: 'center' }]}>Đang mở quẻ...</Text>
+      <Text style={[type.caption, { color: colors.mute, textAlign: 'center' }]}>{t('reading.loading')}</Text>
     </View>
   );
 }
@@ -558,24 +635,24 @@ function buildShareText(reading: ReadingDto): string {
   const lines: string[] = [
     `PALMSIGHT - ${READING_SCHOOLS[reading.school]?.name ?? reading.school}`,
     `${handLabel(reading.hand)} · ${formatDateTime(reading.createdAt)}`,
-    `Mục xem: ${topicLabels(reading.topics, reading.school).join(', ')}`,
+    t('reading.shareTopics', { topics: topicLabels(reading.topics, reading.school).join(', ') }),
   ];
 
-  if (result?.summary) lines.push('', '[Tóm tắt]', result.summary);
+  if (result?.summary) lines.push('', t('reading.shareSummary'), result.summary);
 
   for (const section of result?.sections ?? []) {
-    lines.push('', `[${section.title}]`, 'Quan sát:', section.observation, 'Ý nghĩa:', section.meaning);
+    lines.push('', `[${section.title}]`, t('reading.shareObservation'), section.observation, t('reading.shareMeaning'), section.meaning);
   }
 
   const aspects = Object.entries(result?.aspects ?? {});
   if (aspects.length > 0) {
-    lines.push('', '[Khía cạnh cuộc sống]');
+    lines.push('', t('reading.shareAspects'));
     for (const [key, content] of aspects) {
       lines.push(`${LIFE_ASPECTS_MAP[key as LifeAspect]?.label ?? key}: ${content}`);
     }
   }
 
-  if (result?.advice) lines.push('', '[Lời khuyên]', result.advice);
+  if (result?.advice) lines.push('', t('reading.shareAdvice'), result.advice);
   if (result?.disclaimer) lines.push('', result.disclaimer);
 
   return lines.join('\n');

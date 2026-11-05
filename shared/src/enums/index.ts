@@ -29,17 +29,47 @@ export enum CreditTransactionType {
   READING_REFUND = "READING_REFUND",
   REWARDED_AD = "REWARDED_AD",
   ADMIN_ADJUST = "ADMIN_ADJUST",
+  STARTER = "starter",
+  SINGLE = "single",
+  REFUND = "refund",
+  CHECKIN = "checkin",
+  CHECKIN_MILESTONE = "checkin_milestone",
+  CHECKIN_RESTORE = "checkin_restore",
+  AD_REWARD = "ad_reward",
+  WHEEL = "wheel",
+  WHEEL_SPIN = "wheel_spin",
+  VIP_DAILY = "vip_daily",
+  GUEST_MERGE = "guest_merge",
+  OPERATOR = "operator",
 }
 
-export enum RewardedAdClaimStatus {
-  ISSUED = "ISSUED",
-  REDEEMED = "REDEEMED",
+export enum LedgerReason {
+  STARTER = "starter",
+  SINGLE = "single",
+  REFUND = "refund",
+  CHECKIN = "checkin",
+  CHECKIN_MILESTONE = "checkin_milestone",
+  CHECKIN_RESTORE = "checkin_restore",
+  AD_REWARD = "ad_reward",
+  WHEEL = "wheel",
+  WHEEL_SPIN = "wheel_spin",
+  VIP_DAILY = "vip_daily",
+  GUEST_MERGE = "guest_merge",
+  OPERATOR = "operator",
 }
 
 /** Nơi app hiện lời đề nghị xem quảng cáo; ghi vào claim để đo chỗ nào hiệu quả. */
-export enum RewardedAdPlacement {
-  WALLET = "wallet",
-  OUT_OF_CREDITS = "out_of_credits",
+export enum AdRewardKind {
+  CHECKIN = "checkin",
+  SPIN = "spin",
+  BONUS = "bonus",
+}
+
+export enum AdRewardStatus {
+  PENDING = "pending",
+  REWARDED = "rewarded",
+  CAPPED = "capped",
+  RELEASED = "released",
 }
 
 export enum ImageQuality {

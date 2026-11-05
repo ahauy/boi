@@ -54,7 +54,7 @@ describe("Homepage (Landing Page)", () => {
     renderHomepage();
 
     // Badge
-    expect(screen.getByText("Miễn phí 3 credits")).toBeInTheDocument();
+    expect(screen.getByText("Miễn phí 5 GEM")).toBeInTheDocument();
 
     // H1
     expect(
@@ -245,12 +245,12 @@ describe("Homepage (Landing Page)", () => {
     renderHomepage();
 
     expect(
-      screen.getByRole("heading", { name: "Credits", level: 2 })
+      screen.getByRole("heading", { name: "GEM", level: 2 })
     ).toBeInTheDocument();
 
-    expect(screen.getByText("[+] 3 credits")).toBeInTheDocument();
-    expect(screen.getByText("[+] +2 credits")).toBeInTheDocument();
-    expect(screen.getByText("[+] 1 lần xem = 1 credit")).toBeInTheDocument();
+    expect(screen.getByText("[+] 5 GEM")).toBeInTheDocument();
+    expect(screen.getByText("[+] +3 GEM")).toBeInTheDocument();
+    expect(screen.getByText("[+] 1 lần xem = 5 GEM")).toBeInTheDocument();
   });
 
   it("should render FaqSection and handle accordion open/close interactions", () => {
@@ -278,8 +278,9 @@ describe("Homepage (Landing Page)", () => {
     // Question 1 answer should be open initially (per screen.html)
     expect(screen.getByTestId("faq-answer-0")).toBeInTheDocument();
     expect(
-      screen.getByText(/Máy chủ xử lý ảnh tạm thời trên RAM để phân tích AI và không lưu trữ trên máy chủ hay dịch vụ đám mây nào theo ADR-0010/)
+      screen.getByText(/Ảnh của lần xem thành công được lưu trên Cloudinary cho tới khi bạn xoá lần xem đó hoặc xoá tài khoản/)
     ).toBeInTheDocument();
+    expect(screen.getByTestId("faq-answer-0")).not.toHaveTextContent(/ADR-00|RAM|không lưu trữ|tuyệt đối/);
 
     // Questions 2 & 3 answers should be closed initially
     expect(screen.queryByTestId("faq-answer-1")).not.toBeInTheDocument();
@@ -303,7 +304,7 @@ describe("Homepage (Landing Page)", () => {
     expect(screen.getByTestId("faq-answer-2")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Hệ thống tự động hoàn trả 1 credit vào ví của bạn nếu ảnh không đạt yêu cầu hoặc xảy ra lỗi."
+        "Hệ thống tự động hoàn trả số GEM đã trừ vào ví của bạn nếu ảnh không đạt yêu cầu hoặc xảy ra lỗi."
       )
     ).toBeInTheDocument();
   });

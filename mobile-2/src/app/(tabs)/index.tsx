@@ -3,7 +3,7 @@ import { View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { ReadingStatus, type ReadingListItemDto } from '@palmsight/shared';
+import { CORE_READING_COST_GEM, ReadingStatus, type ReadingListItemDto } from '@palmsight/shared';
 
 import HeaderCredits from '../../components/HeaderCredits';
 import Screen from '../../components/Screen';
@@ -12,16 +12,25 @@ import CosmicHand from '../../components/CosmicHand';
 import ReadingCard from '../../components/ReadingCard';
 import ReadingSetupSheet from '../../components/ReadingSetupSheet';
 import { Banner, Button, SectionLabel, TextLink } from '../../components/ui';
+import NotEnoughSheet from '../../earn/not-enough-sheet';
+import { triggerPaywall } from '../../premium/paywall-triggers';
+import { useAuth } from '../../state/auth';
+import { t, useI18n } from '../../i18n';
 import { errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
 import { fetchReadings } from '../../lib/readings';
 import { colors, font, radius, shadow, spacing, text as type } from '../../theme';
 
 export default function HomeScreen() {
+  useI18n();
+  const { user, refreshUser } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [notEnoughOpen, setNotEnoughOpen] = useState(false);
   const [recent, setRecent] = useState<ReadingListItemDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<string | null>(null);
+
+  const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
 
   const loadRecent = useCallback(async () => {
     setLoading(true);
@@ -31,7 +40,7 @@ export default function HomeScreen() {
       setRecent(page.items.slice(0, 2));
       setFailure(null);
     } catch (error) {
-      setFailure(errorMessageOf(error, 'Không tải được quẻ gần đây.'));
+      setFailure(errorMessageOf(error, t('home.loadRecentFailed')));
     } finally {
       setLoading(false);
     }
@@ -40,13 +49,24 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadRecent();
-    }, [loadRecent])
+      void refreshUser().catch(() => undefined);
+    }, [loadRecent, refreshUser])
   );
 
   const greeting = greetingForHour(new Date().getHours());
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const compact = height < 720;
   const handSize = compact ? 112 : 158;
+
+  function handleStartReadingPress() {
+    haptic.tap();
+    if (gemBalance < CORE_READING_COST_GEM) {
+      setNotEnoughOpen(true);
+      void triggerPaywall('out_of_currency');
+      return;
+    }
+    setSheetOpen(true);
+  }
 
   return (
     <>
@@ -63,7 +83,7 @@ export default function HomeScreen() {
         }>
         <View style={{ gap: spacing.xs, paddingTop: spacing.xs }}>
           <Text style={[type.caption, { color: colors.mute }]}>{greeting}</Text>
-          <Text style={[type.headingLg, { color: colors.ink, lineHeight: 36 }]}>Hôm nay bàn tay kể điều gì?</Text>
+          <Text style={[type.headingLg, { color: colors.ink, lineHeight: 36 }]}>{t('home.headline')}</Text>
         </View>
 
         <View style={{ borderRadius: radius['3xl'], overflow: 'hidden', borderWidth: 1, borderColor: colors.glassBorder, ...shadow.violet }}>
@@ -74,7 +94,7 @@ export default function HomeScreen() {
             style={{ padding: compact ? spacing.md : spacing.lg, gap: compact ? spacing.sm : spacing.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold }} />
-              <Text style={[type.eyebrow, { color: colors.goldLight, letterSpacing: 2.1 }]}>KHAI MỞ THIÊN CƠ</Text>
+              <Text style={[type.eyebrow, { color: colors.goldLight, letterSpacing: 2.1 }]}>{t('home.eyebrow')}</Text>
               <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.14)' }} />
             </View>
 
@@ -84,26 +104,23 @@ export default function HomeScreen() {
 
             <View style={{ gap: spacing.sm }}>
               <Text style={[type.displayLg, compact && { fontSize: 28, lineHeight: 32 }, { color: colors.ink, textAlign: 'center' }]}>
-                Hỏi bàn tay{'\n'}
-                <Text style={{ fontFamily: font.displayItalic, color: colors.goldLight }}>điều bạn muốn biết.</Text>
+                {t('home.heroLine1')}{'\n'}
+                <Text style={{ fontFamily: font.displayItalic, color: colors.goldLight }}>{t('home.heroLine2')}</Text>
               </Text>
               <Text style={[type.caption, { color: colors.body, textAlign: 'center', lineHeight: 20 }]} numberOfLines={2}>
-                {compact ? 'AI đọc đường chỉ tay và viết riêng cho bạn.' : 'AI đọc những đường chỉ tay và viết riêng cho bạn một bài luận giải.'}
+                {compact ? t('home.subtitleCompact') : t('home.subtitle')}
               </Text>
             </View>
 
             <Button
-              label="Bắt đầu xem bói"
+              label={t('home.start')}
               size="lg"
-              onPress={() => {
-                haptic.tap();
-                setSheetOpen(true);
-              }}
+              onPress={handleStartReadingPress}
               icon={<MaterialCommunityIcons name="star-four-points" size={18} color={colors.onGold} />}
             />
 
             <Text style={[type.code, { color: colors.body, textAlign: 'center', fontSize: 9.5, lineHeight: 14 }]}>
-              {compact ? '1 credit · dưới 60 giây' : '1 credit / quẻ · dưới 60 giây · ảnh được bảo vệ'}
+              {t(compact ? 'home.costCompact' : 'home.costFull', { cost: CORE_READING_COST_GEM })}
             </Text>
           </LinearGradient>
         </View>
@@ -113,7 +130,7 @@ export default function HomeScreen() {
             right={
               recent.length > 0 ? (
                 <TextLink
-                  label="Xem tất cả"
+                  label={t('home.viewAll')}
                   style={{ fontSize: 13, color: colors.goldLight }}
                   onPress={() => {
                     haptic.select();
@@ -122,21 +139,21 @@ export default function HomeScreen() {
                 />
               ) : undefined
             }>
-            QUẺ GẦN ĐÂY
+            {t('home.recent')}
           </SectionLabel>
 
           {loading ? <HomeSkeleton /> : null}
 
           {!loading && failure ? (
-            <Banner variant="error" title={failure} action={{ label: 'Thử lại', onPress: () => void loadRecent() }} />
+            <Banner variant="error" title={failure} action={{ label: t('screen.retry'), onPress: () => void loadRecent() }} />
           ) : null}
 
           {!loading && !failure && recent.length === 0 ? (
             <View style={{ alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg, borderWidth: 1, borderColor: colors.glassBorder, borderRadius: radius['2xl'], backgroundColor: colors.glassFill }}>
               <Text style={{ fontFamily: font.display, fontSize: 30, color: colors.gold }}>✦</Text>
-              <Text style={[type.bodyBold, { color: colors.ink }]}>Chưa có quẻ nào</Text>
+              <Text style={[type.bodyBold, { color: colors.ink }]}>{t('home.emptyTitle')}</Text>
               <Text style={[type.caption, { color: colors.mute, textAlign: 'center', maxWidth: 270 }]}>
-                Quẻ đầu tiên của bạn sẽ được lưu ở đây, kèm ảnh chỉ tay và lời luận giải.
+                {t('home.emptyBody')}
               </Text>
             </View>
           ) : null}
@@ -144,7 +161,7 @@ export default function HomeScreen() {
           {!loading && recent.map((item) => <ReadingCard key={item.id} item={item} compact />)}
 
           {!loading && recent.some((item) => item.status === ReadingStatus.PROCESSING) ? (
-            <Text style={[type.caption, { color: colors.warning, textAlign: 'center' }]}>Có quẻ đang được luận giải, mở Lịch sử để xem tiến độ.</Text>
+            <Text style={[type.caption, { color: colors.warning, textAlign: 'center' }]}>{t('home.processing')}</Text>
           ) : null}
         </View>
 
@@ -163,8 +180,8 @@ export default function HomeScreen() {
             <MaterialCommunityIcons name="moon-waning-crescent" size={20} color={colors.goldLight} />
           </View>
           <View style={{ flex: 1, gap: 2 }}>
-            <Text style={[type.quote, { color: colors.goldLight, fontSize: 18, lineHeight: 24 }]}>“Mỗi bàn tay giữ một thiên mệnh.”</Text>
-            <Text style={[type.caption, { color: colors.mute }]}>PalmSight chỉ mang tính giải trí, không thay thế tư vấn chuyên môn.</Text>
+            <Text style={[type.quote, { color: colors.goldLight, fontSize: 18, lineHeight: 24 }]}>{t('home.quote')}</Text>
+            <Text style={[type.caption, { color: colors.mute }]}>{t('home.disclaimer')}</Text>
           </View>
         </View>
       </Screen>
@@ -175,6 +192,17 @@ export default function HomeScreen() {
         onStartScan={() => {
           setSheetOpen(false);
           router.push('/camera');
+        }}
+      />
+
+      <NotEnoughSheet
+        visible={notEnoughOpen}
+        onClose={() => setNotEnoughOpen(false)}
+        currentBalance={gemBalance}
+        requiredGem={CORE_READING_COST_GEM}
+        onEarned={() => {
+          void refreshUser().catch(() => undefined);
+          setNotEnoughOpen(false);
         }}
       />
     </>
@@ -191,7 +219,7 @@ function HomeSkeleton() {
 }
 
 function greetingForHour(hour: number): string {
-  if (hour < 11) return 'Chào buổi sáng, nhà chiêm tinh.';
-  if (hour < 18) return 'Chào buổi chiều, nhà chiêm tinh.';
-  return 'Chào buổi tối, nhà chiêm tinh.';
+  if (hour < 11) return t('home.greetMorning');
+  if (hour < 18) return t('home.greetAfternoon');
+  return t('home.greetEvening');
 }

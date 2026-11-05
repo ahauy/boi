@@ -5,7 +5,7 @@ export const FAQ_DATA: FaqItem[] = [
   {
     question: "Ảnh của tôi có được lưu không?",
     answer:
-      "Máy chủ xử lý ảnh tạm thời trên RAM để phân tích AI và không lưu trữ trên máy chủ hay dịch vụ đám mây nào theo ADR-0010, đảm bảo quyền riêng tư tuyệt đối.",
+      "Có. Ảnh của lần xem thành công được lưu trên Cloudinary cho tới khi bạn xoá lần xem đó hoặc xoá tài khoản; ảnh của lần xem bị từ chối hoặc lỗi không được lưu. Toàn bộ siêu dữ liệu EXIF, gồm vị trí GPS, bị xoá trước khi xử lý.",
   },
   {
     question: "Kết quả có chính xác không?",
@@ -15,7 +15,7 @@ export const FAQ_DATA: FaqItem[] = [
   {
     question: "Nếu AI bị lỗi thì sao?",
     answer:
-      "Hệ thống tự động hoàn trả 1 credit vào ví của bạn nếu ảnh không đạt yêu cầu hoặc xảy ra lỗi.",
+      "Hệ thống tự động hoàn trả số GEM đã trừ vào ví của bạn nếu ảnh không đạt yêu cầu hoặc xảy ra lỗi.",
   },
 ];
 

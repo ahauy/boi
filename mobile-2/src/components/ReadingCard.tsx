@@ -3,20 +3,22 @@ import { Pressable, View } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { triggerOpenHistoryResult } from '../ads/interstitial-triggers';
 import { READING_SCHOOLS, ReadingStatus, type ReadingListItemDto } from '@palmsight/shared';
 
 import Text from './AppText';
 import { StatusPill } from './ui';
 import { colors, font, radius, spacing, text as type } from '../theme';
+import { t } from '../i18n';
 import { haptic } from '../lib/haptics';
 import { formatDateTime, handLabel, SCHOOL_SHORT_LABEL, topicsLabel } from '../lib/format';
 
 const STATUS_LABEL: Record<ReadingStatus, string> = {
-  [ReadingStatus.DONE]: 'hoàn tất',
-  [ReadingStatus.PROCESSING]: 'đang luận giải',
-  [ReadingStatus.FAILED]: 'lỗi, đã hoàn credit',
-  [ReadingStatus.REJECTED]: 'ảnh không rõ, đã hoàn credit',
-  [ReadingStatus.GUEST_PREVIEW]: 'bói thử',
+  [ReadingStatus.DONE]: 'status.done',
+  [ReadingStatus.PROCESSING]: 'status.processing',
+  [ReadingStatus.FAILED]: 'status.failed',
+  [ReadingStatus.REJECTED]: 'status.rejected',
+  [ReadingStatus.GUEST_PREVIEW]: 'status.preview',
 };
 
 function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; compact?: boolean }) {
@@ -26,11 +28,11 @@ function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; comp
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Quẻ ${READING_SCHOOLS[item.school]?.name ?? item.school} ngày ${formatDateTime(item.createdAt)}, ${STATUS_LABEL[item.status]}`}
+      accessibilityLabel={t('card.a11y', { school: READING_SCHOOLS[item.school]?.name ?? item.school, date: formatDateTime(item.createdAt), status: t(STATUS_LABEL[item.status]) })}
       android_ripple={{ color: 'rgba(231,199,119,0.1)', foreground: true }}
       onPress={() => {
         haptic.select();
-        router.push({ pathname: '/reading/[id]', params: { id: item.id } });
+        triggerOpenHistoryResult(item.id, () => router.push({ pathname: '/reading/[id]', params: { id: item.id } }));
       }}
       style={({ pressed }) => ({ borderRadius: radius.xl, overflow: 'hidden', opacity: pressed ? 0.86 : 1 })}>
       <LinearGradient
@@ -94,7 +96,7 @@ function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; comp
           </Text>
 
           <Text style={[type.caption, { color: colors.mute, lineHeight: 18 }]} numberOfLines={2}>
-            {item.summary ?? 'Chưa có tóm tắt cho quẻ này.'}
+            {item.summary ?? t('card.noSummary')}
           </Text>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', gap: spacing.sm }}>

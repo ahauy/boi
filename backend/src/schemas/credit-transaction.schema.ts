@@ -25,6 +25,9 @@ export class CreditTransaction {
   @Prop({ type: String, required: true, enum: Object.values(CreditTransactionType) })
   type: CreditTransactionType;
 
+  @Prop({ type: String, required: false, trim: true, default: undefined })
+  reason?: string;
+
   @Prop({
     type: Number,
     required: true,
@@ -55,7 +58,6 @@ export class CreditTransaction {
 
   @Prop({
     type: Types.ObjectId,
-    ref: 'RewardedAdClaim',
     required: false,
     default: undefined,
     set: (v: unknown) => (v === null ? undefined : v),

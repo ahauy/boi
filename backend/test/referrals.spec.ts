@@ -1,12 +1,19 @@
 import 'reflect-metadata';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { JwtService } from '@nestjs/jwt';
 import { Types } from 'mongoose';
-import { ReferralStatus } from '@palmsight/shared';
+import { CreditTransactionType, ReferralStatus } from '@palmsight/shared';
 import { createTestApp, closeTestApp, TestAppInstance } from './test-helper';
+import { hashIp } from '../src/common/client-ip.util';
+import { computeDeviceIdHash } from '../src/common/device-id-hash.util';
+import { CreditLedgerService } from '../src/credits/credit-ledger.service';
 import type { GoogleProfile } from '../src/auth/google-auth.verifier';
+import { startOfReferralDay } from '../src/referrals/referral-day.util';
+import { Device } from '../src/schemas/device.schema';
+import { Referral } from '../src/schemas/referral.schema';
 
 const JWT_SECRET = 'test-jwt-secret-palm-sight-at-least-32-chars-long';
+const IDENTITY_SECRET = 'test-identity-secret-at-least-32-chars-long';
 
 const referrerGoogleProfile: GoogleProfile = {
   sub: 'google-sub-referrer',
@@ -344,6 +351,17 @@ describe('maskDisplayName utility', () => {
   });
 });
 
+describe('startOfReferralDay', () => {
+  it('rolls over at 17:00 UTC, which is midnight in Vietnam', () => {
+    expect(startOfReferralDay(new Date('2026-11-04T16:59:59.999Z')).toISOString()).toBe(
+      '2026-11-03T17:00:00.000Z',
+    );
+    expect(startOfReferralDay(new Date('2026-11-04T17:00:00.000Z')).toISOString()).toBe(
+      '2026-11-04T17:00:00.000Z',
+    );
+  });
+});
+
 describe('US-REF-002: POST /api/v1/me/referral', () => {
   let testApp: TestAppInstance;
   const jwtService = new JwtService({ secret: JWT_SECRET });
@@ -351,15 +369,34 @@ describe('US-REF-002: POST /api/v1/me/referral', () => {
   const createToken = (userId: Types.ObjectId) =>
     jwtService.sign({ sub: userId.toString(), sid: 'test-session-id' });
 
-  const enterReferral = (token: string | null, body: unknown) =>
+  const enterReferral = (
+    token: string | null,
+    body: unknown,
+    deviceId?: string,
+    headers: Record<string, string> = {},
+  ) =>
     fetch(`${testApp.baseUrl}/api/v1/me/referral`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(deviceId ? { 'x-device-id': deviceId } : {}),
+        ...headers,
       },
       body: JSON.stringify(body),
     });
+
+  const seedRewardedToday = (referrerId: Types.ObjectId, code: string, count: number) =>
+    testApp.connection.collection('referrals').insertMany(
+      Array.from({ length: count }).map(() => ({
+        _id: new Types.ObjectId(),
+        referrerId,
+        refereeId: new Types.ObjectId(),
+        codeUsed: code,
+        status: ReferralStatus.REWARDED,
+        createdAt: new Date(startOfReferralDay().getTime() + 1000 * 60),
+      })),
+    );
 
   const generateValidCode = () => {
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -393,13 +430,16 @@ describe('US-REF-002: POST /api/v1/me/referral', () => {
 
   beforeAll(async () => {
     testApp = await createTestApp();
+    // autoIndex tắt: các ca đồng thời cần unique index như production.
+    await testApp.connection.model(Referral.name).syncIndexes();
+    await testApp.connection.model(Device.name).syncIndexes();
   }, 60000);
 
   afterAll(async () => {
     await closeTestApp(testApp);
   });
 
-  it('successful referral redemption when under daily cap: status REWARDED, referee +1, referrer +2, returns 201', async () => {
+  it('successful referral redemption when under daily cap: status REWARDED, referee +5, referrer +3, returns 201', async () => {
     const referrer = await seedUser({
       displayName: 'Nguyễn Văn Chủ Mã',
       referralCode: 'K7QX4MZP',
@@ -419,8 +459,8 @@ describe('US-REF-002: POST /api/v1/me/referral', () => {
     expect(body).toEqual({
       accepted: true,
       referrer: { displayName: 'Nguyễn Văn Chủ Mã' },
-      creditsEarned: 1,
-      creditBalance: 4,
+      creditsEarned: 5,
+      creditBalance: 8,
     });
 
     // Check referral record in DB
@@ -431,61 +471,46 @@ describe('US-REF-002: POST /api/v1/me/referral', () => {
     expect(referralRecord?.referrerId.toString()).toBe(referrer._id.toString());
     expect(referralRecord?.codeUsed).toBe('K7QX4MZP');
     expect(referralRecord?.status).toBe(ReferralStatus.REWARDED);
+    expect(referralRecord?.referrerReward).toBe(3);
 
     // Check referee updated credit balance
     const updatedReferee = await testApp.connection
       .collection('users')
       .findOne({ _id: referee._id });
-    expect(updatedReferee?.creditBalance).toBe(4);
+    expect(updatedReferee?.creditBalance).toBe(8);
 
     // Check referrer updated credit balance
     const updatedReferrer = await testApp.connection
       .collection('users')
       .findOne({ _id: referrer._id });
-    expect(updatedReferrer?.creditBalance).toBe(5);
+    expect(updatedReferrer?.creditBalance).toBe(6);
 
     // Check credit ledger transactions
     const refereeTx = await testApp.connection
       .collection('credit_transactions')
       .findOne({ userId: referee._id, type: 'REFEREE_BONUS' });
     expect(refereeTx).toBeDefined();
-    expect(refereeTx?.amount).toBe(1);
-    expect(refereeTx?.balanceAfter).toBe(4);
+    expect(refereeTx?.amount).toBe(5);
+    expect(refereeTx?.balanceAfter).toBe(8);
     expect(refereeTx?.referralId.toString()).toBe(referralRecord?._id.toString());
 
     const referrerTx = await testApp.connection
       .collection('credit_transactions')
       .findOne({ userId: referrer._id, type: 'REFERRAL_BONUS' });
     expect(referrerTx).toBeDefined();
-    expect(referrerTx?.amount).toBe(2);
-    expect(referrerTx?.balanceAfter).toBe(5);
+    expect(referrerTx?.amount).toBe(3);
+    expect(referrerTx?.balanceAfter).toBe(6);
     expect(referrerTx?.referralId.toString()).toBe(referralRecord?._id.toString());
   });
 
-  it('successful referral redemption when daily cap reached (10 REWARDED referrals today): status CAPPED, referee +1, referrer +0, returns 201', async () => {
+  it('successful referral redemption when daily cap reached (5 REWARDED referrals today): status CAPPED, referee +5, referrer +0, returns 201', async () => {
     const referrer = await seedUser({
       displayName: 'Chủ Mã Max Cap',
       referralCode: 'CAP29MAX',
       creditBalance: 23,
     });
 
-    // Insert 10 rewarded referrals for today (VN time)
-    const now = new Date();
-    const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    const startOfVnDayUtc = new Date(
-      Date.UTC(vnTime.getUTCFullYear(), vnTime.getUTCMonth(), vnTime.getUTCDate()) -
-        7 * 60 * 60 * 1000,
-    );
-
-    const existingReferrals = Array.from({ length: 10 }).map(() => ({
-      _id: new Types.ObjectId(),
-      referrerId: referrer._id,
-      refereeId: new Types.ObjectId(),
-      codeUsed: 'CAP29MAX',
-      status: ReferralStatus.REWARDED,
-      createdAt: new Date(startOfVnDayUtc.getTime() + 1000 * 60),
-    }));
-    await testApp.connection.collection('referrals').insertMany(existingReferrals);
+    await seedRewardedToday(referrer._id, 'CAP29MAX', 5);
 
     const referee = await seedUser({ creditBalance: 3 });
     const token = createToken(referee._id);
@@ -497,8 +522,8 @@ describe('US-REF-002: POST /api/v1/me/referral', () => {
     expect(body).toEqual({
       accepted: true,
       referrer: { displayName: 'Chủ Mã Max Cap' },
-      creditsEarned: 1,
-      creditBalance: 4,
+      creditsEarned: 5,
+      creditBalance: 8,
     });
 
     // Check referral record has status CAPPED
@@ -506,12 +531,13 @@ describe('US-REF-002: POST /api/v1/me/referral', () => {
       .collection('referrals')
       .findOne({ refereeId: referee._id });
     expect(referralRecord?.status).toBe(ReferralStatus.CAPPED);
+    expect(referralRecord?.referrerReward).toBe(0);
 
-    // Referee got +1 credit
+    // Referee got +5 GEM
     const updatedReferee = await testApp.connection
       .collection('users')
       .findOne({ _id: referee._id });
-    expect(updatedReferee?.creditBalance).toBe(4);
+    expect(updatedReferee?.creditBalance).toBe(8);
 
     // Referrer credit unchanged
     const updatedReferrer = await testApp.connection
@@ -531,8 +557,386 @@ describe('US-REF-002: POST /api/v1/me/referral', () => {
       .collection('credit_transactions')
       .findOne({ userId: referee._id, referralId: referralRecord?._id });
     expect(refereeTx).toBeDefined();
-    expect(refereeTx?.amount).toBe(1);
-    expect(refereeTx?.balanceAfter).toBe(4);
+    expect(refereeTx?.amount).toBe(5);
+    expect(refereeTx?.balanceAfter).toBe(8);
+  });
+
+  it('concurrent redemptions with one slot left: exactly one is rewarded and everyone still gets +5', async () => {
+    const referrer = await seedUser({ referralCode: 'STSEAT22', creditBalance: 0 });
+    await seedRewardedToday(referrer._id, 'STSEAT22', 4);
+    const users = await Promise.all(
+      Array.from({ length: 6 }).map(() => seedUser({ creditBalance: 0 })),
+    );
+
+    const results = await Promise.all(
+      users.map((u) => enterReferral(createToken(u._id), { code: 'STSEAT22' })),
+    );
+
+    expect(results.map((r) => r.status)).toEqual(Array(6).fill(201));
+
+    const referrals = await testApp.connection
+      .collection('referrals')
+      .find({ refereeId: { $in: users.map((u) => u._id) } })
+      .toArray();
+    expect(referrals).toHaveLength(6);
+
+    const rewarded = referrals.filter((r) => r.status === ReferralStatus.REWARDED);
+    const capped = referrals.filter((r) => r.status === ReferralStatus.CAPPED);
+    expect(rewarded).toHaveLength(1);
+    expect(rewarded[0].referrerReward).toBe(3);
+    expect(capped).toHaveLength(5);
+    expect(capped.every((r) => r.referrerReward === 0)).toBe(true);
+
+    const referrerDoc = await testApp.connection
+      .collection('users')
+      .findOne({ _id: referrer._id });
+    expect(referrerDoc?.creditBalance).toBe(3);
+    expect(
+      await testApp.connection
+        .collection('credit_transactions')
+        .countDocuments({ userId: referrer._id, type: 'REFERRAL_BONUS' }),
+    ).toBe(1);
+
+    const balances = await testApp.connection
+      .collection('users')
+      .find({ _id: { $in: users.map((u) => u._id) } })
+      .toArray();
+    expect(balances.map((u) => u.creditBalance)).toEqual(Array(6).fill(5));
+  });
+
+  it('double submit from one account: one 201, one 409 REFERRAL_ALREADY_USED, credited once', async () => {
+    const referrer = await seedUser({ referralCode: 'DBCKCK22', creditBalance: 0 });
+    const user = await seedUser({ creditBalance: 0 });
+    const token = createToken(user._id);
+
+    const results = await Promise.all([
+      enterReferral(token, { code: 'DBCKCK22' }),
+      enterReferral(token, { code: 'DBCKCK22' }),
+    ]);
+
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    const conflict = results.find((r) => r.status === 409)!;
+    expect(((await conflict.json()) as any).error.code).toBe('REFERRAL_ALREADY_USED');
+
+    const users = testApp.connection.collection('users');
+    expect((await users.findOne({ _id: user._id }))?.creditBalance).toBe(5);
+    expect((await users.findOne({ _id: referrer._id }))?.creditBalance).toBe(3);
+    expect(
+      await testApp.connection.collection('referrals').countDocuments({ refereeId: user._id }),
+    ).toBe(1);
+  });
+
+  it('referral history keeps 2 GEM for legacy records and uses stored rewards for new ones', async () => {
+    const referrer = await seedUser({ referralCode: 'HSTRY234' });
+    await testApp.connection.collection('referrals').insertMany([
+      {
+        referrerId: referrer._id,
+        refereeId: new Types.ObjectId(),
+        codeUsed: 'HSTRY234',
+        status: ReferralStatus.REWARDED,
+        createdAt: new Date('2026-10-01T00:00:00.000Z'),
+      },
+      {
+        referrerId: referrer._id,
+        refereeId: new Types.ObjectId(),
+        codeUsed: 'HSTRY234',
+        status: ReferralStatus.REWARDED,
+        referrerReward: 3,
+        createdAt: new Date('2026-10-02T00:00:00.000Z'),
+      },
+      {
+        referrerId: referrer._id,
+        refereeId: new Types.ObjectId(),
+        codeUsed: 'HSTRY234',
+        status: ReferralStatus.CAPPED,
+        referrerReward: 0,
+        createdAt: new Date('2026-10-03T00:00:00.000Z'),
+      },
+    ]);
+
+    const res = await fetch(`${testApp.baseUrl}/api/v1/me/referrals`, {
+      headers: { Authorization: `Bearer ${createToken(referrer._id)}` },
+    });
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as any;
+    expect(body.totalRewarded).toBe(2);
+    expect(body.totalCreditsEarned).toBe(5);
+    expect(body.items.map((item: any) => item.creditsEarned)).toEqual([0, 3, 2]);
+  });
+
+  describe('Gate 6: one redemption per device', () => {
+    const deviceHash = (raw: string) => computeDeviceIdHash(IDENTITY_SECRET, raw);
+    const balanceOf = async (id: Types.ObjectId) =>
+      (await testApp.connection.collection('users').findOne({ _id: id }))?.creditBalance;
+    const errorCodeOf = async (res: Response) => ((await res.json()) as any).error.code;
+
+    it('second account on the same device gets 409 REFERRAL_DEVICE_USED with no side effects', async () => {
+      const referrer = await seedUser({ referralCode: 'DVCREF22', creditBalance: 0 });
+      const first = await seedUser({ creditBalance: 0 });
+      const second = await seedUser({ creditBalance: 0 });
+
+      const ok = await enterReferral(createToken(first._id), { code: 'DVCREF22' }, 'device-a');
+      expect(ok.status).toBe(201);
+
+      const device = await testApp.connection
+        .collection('devices')
+        .findOne({ deviceIdHash: deviceHash('device-a') });
+      expect(device?.referralRedeemedUserId?.toString()).toBe(first._id.toString());
+
+      const res = await enterReferral(createToken(second._id), { code: 'DVCREF22' }, ' device-a ');
+      expect(res.status).toBe(409);
+      expect(await errorCodeOf(res)).toBe('REFERRAL_DEVICE_USED');
+
+      expect(await balanceOf(second._id)).toBe(0);
+      expect(await balanceOf(referrer._id)).toBe(3);
+      expect(
+        await testApp.connection.collection('referrals').findOne({ refereeId: second._id }),
+      ).toBeNull();
+    });
+
+    it('guest cannot escape by changing the header: the account device identity wins', async () => {
+      await seedUser({ referralCode: 'GSTREF22' });
+      const guest = await seedUser({ deviceIdHash: deviceHash('guest-device') });
+      const ok = await enterReferral(createToken(guest._id), { code: 'GSTREF22' }, 'spoofed-1');
+      expect(ok.status).toBe(201);
+
+      const devices = testApp.connection.collection('devices');
+      const guestDevice = await devices.findOne({ deviceIdHash: deviceHash('guest-device') });
+      expect(guestDevice?.referralRedeemedUserId?.toString()).toBe(guest._id.toString());
+      const spoofedDevice = await devices.findOne({ deviceIdHash: deviceHash('spoofed-1') });
+      expect(spoofedDevice?.referralRedeemedAt ?? null).toBeNull();
+
+      const emailUser = await seedUser();
+      const res = await enterReferral(createToken(emailUser._id), { code: 'GSTREF22' }, 'guest-device');
+      expect(res.status).toBe(409);
+      expect(await errorCodeOf(res)).toBe('REFERRAL_DEVICE_USED');
+    });
+
+    it('blocks a device whose guest owner redeemed before device marking existed', async () => {
+      await seedUser({ referralCode: 'GCYREF22' });
+      const legacyGuest = await seedUser({ deviceIdHash: deviceHash('legacy-device') });
+      await testApp.connection.collection('referrals').insertOne({
+        referrerId: new Types.ObjectId(),
+        refereeId: legacyGuest._id,
+        codeUsed: 'GCYREF22',
+        status: ReferralStatus.REWARDED,
+        createdAt: new Date(),
+      });
+
+      const other = await seedUser();
+      const res = await enterReferral(createToken(other._id), { code: 'GCYREF22' }, 'legacy-device');
+      expect(res.status).toBe(409);
+      expect(await errorCodeOf(res)).toBe('REFERRAL_DEVICE_USED');
+    });
+
+    it('concurrent accounts on one device: exactly one is rewarded', async () => {
+      const referrer = await seedUser({ referralCode: 'RCEREF22', creditBalance: 0 });
+      const users = await Promise.all([seedUser(), seedUser(), seedUser()]);
+
+      const results = await Promise.all(
+        users.map((u) =>
+          enterReferral(createToken(u._id), { code: 'RCEREF22' }, 'race-device'),
+        ),
+      );
+
+      expect(results.map((r) => r.status).sort()).toEqual([201, 409, 409]);
+      const rejected = results.filter((r) => r.status === 409);
+      expect(await Promise.all(rejected.map(errorCodeOf))).toEqual([
+        'REFERRAL_DEVICE_USED',
+        'REFERRAL_DEVICE_USED',
+      ]);
+      expect(await balanceOf(referrer._id)).toBe(3);
+      expect(
+        await testApp.connection
+          .collection('referrals')
+          .countDocuments({ referrerId: referrer._id }),
+      ).toBe(1);
+    });
+
+    it('a legacy device document without referralRedeemedAt can still be claimed', async () => {
+      await seedUser({ referralCode: 'GACYRF22' });
+      const user = await seedUser();
+      const devices = testApp.connection.collection('devices');
+      await devices.insertOne({ deviceIdHash: deviceHash('legacy-doc'), createdAt: new Date() });
+
+      const res = await enterReferral(createToken(user._id), { code: 'GACYRF22' }, 'legacy-doc');
+      expect(res.status).toBe(201);
+
+      const device = await devices.findOne({ deviceIdHash: deviceHash('legacy-doc') });
+      expect(device?.referralRedeemedUserId?.toString()).toBe(user._id.toString());
+    });
+
+    it('a failure after the device mark rolls everything back so the device can retry', async () => {
+      const referrer = await seedUser({ referralCode: 'RBKREF22', creditBalance: 0 });
+      const user = await seedUser({ creditBalance: 0 });
+      const token = createToken(user._id);
+
+      const ledger = testApp.app.get(CreditLedgerService);
+      const realCredit = ledger.credit.bind(ledger);
+      const spy = vi
+        .spyOn(ledger, 'credit')
+        .mockImplementation(async (input: any, session: any) => {
+          if (input.type === CreditTransactionType.REFERRAL_BONUS) {
+            throw new Error('ledger down');
+          }
+          return realCredit(input, session);
+        });
+
+      const failed = await enterReferral(token, { code: 'RBKREF22' }, 'retry-device');
+      spy.mockRestore();
+      expect(failed.status).toBe(500);
+
+      expect(await balanceOf(user._id)).toBe(0);
+      expect(
+        await testApp.connection.collection('referrals').findOne({ refereeId: user._id }),
+      ).toBeNull();
+      const device = await testApp.connection
+        .collection('devices')
+        .findOne({ deviceIdHash: deviceHash('retry-device') });
+      expect(device?.referralRedeemedAt ?? null).toBeNull();
+
+      const retried = await enterReferral(token, { code: 'RBKREF22' }, 'retry-device');
+      expect(retried.status).toBe(201);
+      expect(await balanceOf(user._id)).toBe(5);
+      expect(await balanceOf(referrer._id)).toBe(3);
+    });
+
+    it('no device identity: redemption still works and stays limited per account', async () => {
+      await seedUser({ referralCode: 'NDVREF22' });
+      await seedUser({ referralCode: 'NDVREF33' });
+      const user = await seedUser();
+      const token = createToken(user._id);
+
+      expect((await enterReferral(token, { code: 'NDVREF22' })).status).toBe(201);
+      const res = await enterReferral(token, { code: 'NDVREF33' });
+      expect(res.status).toBe(409);
+      expect(await errorCodeOf(res)).toBe('REFERRAL_ALREADY_USED');
+    });
+  });
+
+  describe('network limit', () => {
+    const fromIp = (ip: string, extra: Record<string, string> = {}) => ({
+      'cf-connecting-ip': ip,
+      ...extra,
+    });
+    const counterOf = (ip: string) =>
+      testApp.connection
+        .collection('referral_network_counters')
+        .findOne({ ipHash: hashIp(ip), day: startOfReferralDay() });
+    const balanceOf = async (id: Types.ObjectId) =>
+      (await testApp.connection.collection('users').findOne({ _id: id }))?.creditBalance;
+
+    it('the 6th redemption on a network gets 429 with no side effects and another network still works', async () => {
+      const ip = '203.0.113.10';
+      const referrer = await seedUser({ referralCode: 'NETREF22', creditBalance: 0 });
+      for (let i = 0; i < 5; i++) {
+        const user = await seedUser();
+        const ok = await enterReferral(createToken(user._id), { code: 'NETREF22' }, undefined, fromIp(ip));
+        expect(ok.status).toBe(201);
+      }
+
+      const sixth = await seedUser({ creditBalance: 0 });
+      const token = createToken(sixth._id);
+      // X-Forwarded-For do client gửi không được đổi mạng.
+      const blocked = await enterReferral(
+        token,
+        { code: 'NETREF22' },
+        'net-device',
+        fromIp(ip, { 'x-forwarded-for': '198.51.100.99' }),
+      );
+      expect(blocked.status).toBe(429);
+      expect(((await blocked.json()) as any).error.code).toBe('REFERRAL_NETWORK_LIMIT');
+
+      expect(await balanceOf(sixth._id)).toBe(0);
+      expect(await balanceOf(referrer._id)).toBe(15);
+      expect(
+        await testApp.connection.collection('referrals').findOne({ refereeId: sixth._id }),
+      ).toBeNull();
+      expect(
+        await testApp.connection.collection('credit_transactions').findOne({ userId: sixth._id }),
+      ).toBeNull();
+      const device = await testApp.connection
+        .collection('devices')
+        .findOne({ deviceIdHash: computeDeviceIdHash(IDENTITY_SECRET, 'net-device') });
+      expect(device?.referralRedeemedAt ?? null).toBeNull();
+      expect((await counterOf(ip))?.count).toBe(5);
+
+      const other = await enterReferral(token, { code: 'NETREF22' }, 'net-device', fromIp('203.0.113.11'));
+      expect(other.status).toBe(201);
+      expect(await balanceOf(sixth._id)).toBe(5);
+    });
+
+    it('concurrent redemptions for different referrers on one network never pass the cap', async () => {
+      const ip = '203.0.113.20';
+      const pairs = await Promise.all(
+        Array.from({ length: 8 }).map(async () => ({
+          referrer: await seedUser({ creditBalance: 0 }),
+          user: await seedUser({ creditBalance: 0 }),
+        })),
+      );
+
+      const results = await Promise.all(
+        pairs.map(({ referrer, user }) =>
+          enterReferral(createToken(user._id), { code: referrer.referralCode }, undefined, fromIp(ip)),
+        ),
+      );
+
+      expect(results.map((r) => r.status).sort()).toEqual([201, 201, 201, 201, 201, 429, 429, 429]);
+      expect((await counterOf(ip))?.count).toBe(5);
+      expect(
+        await testApp.connection.collection('referrals').countDocuments({
+          refereeId: { $in: pairs.map((p) => p.user._id) },
+        }),
+      ).toBe(5);
+    });
+
+    it('a rolled back redemption gives its slot back', async () => {
+      const ip = '203.0.113.30';
+      await seedUser({ referralCode: 'NETRBK22' });
+      const user = await seedUser();
+
+      const ledger = testApp.app.get(CreditLedgerService);
+      const realCredit = ledger.credit.bind(ledger);
+      const spy = vi
+        .spyOn(ledger, 'credit')
+        .mockImplementation(async (input: any, session: any) => {
+          if (input.type === CreditTransactionType.REFERRAL_BONUS) {
+            throw new Error('ledger down');
+          }
+          return realCredit(input, session);
+        });
+
+      const failed = await enterReferral(createToken(user._id), { code: 'NETRBK22' }, undefined, fromIp(ip));
+      spy.mockRestore();
+      expect(failed.status).toBe(500);
+      expect((await counterOf(ip))?.count).toBe(0);
+    });
+
+    it('a proxy list counts against its first entry', async () => {
+      const ip = '203.0.113.70';
+      await seedUser({ referralCode: 'NETPST22' });
+      const user = await seedUser();
+
+      const res = await enterReferral(
+        createToken(user._id),
+        { code: 'NETPST22' },
+        undefined,
+        fromIp(`${ip}, 10.0.0.1`),
+      );
+      expect(res.status).toBe(201);
+      expect((await counterOf(ip))?.count).toBe(1);
+    });
+
+    it('an internal address is treated as no IP instead of one shared network', async () => {
+      const ip = '10.20.30.40';
+      await seedUser({ referralCode: 'NETNTR22' });
+      const user = await seedUser();
+
+      const res = await enterReferral(createToken(user._id), { code: 'NETNTR22' }, undefined, fromIp(ip));
+      expect(res.status).toBe(201);
+      expect(await counterOf(ip)).toBeNull();
+    });
   });
 
   it('Gate 1 failure: user with referralBlocked = true throws 403 REFERRAL_NOT_ALLOWED', async () => {

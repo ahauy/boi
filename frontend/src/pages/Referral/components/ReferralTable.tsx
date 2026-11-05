@@ -34,7 +34,7 @@ export const ReferralTable = ({
           data-testid="referral-stats"
           className="mt-1 text-xs font-mono text-gold-dim"
         >
-          {totalRewarded} lượt được thưởng · +{totalCreditsEarned} credits
+          {totalRewarded} lượt được thưởng · +{totalCreditsEarned} GEM
         </div>
       </div>
 
@@ -47,7 +47,7 @@ export const ReferralTable = ({
           data-testid="empty-referrals"
           className="mt-4 py-10 mystic-card rounded-xl text-center text-sm text-mute border border-dashed border-gold/25"
         >
-          Chưa có ai sử dụng mã giới thiệu của bạn. Hãy chia sẻ mã để nhận thêm credits!
+          Chưa có ai sử dụng mã giới thiệu của bạn. Hãy chia sẻ mã để nhận thêm GEM!
         </div>
       ) : (
         <div className="mt-4 w-full overflow-x-auto mystic-card rounded-2xl p-4 sm:p-6">
@@ -75,7 +75,7 @@ export const ReferralTable = ({
                   <div>
                     {isRewarded ? (
                       <span className="font-bold font-mono text-terminal-success">
-                        +{item.creditsEarned} credits
+                        +{item.creditsEarned} GEM
                       </span>
                     ) : (
                       <span className="text-xs text-mute">

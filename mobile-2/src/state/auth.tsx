@@ -4,6 +4,12 @@ import * as api from '../lib/api';
 import * as authApi from '../lib/authApi';
 import { getDeviceId } from '../lib/deviceId';
 import { fetchMe } from '../lib/users';
+import { billingStore } from '../billing/billing-store';
+import { onVerifiedPurchase, setCurrentBillingRef } from '../billing/billing-service';
+import { loadPaywallDeclines, syncPaywallVipState } from '../premium/paywall-triggers';
+import { setInterstitialVipState } from '../ads/interstitial-policy';
+import { setRewardedBalanceListener } from '../ads/rewarded';
+import { t } from '../i18n';
 
 type AuthStatus = 'loading' | 'ready' | 'error';
 
@@ -17,6 +23,8 @@ interface AuthStateValue {
 interface AuthActionsValue {
   retry(): Promise<void>;
   refreshUser(): Promise<void>;
+  /** Ghi ngay user mà endpoint trả về (sửa hồ sơ) vào cache, không chờ gọi lại /me */
+  applyUserUpdate(next: UserDto): void;
   /** API trả creditBalance trong mọi response, dùng nó để cập nhật header ngay */
   setCreditBalance(balance: number): void;
 }
@@ -55,7 +63,7 @@ async function resolveSession(): Promise<SessionResult> {
       }
       console.warn('[session] lỗi không mong đợi khi mở phiên:', cause);
       return {
-        error: 'Không mở được phiên trên thiết bị này. Vui lòng thử lại hoặc cài đặt lại app.',
+        error: t('error.session'),
       };
     }
   })().finally(() => {
@@ -68,28 +76,56 @@ async function resolveSession(): Promise<SessionResult> {
 const AuthStateContext = createContext<AuthStateValue | null>(null);
 const AuthActionsContext = createContext<AuthActionsValue | null>(null);
 
+function syncVipGates(vipKnown: boolean, isVip: boolean): void {
+  syncPaywallVipState({ vipKnown, isVip });
+  setInterstitialVipState({ vipKnown, isVip });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<UserDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const applyResult = useCallback((result: SessionResult) => {
-    if ('user' in result) {
-      setUser(result.user);
-      setError(null);
-      setStatus('ready');
+  const syncUserMonetizationState = useCallback((nextUser: UserDto | null) => {
+    if (!nextUser) {
+      setCurrentBillingRef(null);
+      syncVipGates(false, false);
       return;
     }
-    setUser(null);
-    setError(result.error);
-    setStatus('error');
+
+    setCurrentBillingRef(nextUser.billingRef ?? null);
+    syncVipGates(true, Boolean(nextUser.vip?.active));
+
+    if (nextUser.grantedNow && nextUser.vipDailyGranted) {
+      billingStore.setState({ vipGiftBannerAmount: nextUser.vipDailyGranted });
+    }
   }, []);
+
+  const applyResult = useCallback(
+    (result: SessionResult) => {
+      if ('user' in result) {
+        setUser(result.user);
+        setError(null);
+        setStatus('ready');
+        syncUserMonetizationState(result.user);
+        return;
+      }
+      setUser(null);
+      setError(result.error);
+      setStatus('error');
+      syncUserMonetizationState(null);
+    },
+    [syncUserMonetizationState]
+  );
 
   const refreshUser = useCallback(async () => {
-    setUser(await fetchMe());
-  }, []);
+    const fresh = await fetchMe();
+    setUser(fresh);
+    syncUserMonetizationState(fresh);
+  }, [syncUserMonetizationState]);
 
   useEffect(() => {
+    void loadPaywallDeclines();
     let cancelled = false;
     void (async () => {
       const result = await resolveSession();
@@ -99,6 +135,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [applyResult]);
+
+  // Playbook §6.5: VIP from verify is written to the /v1/me cache immediately (ads stop at once), then refetched.
+  useEffect(
+    () =>
+      onVerifiedPurchase((res) => {
+        setCurrentBillingRef(res.billingRef);
+        syncVipGates(true, Boolean(res.vip?.active));
+        setUser((current) =>
+          current
+            ? {
+                ...current,
+                vip: res.vip,
+                creditBalance: res.balance,
+                balance: res.balance,
+                billingRef: res.billingRef,
+              }
+            : current
+        );
+        void refreshUser().catch(() => {
+          // Ignore background refetch error since cache was already updated
+        });
+      }),
+    [refreshUser]
+  );
+
+  const applyUserUpdate = useCallback((next: UserDto) => {
+    // Gộp lên user cũ: các trường chỉ có ở lần mở phiên (grantedNow...) không bị mất
+    setUser((current) => (current ? { ...current, ...next } : next));
+  }, []);
 
   const retry = useCallback(async () => {
     setStatus('loading');
@@ -112,19 +177,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       api.onSessionExpired(() => {
         setUser(null);
         setStatus('loading');
+        syncUserMonetizationState(null);
         void resolveSession().then(applyResult);
       }),
-    [applyResult]
+    [applyResult, syncUserMonetizationState]
   );
 
   const setCreditBalance = useCallback((balance: number) => {
-    setUser((current) => (current ? { ...current, creditBalance: balance } : current));
+    setUser((current) =>
+      current ? { ...current, creditBalance: balance, balance } : current
+    );
   }, []);
 
+  useEffect(() => {
+    setRewardedBalanceListener(setCreditBalance);
+    return () => setRewardedBalanceListener(null);
+  }, [setCreditBalance]);
+
   const state = useMemo<AuthStateValue>(() => ({ status, user, error }), [status, user, error]);
-  // Ba hàm này có diện trị ổn định, nên actions không đổi khi số dư đổi: màn chỉ cần gọi
+  // Các hàm này có định danh ổn định, nên actions không đổi khi số dư đổi: màn chỉ cần gọi
   // refreshUser (kết quả, trang chi tiết) sẽ không bị vẽ lại mỗi lần user cập nhật.
-  const actions = useMemo<AuthActionsValue>(() => ({ retry, refreshUser, setCreditBalance }), [retry, refreshUser, setCreditBalance]);
+  const actions = useMemo<AuthActionsValue>(
+    () => ({ retry, refreshUser, applyUserUpdate, setCreditBalance }),
+    [retry, refreshUser, applyUserUpdate, setCreditBalance]
+  );
 
   return (
     <AuthStateContext.Provider value={state}>

@@ -17,9 +17,11 @@ import {
 import { PasswordReset, PasswordResetSchema } from '../schemas/password-reset.schema';
 import { Reading, ReadingSchema } from '../schemas/reading.schema';
 import { GuestTrial, GuestTrialSchema } from '../schemas/guest-trial.schema';
+import { Device, DeviceSchema } from '../schemas/device.schema';
 
 import { MailModule } from '../mail/mail.module';
 import { CreditsModule } from '../credits/credits.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
@@ -40,6 +42,7 @@ import { PasswordService } from './password.service';
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: Reading.name, schema: ReadingSchema },
       { name: GuestTrial.name, schema: GuestTrialSchema },
+      { name: Device.name, schema: DeviceSchema },
     ]),
     JwtModule.registerAsync({
       inject: [ConfigService],
@@ -52,6 +55,7 @@ import { PasswordService } from './password.service';
     }),
     MailModule,
     CreditsModule,
+    ReferralsModule,
   ],
   controllers: [AuthController],
   providers: [

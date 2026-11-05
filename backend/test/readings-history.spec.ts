@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { Types } from "mongoose";
 import {
   ReadingSchool,
@@ -9,6 +9,7 @@ import {
   PalmResult,
 } from "@palmsight/shared";
 import { createTestApp, closeTestApp, TestAppInstance } from "./test-helper";
+import { ReadingsService } from "../src/readings/readings.service";
 import type { GoogleProfile } from "../src/auth/google-auth.verifier";
 
 const googleProfileUserA: GoogleProfile = {
@@ -308,4 +309,102 @@ describe("US-READ-001: Readings History & Detail API (GET /readings, GET /readin
     );
     expect(resGetAfterDelete.status).toBe(404);
   });
+  it("DELETE /api/v1/readings/:id returns 502 and keeps publicId for retry if Cloudinary fails", async () => {
+    const readingsCol = testApp.connection.collection("readings");
+    const readingsService = testApp.app.get(ReadingsService);
+    const origDeleteImage = (readingsService as any).cloudinary.deleteImage;
+    (readingsService as any).cloudinary.deleteImage = vi.fn().mockResolvedValue(false);
+
+    try {
+      const readingWithImg = await readingsCol.insertOne({
+        userId: userAId,
+        idempotencyKey: "10000000-0000-4000-8000-000000000203",
+        school: ReadingSchool.WESTERN,
+        topics: ["heartLine"],
+        hand: HandOrientation.LEFT,
+        status: ReadingStatus.DONE,
+        imagePublicId: "cloud_img_failed_delete",
+        imageUrl: "https://res.cloudinary.com/demo/image/upload/cloud_img_failed_delete.jpg",
+        createdAt: new Date(),
+        completedAt: new Date(),
+        deletedAt: null,
+      });
+
+      const resDelete = await fetch(
+        `${testApp.baseUrl}/api/v1/readings/${readingWithImg.insertedId.toString()}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${tokenUserA}` },
+        }
+      );
+
+      expect(resDelete.status).toBe(502);
+      const body = (await resDelete.json()) as any;
+      expect(body.error?.code).toBe("IMAGE_DELETE_FAILED");
+
+      // Verify DB still keeps imagePublicId and deletedAt is null
+      const inDb = await readingsCol.findOne({ _id: readingWithImg.insertedId });
+      expect(inDb?.deletedAt).toBeNull();
+      expect(inDb?.imagePublicId).toBe("cloud_img_failed_delete");
+    } finally {
+      (readingsService as any).cloudinary.deleteImage = origDeleteImage;
+    }
+  });
+
+  it("DELETE /api/v1/readings/:id keeps result when one image fails, nulls the deleted one, and retry removes the reading", async () => {
+    const readingsCol = testApp.connection.collection("readings");
+    const readingsService = testApp.app.get(ReadingsService);
+    const origDeleteImage = (readingsService as any).cloudinary.deleteImage;
+    // Ảnh gốc lỗi, ảnh đã vẽ xoá được.
+    (readingsService as any).cloudinary.deleteImage = vi.fn(async (id: string) => id !== "r1_orig");
+
+    try {
+      const doc = await readingsCol.insertOne({
+        userId: userAId,
+        idempotencyKey: "10000000-0000-4000-8000-000000000204",
+        school: ReadingSchool.WESTERN,
+        topics: ["heartLine"],
+        hand: HandOrientation.LEFT,
+        status: ReadingStatus.DONE,
+        result: { summary: "kết quả còn nguyên" },
+        palmLines: [{ name: "life" }],
+        imagePublicId: "r1_orig",
+        imageUrl: "https://res.cloudinary.com/demo/image/upload/r1_orig.jpg",
+        annotatedImagePublicId: "r1_ann",
+        annotatedImageUrl: "https://res.cloudinary.com/demo/image/upload/r1_ann.jpg",
+        createdAt: new Date(),
+        completedAt: new Date(),
+        deletedAt: null,
+      });
+      const url = `${testApp.baseUrl}/api/v1/readings/${doc.insertedId.toString()}`;
+      const headers = { Authorization: `Bearer ${tokenUserA}` };
+
+      const first = await fetch(url, { method: "DELETE", headers });
+      expect(first.status).toBe(502);
+      expect(((await first.json()) as any).error?.code).toBe("IMAGE_DELETE_FAILED");
+
+      const afterFail = await readingsCol.findOne({ _id: doc.insertedId });
+      expect(afterFail?.deletedAt).toBeNull();
+      expect(afterFail?.result).toEqual({ summary: "kết quả còn nguyên" });
+      expect(afterFail?.palmLines).toHaveLength(1);
+      expect(afterFail?.imagePublicId).toBe("r1_orig");
+      expect(afterFail?.annotatedImagePublicId).toBeNull();
+
+      // Lần xem vẫn còn trong lịch sử với nội dung nguyên vẹn.
+      const stillThere = await fetch(url, { headers });
+      expect(stillThere.status).toBe(200);
+
+      // Retry thành công.
+      (readingsService as any).cloudinary.deleteImage = vi.fn().mockResolvedValue(true);
+      const retry = await fetch(url, { method: "DELETE", headers });
+      expect(retry.status).toBe(204);
+      const afterRetry = await readingsCol.findOne({ _id: doc.insertedId });
+      expect(afterRetry?.deletedAt).toBeInstanceOf(Date);
+      expect(afterRetry?.result).toBeNull();
+      expect((await fetch(url, { headers })).status).toBe(404);
+    } finally {
+      (readingsService as any).cloudinary.deleteImage = origDeleteImage;
+    }
+  });
+
 });

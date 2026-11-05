@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Types } from "mongoose";
-import { CreditTransactionType, CREDIT_AMOUNTS } from "@palmsight/shared";
+import { CreditTransactionType } from "@palmsight/shared";
 import { createTestApp, closeTestApp, TestAppInstance } from "./test-helper";
 import { CreditLedgerService } from "../src/credits/credit-ledger.service";
 import type { GoogleProfile } from "../src/auth/google-auth.verifier";
@@ -61,7 +61,7 @@ describe("US-WALLET-001: CreditLedgerService & GET /api/v1/me/credit-transaction
 
         expect(tx).toBeDefined();
         expect(tx.type).toBe(CreditTransactionType.SIGNUP_BONUS);
-        expect(tx.amount).toBe(CREDIT_AMOUNTS.SIGNUP_BONUS);
+        expect(tx.amount).toBe(creditLedgerService.getStarterGrantAmount());
       } finally {
         await session.endSession();
       }
@@ -85,7 +85,7 @@ describe("US-WALLET-001: CreditLedgerService & GET /api/v1/me/credit-transaction
         await session.commitTransaction();
 
         expect(tx.type).toBe(CreditTransactionType.READING_SPEND);
-        expect(tx.amount).toBe(-CREDIT_AMOUNTS.READING_COST);
+        expect(tx.amount).toBe(-creditLedgerService.getPricePerAction());
         expect(tx.readingId?.toString()).toBe(readingId.toString());
       } finally {
         await session.endSession();
@@ -105,7 +105,7 @@ describe("US-WALLET-001: CreditLedgerService & GET /api/v1/me/credit-transaction
         await session.commitTransaction();
 
         expect(tx.type).toBe(CreditTransactionType.READING_REFUND);
-        expect(tx.amount).toBe(CREDIT_AMOUNTS.READING_COST);
+        expect(tx.amount).toBe(creditLedgerService.getPricePerAction());
         expect(tx.readingId?.toString()).toBe(readingId.toString());
       } finally {
         await session.endSession();

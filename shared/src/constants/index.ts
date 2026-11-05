@@ -140,19 +140,47 @@ export const LIFE_ASPECT_KEYS = [
   LifeAspect.FAMILY,
 ] as const;
 
+// Chỉ gồm số referral; thưởng đăng ký và giá xem bói nằm ở ECONOMY_DEFAULTS.
 export const CREDIT_AMOUNTS = {
-  SIGNUP_BONUS: 3,
-  REFERRAL_REWARD: 2,
-  REFEREE_REWARD: 1,
-  READING_COST: 1,
-  REFERRAL_DAILY_CAP: 10,
-  REWARDED_AD_REWARD: 1,
-  REWARDED_AD_DAILY_CAP: 3,
-  SIGNUP_BONUS_CREDITS: 3,
-  REFERRAL_REWARD_CREDITS: 2,
-  REFEREE_REWARD_CREDITS: 1,
-  READING_COST_CREDITS: 1,
-  REWARDED_AD_REWARD_CREDITS: 1,
+  REFERRAL_REWARD: 3,
+  REFEREE_REWARD: 5,
+  REFERRAL_DAILY_CAP: 5,
+  REFERRAL_NETWORK_DAILY_CAP: 5,
+} as const;
+
+export const CORE_READING_COST_GEM = 5;
+
+export const ECONOMY_DEFAULTS = {
+  APP_NAME: "PalmSight",
+  CORE_ACTION: "Palm reading",
+  VIP_ONLY_FEATURE: "Eastern & Vedic Palmistry Schools",
+  LANGUAGES: ["en", "vi", "id", "hi", "zh", "ru", "ja", "pt", "es"] as const,
+  CURRENCY: "GEM",
+  PRICE_PER_ACTION: 5,
+  MAX_ACTIONS_PER_TAP: 5,
+  STARTER_GRANT: 5,
+  STARTER_NETWORK_DAILY_CAP: 5,
+  REWARD_TZ: "Asia/Ho_Chi_Minh",
+  CHECKIN_LADDER: [3, 3, 5, 3, 3, 8, 10] as const,
+  STREAK_LENGTH: 365,
+  MILESTONES: { 30: 20, 60: 30, 100: 50, 180: 80, 270: 100, 365: 200 } as const,
+  RESTORE_COST_PER_DAY: 10,
+  RESTORE_MAX_MISSED: 3,
+  WHEEL_PRIZES: [2, 3, 5, 10, 20, 50] as const,
+  FREE_SPINS: 1,
+  AD_SPINS: 3,
+  CURRENCY_SPIN_COST: 3,
+  CHECKIN_DOUBLE_CAP: 1,
+  BONUS_AD_AMOUNT: 3,
+  BONUS_AD_CAP: 5,
+  VIP_DAILY: 50,
+  MIN_AD_WATCH_SECONDS: 15,
+  INTERSTITIAL_GAP_SECONDS: 90,
+  ADS_USER_GAP_SECONDS: 60,
+  ADS_USER_DECLINES: 3,
+  PAYWALL_RETURN_AFTER_SECONDS: 10,
+  PAYWALL_CLOSE_DELAY_MS: 1500,
+  NO_AD_WAIT_SECONDS: 15,
 } as const;
 
 /** Một lượt xem quảng cáo đổi credit chỉ có hiệu lực trong khoảng này; quá hạn là claim hết giá trị. */

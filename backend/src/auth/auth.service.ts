@@ -15,6 +15,7 @@ import * as crypto from "crypto";
 import * as argon2 from "argon2";
 
 import {
+  ECONOMY_DEFAULTS,
   RegisterRequestDto,
   RegisterResponseDto,
   ResendVerificationRequestDto,
@@ -35,6 +36,16 @@ import {
   PendingRegistrationDocument,
 } from "../schemas/pending-registration.schema";
 import { User, UserDocument } from "../schemas/user.schema";
+import {
+  computeDeviceIdHash,
+  DEFAULT_IDENTITY_HASH_SECRET,
+} from "../common/device-id-hash.util";
+import { hashIp } from "../common/client-ip.util";
+import { startOfReferralDay } from "../referrals/referral-day.util";
+import {
+  ReferralNetworkQuotaService,
+  ReferralNetworkSlot,
+} from "../referrals/referral-network-quota.service";
 import { Session, SessionDocument } from "../schemas/session.schema";
 import { Referral, ReferralDocument } from "../schemas/referral.schema";
 import {
@@ -43,6 +54,7 @@ import {
 } from "../schemas/deleted-identity.schema";
 import { Reading, ReadingDocument } from "../schemas/reading.schema";
 import { GuestTrial, GuestTrialDocument } from "../schemas/guest-trial.schema";
+import { Device, DeviceDocument } from "../schemas/device.schema";
 import { MailService } from "../mail/mail.service";
 import { CreditLedgerService } from "../credits/credit-ledger.service";
 import type { GoogleProfile } from "./google-auth.verifier";
@@ -71,11 +83,14 @@ export class AuthService {
     private readonly readingModel: Model<ReadingDocument>,
     @InjectModel(GuestTrial.name)
     private readonly guestTrialModel: Model<GuestTrialDocument>,
+    @InjectModel(Device.name)
+    private readonly deviceModel: Model<DeviceDocument>,
     private readonly mailService: MailService,
     private readonly creditLedgerService: CreditLedgerService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    @InjectConnection() private readonly connection: Connection
+    @InjectConnection() private readonly connection: Connection,
+    private readonly referralNetworkQuota: ReferralNetworkQuotaService
   ) {}
 
   private checkLoginRateLimit(key: string): void {
@@ -155,7 +170,8 @@ export class AuthService {
 
   /**
    * Mobile không có đăng ký/đăng nhập: mỗi thiết bị nhận một tài khoản ẩn danh gắn với
-   * deviceId trong SecureStore. Gọi lại cùng deviceId sẽ mở lại đúng tài khoản đó.
+   * deviceId (Android ID trên Android, mã lưu trong SecureStore trên iOS). Gọi lại cùng deviceId
+   * sẽ mở lại đúng tài khoản đó, kể cả sau khi cài lại app trên Android.
    */
   async createDeviceSession(
     dto: DeviceSessionRequestDto,
@@ -163,20 +179,11 @@ export class AuthService {
   ): Promise<{ authResponse: AuthResponseDto; rawRefreshToken: string }> {
     const deviceIdHash = this.hashDeviceId(dto.deviceId.trim());
     const existing = await this.userModel.findOne({ deviceIdHash });
-    if (existing) {
-      if (!existing.deletedAt) return this.createAuthSession(existing, false);
-      // Tài khoản đã bị xoá theo yêu cầu: không tự tạo tài khoản mới trên cùng thiết bị
-      throw new HttpException(
-        {
-          code: "DEVICE_SESSION_BLOCKED",
-          message:
-            "Tài khoản trên thiết bị này đã được xoá. Vui lòng liên hệ hỗ trợ nếu cần mở lại.",
-        },
-        HttpStatus.FORBIDDEN
-      );
+    if (existing && !existing.deletedAt) {
+      return this.createAuthSession(existing, false);
     }
 
-    const signupIpHash = this.hashIp(clientIp || "127.0.0.1");
+    const signupIpHash = hashIp(clientIp || "127.0.0.1");
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     // CGNAT của mạng di động khiến nhiều người dùng chung một IP, nên mốc phải đủ rộng
     const dailyCap = Number(
@@ -200,57 +207,78 @@ export class AuthService {
 
     const session = await this.connection.startSession();
     let newUser: UserDocument | null = null;
+    let liveUser: UserDocument | null = null;
     try {
-      session.startTransaction();
-      newUser = await this.createUserWithBonus(
-        {
-          displayName: "Khách",
-          isAnonymous: true,
-          deviceIdHash,
-          signupIpHash,
-        },
-        false,
-        session
-      );
-      await session.commitTransaction();
+      await session.withTransaction(async () => {
+        newUser = null;
+        liveUser = null;
+
+        // Đọc lại trong transaction: lần retry sau xung đột phải thấy guest bên kia vừa tạo
+        const current = await this.userModel
+          .findOne({ deviceIdHash })
+          .session(session);
+        if (current && !current.deletedAt) {
+          liveUser = current;
+          return;
+        }
+
+        // Guest mới có _id riêng nên không thừa hưởng dữ liệu của bản ghi đã xoá. Hash được chuyển
+        // sang field khác để nhường unique index; đánh dấu trên `devices` vẫn giữ nguyên.
+        if (current) {
+          await this.userModel.updateOne(
+            { _id: current._id },
+            { $set: { deviceIdHash: null, deletedDeviceIdHash: deviceIdHash } },
+            { session }
+          );
+          // Lượt nhập trước khi có dấu thiết bị chỉ truy được qua hash vừa chuyển đi
+          if (await this.referralModel.exists({ refereeId: current._id }).session(session)) {
+            await this.deviceModel.updateOne(
+              { deviceIdHash, referralRedeemedAt: null },
+              {
+                $set: {
+                  referralRedeemedAt: new Date(),
+                  referralRedeemedUserId: current._id,
+                },
+              },
+              { session }
+            );
+          }
+        }
+
+        newUser = await this.createUserWithBonus(
+          {
+            displayName: "Khách",
+            isAnonymous: true,
+            deviceIdHash,
+            signupIpHash,
+          },
+          !!current,
+          session
+        );
+      });
     } catch (error: any) {
-      await session.abortTransaction();
       // Hai lần mở app cùng lúc trên cùng thiết bị: một bên đã tạo xong trước
       if (error?.code === 11000) {
         const raced = await this.userModel.findOne({ deviceIdHash });
         if (raced && !raced.deletedAt) return this.createAuthSession(raced, false);
-        if (raced) {
-          throw new HttpException(
-            {
-              code: "DEVICE_SESSION_BLOCKED",
-              message:
-                "Tài khoản trên thiết bị này đã được xoá. Vui lòng liên hệ hỗ trợ nếu cần mở lại.",
-            },
-            HttpStatus.FORBIDDEN
-          );
-        }
       }
       throw error;
     } finally {
       await session.endSession();
     }
 
+    if (liveUser) return this.createAuthSession(liveUser, false);
     return this.createAuthSession(newUser!, true);
   }
 
   private hashDeviceId(value: string): string {
-    const secret = this.configService.get<string>(
-      "IDENTITY_HASH_SECRET",
-      "palmsight-identity-secret"
+    return computeDeviceIdHash(
+      this.configService.get<string>(
+        "IDENTITY_HASH_SECRET",
+        DEFAULT_IDENTITY_HASH_SECRET
+      ),
+      value
     );
-    return crypto
-      .createHmac("sha256", secret)
-      .update(`device:${value}`)
-      .digest("hex");
-  }
-
-  private hashIp(value: string): string {
-    return crypto.createHash("sha256").update(value).digest("hex");
   }
 
   async hashPassword(password: string): Promise<string> {
@@ -293,7 +321,10 @@ export class AuthService {
     throw new Error("Could not generate unique referral code");
   }
 
-  async register(dto: RegisterRequestDto): Promise<RegisterResponseDto> {
+  async register(
+    dto: RegisterRequestDto,
+    clientIp?: string | null
+  ): Promise<RegisterResponseDto> {
     const email = dto.email.trim().toLowerCase();
     const username = dto.username.trim().toLowerCase();
     const displayName = dto.displayName.trim();
@@ -351,6 +382,7 @@ export class AuthService {
           expiresAt,
           referralCode,
           claimToken,
+          signupIpHash: clientIp ? hashIp(clientIp) : null,
           lastSentAt: new Date(),
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -390,91 +422,116 @@ export class AuthService {
 
   async verifyEmail(
     token: string,
-    explicitClaimToken?: string
+    explicitClaimToken?: string,
+    clientIp?: string | null
   ): Promise<{ authResponse: AuthResponseDto; rawRefreshToken: string }> {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-    const session = await this.connection.startSession();
-    session.startTransaction();
 
-    let verifiedUser: UserDocument;
+    // Slot phải tồn tại trước khi transaction lấy snapshot, nếu không transaction không thấy nó.
+    // Ưu tiên IP lúc đăng ký: đó là nơi nhập mã, còn link có thể mở ở máy khác.
+    const pendingPreview = await this.pendingModel.findOne({
+      tokenHash,
+      expiresAt: { $gt: new Date() },
+    });
+    let networkSlot: ReferralNetworkSlot | null = null;
+    if (pendingPreview?.referralCode) {
+      networkSlot = await this.referralNetworkQuota.prepare(
+        pendingPreview.signupIpHash ?? (clientIp ? hashIp(clientIp) : null)
+      );
+    }
+
+    const session = await this.connection.startSession();
+
+    let verifiedUser: UserDocument | undefined;
     let isNewUser = false;
     let claimedReadingId: string | null = null;
     let claimFailed: boolean | undefined = undefined;
+    let referralApplied = false;
 
     try {
-      const pending = await this.pendingModel
-        .findOne({ tokenHash, expiresAt: { $gt: new Date() } })
-        .session(session);
+      // WriteConflict ở chủ mã là bình thường khi nhiều người dùng chung mã: phải retry, không được coi là token hỏng.
+      await session.withTransaction(async () => {
+        verifiedUser = undefined;
+        isNewUser = false;
+        claimedReadingId = null;
+        claimFailed = undefined;
+        referralApplied = false;
 
-      if (!pending) {
-        throw new BadRequestException({
-          code: "VERIFICATION_TOKEN_INVALID",
-          message: "Liên kết xác minh không hợp lệ hoặc đã hết hạn.",
-        });
-      }
+        const pending = await this.pendingModel
+          .findOne({ tokenHash, expiresAt: { $gt: new Date() } })
+          .session(session);
 
-      const existingUser = await this.userModel
-        .findOne({ email: pending.email })
-        .session(session);
-
-      if (existingUser) {
-        if (existingUser.passwordHash) {
-          throw new ConflictException({
-            code: "EMAIL_TAKEN",
-            message: "Email này đã được sử dụng.",
+        if (!pending) {
+          throw new BadRequestException({
+            code: "VERIFICATION_TOKEN_INVALID",
+            message: "Liên kết xác minh không hợp lệ hoặc đã hết hạn.",
           });
         }
-        existingUser.username = pending.username;
-        existingUser.passwordHash = pending.passwordHash;
-        existingUser.passwordUpdatedAt = new Date();
-        await existingUser.save({ session });
-        verifiedUser = existingUser;
-      } else {
-        const isDeleted = await this.isDeletedIdentity(
-          [{ kind: DeletedIdentityKind.EMAIL, value: pending.email }],
-          session
-        );
-        const newUser = await this.createUserWithBonus(
-          {
-            displayName: pending.displayName,
-            username: pending.username,
-            email: pending.email,
-            passwordHash: pending.passwordHash,
-            passwordUpdatedAt: new Date(),
-          },
-          isDeleted,
-          session
-        );
 
-        if (!isDeleted && pending.referralCode) {
-          await this.processReferralReward(
-            newUser,
-            pending.referralCode,
+        const existingUser = await this.userModel
+          .findOne({ email: pending.email })
+          .session(session);
+
+        if (existingUser) {
+          if (existingUser.passwordHash) {
+            throw new ConflictException({
+              code: "EMAIL_TAKEN",
+              message: "Email này đã được sử dụng.",
+            });
+          }
+          existingUser.username = pending.username;
+          existingUser.passwordHash = pending.passwordHash;
+          existingUser.passwordUpdatedAt = new Date();
+          await existingUser.save({ session });
+          verifiedUser = existingUser;
+        } else {
+          const isDeleted = await this.isDeletedIdentity(
+            [{ kind: DeletedIdentityKind.EMAIL, value: pending.email }],
             session
           );
+          const newUser = await this.createUserWithBonus(
+            {
+              displayName: pending.displayName,
+              username: pending.username,
+              email: pending.email,
+              passwordHash: pending.passwordHash,
+              passwordUpdatedAt: new Date(),
+            },
+            isDeleted,
+            session
+          );
+
+          if (!isDeleted && pending.referralCode) {
+            referralApplied = await this.processReferralReward(
+              newUser,
+              pending.referralCode,
+              networkSlot,
+              session
+            );
+          }
+
+          verifiedUser = newUser;
+          isNewUser = true;
         }
 
-        verifiedUser = newUser;
-        isNewUser = true;
-      }
-
-      const claimToken = explicitClaimToken || pending.claimToken;
-      if (claimToken) {
-        const claimResult = await this.handleTrialClaim(
-          verifiedUser,
-          claimToken,
-          session
-        );
-        if (claimResult) {
-          claimedReadingId = claimResult.claimedReadingId;
-          claimFailed = claimResult.claimFailed;
+        const claimToken = explicitClaimToken || pending.claimToken;
+        if (claimToken) {
+          const claimResult = await this.handleTrialClaim(
+            verifiedUser,
+            claimToken,
+            session
+          );
+          if (claimResult) {
+            claimedReadingId = claimResult.claimedReadingId;
+            claimFailed = claimResult.claimFailed;
+          }
         }
-      }
 
-      await this.pendingModel.deleteOne({ _id: pending._id }).session(session);
-      await session.commitTransaction();
+        await this.pendingModel
+          .deleteOne({ _id: pending._id })
+          .session(session);
+      });
     } catch (error) {
-      await session.abortTransaction();
       this.handleVerificationError(error);
     } finally {
       await session.endSession();
@@ -484,7 +541,8 @@ export class AuthService {
       verifiedUser!,
       isNewUser,
       claimedReadingId,
-      claimFailed
+      claimFailed,
+      referralApplied
     );
   }
 
@@ -710,27 +768,83 @@ export class AuthService {
     session: ClientSession
   ): Promise<UserDocument> {
     const referralCode = await this.generateReferralCode(session);
+
+    let canGrantStarter = !isDeletedIdentity;
+    const deviceIdHash = data.deviceIdHash;
+    const signupIpHash = data.signupIpHash;
+
+    if (canGrantStarter && deviceIdHash) {
+      const existingDevice = await this.deviceModel
+        .findOne({ deviceIdHash })
+        .session(session);
+      if (existingDevice && existingDevice.starterGrantedAt) {
+        canGrantStarter = false;
+      }
+    }
+
+    if (canGrantStarter && signupIpHash) {
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const starterNetworkDailyCap = Number(
+        this.configService.get(
+          "STARTER_NETWORK_DAILY_CAP",
+          ECONOMY_DEFAULTS.STARTER_NETWORK_DAILY_CAP
+        )
+      );
+      const networkGrantsCount = await this.userModel
+        .countDocuments({
+          signupIpHash,
+          starterGrantedAt: { $gte: since24h },
+        })
+        .session(session);
+
+      if (networkGrantsCount >= starterNetworkDailyCap) {
+        canGrantStarter = false;
+      }
+    }
+
     const [newUser] = await this.userModel.create(
       [
         {
           ...data,
           referralCode,
-          creditBalance: isDeletedIdentity ? 0 : CREDIT_AMOUNTS.SIGNUP_BONUS,
+          creditBalance: 0,
           referralBlocked: isDeletedIdentity,
+          starterGrantedAt: null,
         },
       ],
       { session }
     );
 
-    if (!isDeletedIdentity) {
-      await this.creditLedgerService.recordWithSession(
+    if (canGrantStarter) {
+      const bonusTx = await this.creditLedgerService.grantSignupBonus(newUser._id, session);
+      newUser.creditBalance = bonusTx.balanceAfter;
+      newUser.starterGrantedAt = new Date();
+      if (deviceIdHash) {
+        await this.deviceModel.updateOne(
+          { deviceIdHash },
+          {
+            $set: {
+              deviceIdHash,
+              starterGrantedAt: new Date(),
+              starterUserId: newUser._id,
+              starterIpHash: signupIpHash || null,
+            },
+          },
+          { upsert: true, session }
+        );
+      }
+    } else if (deviceIdHash) {
+      await this.deviceModel.updateOne(
+        { deviceIdHash },
         {
-          userId: newUser._id,
-          amount: CREDIT_AMOUNTS.SIGNUP_BONUS,
-          type: CreditTransactionType.SIGNUP_BONUS,
-          balanceAfter: CREDIT_AMOUNTS.SIGNUP_BONUS,
+          $setOnInsert: {
+            deviceIdHash,
+            starterGrantedAt: null,
+            starterUserId: null,
+            starterIpHash: signupIpHash || null,
+          },
         },
-        session
+        { upsert: true, session }
       );
     }
 
@@ -762,35 +876,40 @@ export class AuthService {
     return !!exists;
   }
 
+  // Trả về true khi referral được áp dụng, kể cả CAPPED.
   private async processReferralReward(
     referee: UserDocument,
     referralCode: string,
+    networkSlot: ReferralNetworkSlot | null,
     session: ClientSession
-  ): Promise<void> {
+  ): Promise<boolean> {
     const referrer = await this.userModel
-      .findOne({ referralCode })
+      .findOne({ referralCode, deletedAt: null })
       .session(session);
-    if (!referrer || referrer._id.toString() === referee._id.toString()) return;
+    if (!referrer || referrer._id.toString() === referee._id.toString()) {
+      return false;
+    }
 
-    referee.creditBalance += CREDIT_AMOUNTS.REFEREE_REWARD;
-    await referee.save({ session });
-    await this.creditLedgerService.recordWithSession(
-      {
-        userId: referee._id,
-        amount: CREDIT_AMOUNTS.REFEREE_REWARD,
-        type: CreditTransactionType.REFEREE_BONUS,
-        balanceAfter: referee.creditBalance,
-      },
-      session
+    // Hết lượt mạng chỉ bỏ thưởng: không được ném lỗi vì sẽ huỷ luôn việc tạo tài khoản.
+    if (
+      networkSlot &&
+      !(await this.referralNetworkQuota.take(networkSlot, session))
+    ) {
+      return false;
+    }
+
+    // Chung trần với enterReferral: ghi vào chủ mã trước khi đếm để hai đường tuần tự với nhau.
+    await this.userModel.updateOne(
+      { _id: referrer._id },
+      { $set: { updatedAt: new Date() } },
+      { session }
     );
 
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
     const todayRewarded = await this.referralModel
       .countDocuments({
         referrerId: referrer._id,
         status: ReferralStatus.REWARDED,
-        createdAt: { $gte: todayStart },
+        createdAt: { $gte: startOfReferralDay() },
       })
       .session(session);
     const dailyCap = Number(
@@ -799,45 +918,53 @@ export class AuthService {
         CREDIT_AMOUNTS.REFERRAL_DAILY_CAP
       )
     );
+    const status =
+      todayRewarded >= dailyCap
+        ? ReferralStatus.CAPPED
+        : ReferralStatus.REWARDED;
 
-    if (todayRewarded >= dailyCap) {
-      await this.referralModel.create(
-        [
-          {
-            referrerId: referrer._id,
-            refereeId: referee._id,
-            codeUsed: referralCode,
-            status: ReferralStatus.CAPPED,
-          },
-        ],
-        { session }
-      );
-      return;
-    }
-
-    referrer.creditBalance += CREDIT_AMOUNTS.REFERRAL_REWARD;
-    await referrer.save({ session });
     const [referralDoc] = await this.referralModel.create(
       [
         {
           referrerId: referrer._id,
           refereeId: referee._id,
           codeUsed: referralCode,
-          status: ReferralStatus.REWARDED,
+          status,
+          referrerReward:
+            status === ReferralStatus.REWARDED
+              ? CREDIT_AMOUNTS.REFERRAL_REWARD
+              : 0,
         },
       ],
       { session }
     );
-    await this.creditLedgerService.recordWithSession(
+
+    const refereeTx = await this.creditLedgerService.credit(
       {
-        userId: referrer._id,
-        amount: CREDIT_AMOUNTS.REFERRAL_REWARD,
-        type: CreditTransactionType.REFERRAL_BONUS,
-        balanceAfter: referrer.creditBalance,
+        userId: referee._id,
+        amount: CREDIT_AMOUNTS.REFEREE_REWARD,
+        type: CreditTransactionType.REFEREE_BONUS,
+        reason: "referee_bonus",
         referralId: referralDoc._id,
       },
       session
     );
+    referee.creditBalance = refereeTx.balanceAfter;
+
+    if (status === ReferralStatus.REWARDED) {
+      await this.creditLedgerService.credit(
+        {
+          userId: referrer._id,
+          amount: CREDIT_AMOUNTS.REFERRAL_REWARD,
+          type: CreditTransactionType.REFERRAL_BONUS,
+          reason: "referral_bonus",
+          referralId: referralDoc._id,
+        },
+        session
+      );
+    }
+
+    return true;
   }
 
   private async handleTrialClaim(
@@ -865,7 +992,7 @@ export class AuthService {
       return { claimedReadingId: null, claimFailed: true };
     }
 
-    await this.creditLedgerService.spendForReading(
+    const spendTx = await this.creditLedgerService.spendForReading(
       verifiedUser._id,
       trialReading._id,
       session
@@ -890,7 +1017,7 @@ export class AuthService {
       { session }
     );
 
-    verifiedUser.creditBalance -= CREDIT_AMOUNTS.READING_COST;
+    verifiedUser.creditBalance = spendTx.balanceAfter;
     return {
       claimedReadingId: trialReading._id.toString(),
       claimFailed: false,
@@ -901,7 +1028,8 @@ export class AuthService {
     user: UserDocument,
     isNewUser: boolean,
     claimedReadingId?: string | null,
-    claimFailed?: boolean
+    claimFailed?: boolean,
+    referralApplied?: boolean
   ): Promise<{ authResponse: AuthResponseDto; rawRefreshToken: string }> {
     const { accessToken, expiresIn, rawRefreshToken } = await this.issueTokens(
       user
@@ -922,6 +1050,7 @@ export class AuthService {
         },
         ...(claimedReadingId !== undefined ? { claimedReadingId } : {}),
         ...(claimFailed ? { claimFailed: true } : {}),
+        ...(referralApplied ? { referralApplied: true } : {}),
       },
       rawRefreshToken,
     };

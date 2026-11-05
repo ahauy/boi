@@ -7,21 +7,23 @@ import type { BottomTabBarProps } from 'expo-router/js-tabs';
 
 import Text from './AppText';
 import { colors, shadow, spacing, text as type } from '../theme';
+import { t, useI18n } from '../i18n';
 import { haptic } from '../lib/haptics';
 
-type TabName = 'index' | 'scan' | 'history' | 'profile';
+type TabName = 'index' | 'scan' | 'currency' | 'history' | 'profile';
 
-const TAB_META: Record<TabName, { label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = {
-  index: { label: 'Trang chủ', icon: 'home-variant-outline' },
-  scan: { label: 'Quét', icon: 'line-scan' },
-  history: { label: 'Lịch sử', icon: 'history' },
-  profile: { label: 'Hồ sơ', icon: 'account-circle-outline' },
+const TAB_META: Record<TabName, { labelKey: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = {
+  index: { labelKey: 'tabs.home', icon: 'home-variant-outline' },
+  scan: { labelKey: 'tabs.scan', icon: 'line-scan' },
+  currency: { labelKey: 'tabs.gems', icon: 'diamond-stone' },
+  history: { labelKey: 'tabs.history', icon: 'history' },
+  profile: { labelKey: 'profile.title', icon: 'account-circle-outline' },
 };
 
-// 4 ô flex:1 bằng nhau nên khoảng cách giữa các tab đều nhau; Quét không còn là nút tròn nâng cao.
-const TAB_ORDER: TabName[] = ['index', 'scan', 'history', 'profile'];
+const TAB_ORDER: TabName[] = ['index', 'scan', 'currency', 'history', 'profile'];
 
 export default function CosmicTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
+  useI18n();
   const insets = useSafeAreaInsets();
 
   function routeFor(name: TabName) {
@@ -49,7 +51,7 @@ export default function CosmicTabBar({ state, emitter, navigateToTab }: BottomTa
       <Pressable
         key={name}
         accessibilityRole="tab"
-        accessibilityLabel={meta.label}
+        accessibilityLabel={t(meta.labelKey)}
         accessibilityState={{ selected: focused }}
         aria-selected={focused}
         android_ripple={{ color: 'rgba(231,199,119,0.12)', borderless: true }}
@@ -68,7 +70,7 @@ export default function CosmicTabBar({ state, emitter, navigateToTab }: BottomTa
           style={[type.captionStrong, { color: focused ? colors.goldLight : colors.stone, fontSize: 11 }]}
           maxFontSizeMultiplier={1.15}
           numberOfLines={1}>
-          {meta.label}
+          {t(meta.labelKey)}
         </Text>
 
         {focused ? <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: colors.gold }} /> : <View style={{ height: 3 }} />}

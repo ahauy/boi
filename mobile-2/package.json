@@ -9,12 +9,17 @@
     "@expo/vector-icons": "^15.0.2",
     "@palmsight/shared": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-firebase/analytics": "27.1.0",
+    "@react-native-firebase/app": "27.1.0",
+    "@react-native-firebase/crashlytics": "27.1.0",
     "expo": "~58.0.21",
+    "expo-application": "~58.1.2",
     "expo-build-properties": "~58.0.12",
     "expo-camera": "~58.0.14",
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.14",
     "expo-crypto": "~58.0.7",
+    "expo-device": "~58.0.5",
     "expo-file-system": "~58.0.13",
     "expo-font": "~58.0.11",
     "expo-haptics": "~58.0.7",
@@ -31,7 +36,11 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
+    "react-native-adjust": "5.8.1",
+    "react-native-applovin-max": "9.6.0",
     "react-native-gesture-handler": "~3.3.0",
+    "react-native-iap": "17.3.2",
+    "react-native-nitro-modules": "0.37.2",
     "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-screens": "~4.30.0",
@@ -44,15 +53,17 @@
     "@types/react": "~19.3.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~58.0.4",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "3.2.7"
   },
   "scripts": {
-    "start": "expo start --port 8082",
-    "android": "expo start --android --port 8082",
-    "ios": "expo start --ios --port 8082",
-    "web": "expo start --web --port 8082",
+    "start": "node scripts/adb-reverse.js && expo start --port 8081",
+    "android": "node scripts/adb-reverse.js && expo start --android --port 8081",
+    "ios": "expo start --ios --port 8081",
+    "web": "expo start --web --port 8081",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "private": true
 }
