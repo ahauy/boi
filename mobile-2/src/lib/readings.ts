@@ -1,11 +1,6 @@
 import { Platform } from 'react-native';
 import { File } from 'expo-file-system';
-import type {
-  HandOrientation,
-  ReadingDto,
-  ReadingListResponseDto,
-  ReadingSchool,
-} from '@palmsight/shared';
+import { ReadingStatus, type HandOrientation, type ReadingDto, type ReadingListResponseDto, type ReadingSchool } from '@palmsight/shared';
 import { del, get, upload } from './api';
 
 /**
@@ -59,15 +54,31 @@ export function createReading({ school, hand, topics, aiConsent, image, idempote
   });
 }
 
-export function fetchReadings(cursor?: string): Promise<ReadingListResponseDto> {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}&limit=20` : '?limit=20';
+export function fetchReadings(cursor?: string, limit = 20): Promise<ReadingListResponseDto> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}&limit=${limit}` : `?limit=${limit}`;
   return get<ReadingListResponseDto>(`/readings${query}`);
 }
 
-export function fetchReading(id: string): Promise<ReadingDto> {
-  return get<ReadingDto>(`/readings/${encodeURIComponent(id)}`);
+/**
+ * Trang kết quả được mở bằng cách chuyển từ phòng quét — nơi đã cầm sẵn kết quả xong — nên gọi
+ * lại máy chủ để lấy đúng dữ liệu của vài giây trước là một vòng mạng thừa. Cache chỉ áp dụng cho
+ * quẻ đã ở trạng thái cuối; quẻ đang xử lý vẫn phải hỏi server để không hiển thị kết quả cũ.
+ */
+const RECENT_READING_TTL_MS = 2000;
+const recentReadings = new Map<string, { at: number; data: ReadingDto }>();
+
+export async function fetchReading(id: string): Promise<ReadingDto> {
+  const cached = recentReadings.get(id);
+  if (cached && cached.data.status !== ReadingStatus.PROCESSING && Date.now() - cached.at < RECENT_READING_TTL_MS) {
+    return cached.data;
+  }
+
+  const data = await get<ReadingDto>(`/readings/${encodeURIComponent(id)}`);
+  recentReadings.set(id, { at: Date.now(), data });
+  return data;
 }
 
-export function deleteReading(id: string): Promise<void> {
-  return del<void>(`/readings/${encodeURIComponent(id)}`);
+export async function deleteReading(id: string): Promise<void> {
+  recentReadings.delete(id);
+  await del<void>(`/readings/${encodeURIComponent(id)}`);
 }

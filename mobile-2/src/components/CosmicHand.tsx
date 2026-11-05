@@ -5,7 +5,7 @@ import Svg, { Circle, Defs, Ellipse, G, LinearGradient as SvgLinearGradient, Pat
 
 import { colors } from '../theme';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
-import { useReduceMotion } from '../lib/motion';
+import { useAppActive, useReduceMotion } from '../lib/motion';
 import { PALM_DOTS, PALM_LINES, PALM_OUTLINE_PATH } from './mystic/palmGeometry';
 
 interface CosmicHandProps {
@@ -16,14 +16,16 @@ interface CosmicHandProps {
 }
 
 /** Bàn tay holographic: silhouette thuỷ tinh, đường chỉ tay phát sáng, tia quét chậm. */
-export default function CosmicHand({ size = 260, scan = true, compact = false }: CosmicHandProps) {
+function CosmicHand({ size = 260, scan = true, compact = false }: CosmicHandProps) {
   const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'hand';
   const beam = useAnimatedValue(0);
   const reduceMotion = useReduceMotion();
+  const appActive = useAppActive();
   const animate = scan && !reduceMotion;
 
   useEffect(() => {
-    if (!animate) return;
+    // Tia quét vẫn được render (đứng yên) khi app ra sau; chỉ vòng lặp nghỉ để GPU được nghỉ.
+    if (!animate || !appActive) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(beam, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -32,7 +34,7 @@ export default function CosmicHand({ size = 260, scan = true, compact = false }:
     );
     loop.start();
     return () => loop.stop();
-  }, [animate, beam]);
+  }, [animate, appActive, beam]);
 
   const bodyHeight = size * 1.16;
   const travel = bodyHeight * 0.68;
@@ -147,3 +149,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
 });
+
+// ~30 node SVG + 4 Defs gradient: vẽ lại chỉ vì parent đổi state là lãng phí nhất trong app.
+export default React.memo(CosmicHand);

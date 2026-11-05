@@ -361,6 +361,7 @@ export const SCREEN_STRINGS: Record<string, Row> = {
   'setup.pickHand': ['Choose a hand', 'Chọn tay', 'Pilih tangan', 'हाथ चुनें', '选择手', 'Выберите руку', '手を選択', 'Escolha a mão', 'Elige la mano'],
   'setup.cost': ['{cost} GEM per reading', '{cost} GEM cho mỗi quẻ', '{cost} GEM per pembacaan', 'प्रति रीडिंग {cost} GEM', '每次解读 {cost} GEM', '{cost} GEM за толкование', '鑑定 1 回 {cost} GEM', '{cost} GEM por leitura', '{cost} GEM por lectura'],
   'setup.noGemTitle': ["You don't have enough GEM", 'Bạn chưa đủ GEM', 'GEM Anda tidak cukup', 'आपके पास पर्याप्त GEM नहीं हैं', '你的 GEM 不足', 'У вас недостаточно GEM', 'GEM が足りません', 'Você não tem GEM suficiente', 'No tienes suficientes GEM'],
+  'setup.shootHand': ['Photograph your hand', 'Chụp bàn tay', 'Foto telapak tangan', 'हाथ की फ़ोटो लें', '拍摄手掌', 'Сфотографировать ладонь', '手のひらを撮影', 'Fotografar a mão', 'Fotografiar la mano'],
   'setup.enterScan': ['Go to scan room', 'Vào phòng quét', 'Ke ruang pindai', 'स्कैन कक्ष में जाएँ', '进入扫描室', 'Перейти к сканированию', 'スキャンへ進む', 'Ir para o escaneamento', 'Ir al escaneo'],
   'setup.continue': ['Continue', 'Tiếp tục', 'Lanjutkan', 'जारी रखें', '继续', 'Продолжить', '続ける', 'Continuar', 'Continuar'],
   'setup.needOne': ['Choose at least 1 topic to continue.', 'Chọn ít nhất 1 mục để tiếp tục.', 'Pilih minimal 1 topik untuk melanjutkan.', 'जारी रखने के लिए कम से कम 1 विषय चुनें।', '至少选择 1 项才能继续。', 'Выберите хотя бы 1 тему.', '続けるには 1 項目以上選択してください。', 'Escolha pelo menos 1 tema para continuar.', 'Elige al menos 1 tema para continuar.'],

@@ -24,7 +24,7 @@ import { colors, font, gradients, radius, shadow, spacing, text as type, MAX_FON
 import { t } from '../i18n';
 import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
-import { useReduceMotion } from '../lib/motion';
+import { useAppActive, useReduceMotion } from '../lib/motion';
 import { runGatedTap } from '../ui/tap-gate';
 import Text from './AppText';
 import CosmicBackground from './CosmicBackground';
@@ -610,9 +610,10 @@ export function StatusPill({ status }: { status: ReadingStatus }) {
 function ScanBeam({ height }: { height: number }) {
   const beam = useAnimatedValue(0);
   const reduceMotion = useReduceMotion();
+  const appActive = useAppActive();
 
   React.useEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion || !appActive) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(beam, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
@@ -621,7 +622,7 @@ function ScanBeam({ height }: { height: number }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [beam, reduceMotion]);
+  }, [appActive, beam, reduceMotion]);
 
   if (reduceMotion) return null;
 
@@ -776,14 +777,5 @@ export function TextLink({ label, onPress, style }: { label: string; onPress: ()
       style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' }}>
       <Text style={[type.bodyStrong, { color: colors.gold }, style]}>{label}</Text>
     </Pressable>
-  );
-}
-
-export function LinkFooter({ question, action, onPress }: { question: string; action: string; onPress: () => void }) {
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, flexWrap: 'wrap' }}>
-      <Text style={[type.caption, { color: colors.mute }]}>{question}</Text>
-      <TextLink label={action} onPress={onPress} />
-    </View>
   );
 }

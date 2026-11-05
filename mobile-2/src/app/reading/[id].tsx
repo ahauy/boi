@@ -29,6 +29,7 @@ import { ApiError } from '../../lib/api';
 import { runExternalActivity } from '../../lib/external-activity';
 import { errorCodeOf, errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
+import { useAppActive } from '../../lib/motion';
 import { formatDateTime, handLabel, topicLabels, topicsLabel } from '../../lib/format';
 import { deleteReading, fetchReading } from '../../lib/readings';
 import { useAuth } from '../../state/auth';
@@ -61,6 +62,7 @@ export default function ReadingDetailScreen() {
   useI18n();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, refreshUser } = useAuth();
+  const appActive = useAppActive();
   const scrollRef = useRef<ScrollViewInstance>(null);
   const adSlotRef = useRef<ViewInstance>(null);
   const { height: windowHeight } = useWindowDimensions();
@@ -114,8 +116,9 @@ export default function ReadingDetailScreen() {
   );
 
   // Quẻ đang xử lý: tự cập nhật đến khi có kết quả để mở từ Lịch sử không bị kẹt.
+  // Khi app ra sau thì nghỉ; effect chạy lại ngay khi quay về nên kết quả không bị trễ.
   useEffect(() => {
-    if (!id || reading?.status !== ReadingStatus.PROCESSING) return;
+    if (!id || !appActive || reading?.status !== ReadingStatus.PROCESSING) return;
     let cancelled = false;
 
     async function poll() {
@@ -137,7 +140,7 @@ export default function ReadingDetailScreen() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [id, reading?.status, refreshUser]);
+  }, [appActive, id, reading?.status, refreshUser]);
 
   function confirmDelete() {
     haptic.warning();

@@ -21,7 +21,7 @@ const STATUS_LABEL: Record<ReadingStatus, string> = {
   [ReadingStatus.GUEST_PREVIEW]: 'status.preview',
 };
 
-export default function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; compact?: boolean }) {
+function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; compact?: boolean }) {
   const thumbnail = item.annotatedImageUrl ?? item.imageUrl;
   const createdDate = formatDateTime(item.createdAt).split(' ')[0];
 
@@ -63,7 +63,13 @@ export default function ReadingCard({ item, compact = false }: { item: ReadingLi
             justifyContent: 'center',
           }}>
           {thumbnail ? (
-            <Image source={{ uri: thumbnail, cacheKey: item.id }} style={{ width: '100%', height: '100%' }} contentFit="cover" transition={160} />
+            <Image
+              source={{ uri: thumbnail, cacheKey: item.id }}
+              recyclingKey={item.id}
+              style={{ width: '100%', height: '100%' }}
+              contentFit="cover"
+              transition={160}
+            />
           ) : (
             <View style={{ alignItems: 'center', gap: 3 }}>
               <Text style={{ fontFamily: font.display, fontSize: 26, color: colors.gold }}>✦</Text>
@@ -104,3 +110,6 @@ export default function ReadingCard({ item, compact = false }: { item: ReadingLi
     </Pressable>
   );
 }
+
+// Danh sách quẻ dài ra từng trang; mỗi dòng mang 2 gradient và một ảnh, nên chỉ vẽ lại khi item đổi.
+export default React.memo(ReadingCard);

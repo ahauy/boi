@@ -1,34 +1,44 @@
 import React, { useEffect } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { G, Path } from 'react-native-svg';
+import { HandOrientation } from '@palmsight/shared';
 import { colors, radius } from '../../theme';
 import { useAnimatedValue } from '../../lib/useAnimatedValue';
-import { useReduceMotion } from '../../lib/motion';
-import { PALM_OUTLINE_PATH } from './palmGeometry';
+import { useAppActive, useReduceMotion } from '../../lib/motion';
+import { PALM_LINES, PALM_OUTLINE_PATH } from './palmGeometry';
 import TarotCorners from './TarotCorners';
 
 interface HandGuideProps {
   height: number;
   showBeam?: boolean;
   color?: string;
+  /** Bàn tay người dùng đã chọn: path gốc vẽ tay trái, tay phải phải lật trục ngang. */
+  hand?: HandOrientation;
   children?: React.ReactNode;
 }
 
 /** Khung ngắm bàn tay cho camera và bước chụp ảnh: silhouette + góc tarot + tia quét. */
-export default function HandGuide({ height, showBeam = true, color = colors.goldLight, children }: HandGuideProps) {
+export default function HandGuide({
+  height,
+  showBeam = true,
+  color = colors.goldLight,
+  hand = HandOrientation.RIGHT,
+  children,
+}: HandGuideProps) {
   const beam = useAnimatedValue(0);
   const reduceMotion = useReduceMotion();
+  const appActive = useAppActive();
   const animateBeam = showBeam && !reduceMotion;
 
   useEffect(() => {
-    if (!animateBeam) return;
+    if (!animateBeam || !appActive) return;
     const loop = Animated.loop(
       Animated.timing(beam, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
     );
     loop.start();
     return () => loop.stop();
-  }, [animateBeam, beam]);
+  }, [animateBeam, appActive, beam]);
 
   const travel = Math.max(120, height * 0.82);
   const translateY = beam.interpolate({ inputRange: [0, 1], outputRange: [0, travel] });
@@ -53,8 +63,23 @@ export default function HandGuide({ height, showBeam = true, color = colors.gold
       </View>
 
       <Svg width="72%" height="82%" viewBox="0 0 200 260" fill="none" preserveAspectRatio="xMidYMid meet">
-        <Path d={PALM_OUTLINE_PATH} fill="none" stroke={color} strokeOpacity="0.62" strokeWidth="1.4" />
-        <Path d={PALM_OUTLINE_PATH} fill="none" stroke={colors.gold} strokeOpacity="0.16" strokeWidth="6" />
+        <G transform={hand === HandOrientation.RIGHT ? 'translate(200, 0) scale(-1, 1)' : undefined}>
+          <Path d={PALM_OUTLINE_PATH} fill="none" stroke={color} strokeOpacity="0.62" strokeWidth="1.4" />
+          <Path d={PALM_OUTLINE_PATH} fill="none" stroke={colors.gold} strokeOpacity="0.16" strokeWidth="6" />
+          {/* Nét mờ hơn viền một bậc: đủ để đọc là lòng bàn tay mà không lẫn vào ảnh thật phía sau. */}
+          {PALM_LINES.map((line) => (
+            <Path
+              key={line.name}
+              d={line.d}
+              fill="none"
+              stroke={color}
+              strokeOpacity={0.4}
+              strokeWidth={1.2}
+              strokeLinecap="round"
+              strokeDasharray={line.dashed ? '4 6' : undefined}
+            />
+          ))}
+        </G>
       </Svg>
 
       {animateBeam ? (

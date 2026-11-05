@@ -652,7 +652,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   planTitle: {
-    fontFamily: font.bodyBold,
+    fontFamily: font.bodyStrong,
     fontSize: 16,
     lineHeight: 22,
     color: colors.ink,
@@ -676,7 +676,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
   },
   savingsBadgeText: {
-    fontFamily: font.bodyBold,
+    fontFamily: font.bodyStrong,
     fontSize: 11,
     color: colors.onGold,
   },
@@ -692,7 +692,7 @@ const styles = StyleSheet.create({
     opacity: 0.48,
   },
   primaryCtaText: {
-    fontFamily: font.bodyBold,
+    fontFamily: font.bodyStrong,
     fontSize: 16,
     color: colors.onGold,
   },

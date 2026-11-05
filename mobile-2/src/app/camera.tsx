@@ -19,6 +19,7 @@ import { haptic } from '../lib/haptics';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
 import { useReduceMotion } from '../lib/motion';
 import { useCapture } from '../state/capture';
+import { useReadingDraft } from '../state/readingDraft';
 
 const HINTS = ['scan.hintLight', 'scan.hintFingers', 'scan.hintCamera'] as const;
 
@@ -26,6 +27,7 @@ export default function CameraScreen() {
   useI18n();
   const insets = useSafeAreaInsets();
   const { submitPhoto } = useCapture();
+  const { hand } = useReadingDraft();
   const cameraRef = useRef<CameraViewHandle>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [ready, setReady] = useState(false);
@@ -59,7 +61,9 @@ export default function CameraScreen() {
         return;
       }
       submitPhoto({ uri: shot.uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
-      setTimeout(() => router.back(), 120);
+      // Modal mở từ cả Trang chủ lẫn phòng quét, nên về đích là /scan chứ không phải `back()`:
+      // nút "Xem bói" và checkbox đồng ý chỉ tồn tại ở đó.
+      setTimeout(() => router.navigate('/scan'), 120);
     } catch {
       // Android throw khi preview chưa sẵn sàng
       setError(t('camera.captureError'));
@@ -81,7 +85,7 @@ export default function CameraScreen() {
     );
     if (result.canceled || result.assets.length === 0) return;
     submitPhoto({ uri: result.assets[0].uri, name: `palm-${Date.now()}.jpg`, type: 'image/jpeg' });
-    router.back();
+    router.navigate('/scan');
   }
 
   function toggleSelfie() {
@@ -187,7 +191,7 @@ export default function CameraScreen() {
           <Text pointerEvents="none" style={[type.eyebrow, { color: colors.goldLight, textAlign: 'center', marginBottom: spacing.sm, fontSize: 10 }]}>
             {t('camera.frameLabel')}
           </Text>
-          {guideAreaHeight > 0 ? <HandGuide height={guideHeight} /> : null}
+          {guideAreaHeight > 0 ? <HandGuide height={guideHeight} hand={hand} /> : null}
         </View>
 
         <View style={{ gap: spacing.sm, paddingHorizontal: spacing.lg }}>

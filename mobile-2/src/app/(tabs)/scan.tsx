@@ -19,6 +19,7 @@ import NotEnoughSheet from '../../earn/not-enough-sheet';
 import { triggerPaywall } from '../../premium/paywall-triggers';
 import { ApiError } from '../../lib/api';
 import { runExternalActivity } from '../../lib/external-activity';
+import { sleepUntilActive } from '../../lib/appActive';
 import { errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
 import { handLabel, topicsLabel } from '../../lib/format';
@@ -138,7 +139,9 @@ export default function ScanStudioScreen() {
 
       if (cancelRef.current) return;
 
-      await refreshUser();
+      // Số dư về sau một vòng gọi mạng; bắt người dùng đứng chờ nó chỉ để thấy con số trên header
+      // là đánh đổi sai, chip sẽ tự cập nhật khi response về.
+      void refreshUser().catch(() => undefined);
 
       if (reading.status === ReadingStatus.REJECTED || reading.status === ReadingStatus.FAILED) {
         haptic.warning();
@@ -403,7 +406,8 @@ async function waitForReading(id: string, isCancelled: () => boolean): Promise<a
   const started = Date.now();
   while (Date.now() - started < POLL_TIMEOUT_MS) {
     if (isCancelled()) return { status: ReadingStatus.PROCESSING, id };
-    await sleep(POLL_INTERVAL_MS);
+    // Người dùng rời app giữa lúc luận giải: đừng gọi API trong nền, nhịp đầu sau khi quay lại sẽ lấy kết quả
+    await sleepUntilActive(POLL_INTERVAL_MS);
     if (isCancelled()) return { status: ReadingStatus.PROCESSING, id };
     try {
       const reading = await fetchReading(id);
@@ -417,10 +421,6 @@ async function waitForReading(id: string, isCancelled: () => boolean): Promise<a
     }
   }
   return { status: ReadingStatus.PROCESSING, id };
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function outcomeFailure(status: ReadingStatus, reason?: string | null): { title: string; lines?: string[]; retryable: boolean } {

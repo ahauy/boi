@@ -219,7 +219,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
               {step === 2 ? (
                 <View style={{ gap: spacing.lg }}>
                   <View accessibilityRole="radiogroup" accessibilityLabel={t('setup.pickHand')} style={{ flexDirection: 'row', gap: spacing.md }}>
-                    {[HandOrientation.RIGHT, HandOrientation.LEFT].map((side) => (
+                    {[HandOrientation.LEFT, HandOrientation.RIGHT].map((side) => (
                       <HandChoice
                         key={side}
                         side={side}
@@ -265,11 +265,11 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
               <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                 {step > 0 ? <Button label={t('reading.back')} variant="ghost" style={{ flex: 1 }} onPress={() => { haptic.tap(); setStep((current) => current - 1); }} /> : null}
                 <Button
-                  label={step === STEPS.length - 1 ? t('setup.enterScan') : t('setup.continue')}
+                  label={step === STEPS.length - 1 ? t('setup.shootHand') : t('setup.continue')}
                   style={{ flex: step > 0 ? 2 : 1 }}
                   onPress={next}
                   disabled={!canContinue}
-                  icon={<MaterialCommunityIcons name={step === STEPS.length - 1 ? 'line-scan' : 'arrow-right'} size={18} color={colors.onGold} />}
+                  icon={<MaterialCommunityIcons name={step === STEPS.length - 1 ? 'camera-iris' : 'arrow-right'} size={18} color={colors.onGold} />}
                 />
               </View>
               <Text style={[type.caption, { color: step === 1 && draft.selected.length === 0 ? colors.danger : colors.stone, textAlign: 'center' }]}>

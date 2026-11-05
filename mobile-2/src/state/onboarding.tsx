@@ -48,7 +48,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
       // Reinstall on iOS may keep Keychain session: if user already has readings, skip onboarding
       try {
-        const page = await fetchReadings();
+        const page = await fetchReadings(undefined, 1);
         if (page.items.length > 0) {
           await markOnboardingComplete();
           if (!cancelled) setStatus('done');

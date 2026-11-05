@@ -5,13 +5,14 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CormorantGaramond_600SemiBold, CormorantGaramond_600SemiBold_Italic, CormorantGaramond_700Bold } from '@expo-google-fonts/cormorant-garamond';
-import { BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold } from '@expo-google-fonts/be-vietnam-pro';
+import { BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold } from '@expo-google-fonts/be-vietnam-pro';
 import { JetBrainsMono_400Regular, JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 
 import { AuthProvider, useAuth } from '../state/auth';
 import { OnboardingProvider, useOnboarding } from '../state/onboarding';
 import { CaptureProvider } from '../state/capture';
 import { ReadingDraftProvider } from '../state/readingDraft';
+import { FontScaleProvider } from '../lib/fontScale';
 import { SessionErrorScreen, SessionLoadingScreen } from '../components/SessionGate';
 import SimulatedAdHost from '../components/SimulatedAdHost';
 import BannerHost from '../ads/banner-host';
@@ -105,32 +106,33 @@ export default function RootLayout() {
     BeVietnamPro_400Regular,
     BeVietnamPro_500Medium,
     BeVietnamPro_600SemiBold,
-    BeVietnamPro_700Bold,
     JetBrainsMono_400Regular,
     JetBrainsMono_500Medium,
   });
 
   return (
-    <SafeAreaProvider>
-      <CaptureProvider>
-        <AuthProvider>
-          <OnboardingProvider>
-            <ReadingDraftProvider>
-              <ThemeProvider value={palmTheme}>
-                <StatusBar style="light" />
-                {/* Chỉ chạy ở bản dev không có SDK quảng cáo (Expo Go). */}
-                <SimulatedAdHost />
-                <View style={{ flex: 1, backgroundColor: colors.canvas }}>
-                  <View style={{ flex: 1 }}>
-                    <Gate appReady={fontsLoaded || Boolean(fontError)} />
+    <FontScaleProvider>
+      <SafeAreaProvider>
+        <CaptureProvider>
+          <AuthProvider>
+            <OnboardingProvider>
+              <ReadingDraftProvider>
+                <ThemeProvider value={palmTheme}>
+                  <StatusBar style="light" />
+                  {/* Chỉ chạy ở bản dev không có SDK quảng cáo (Expo Go). */}
+                  <SimulatedAdHost />
+                  <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+                    <View style={{ flex: 1 }}>
+                      <Gate appReady={fontsLoaded || Boolean(fontError)} />
+                    </View>
+                    <BannerHost />
                   </View>
-                  <BannerHost />
-                </View>
-              </ThemeProvider>
-            </ReadingDraftProvider>
-          </OnboardingProvider>
-        </AuthProvider>
-      </CaptureProvider>
-    </SafeAreaProvider>
+                </ThemeProvider>
+              </ReadingDraftProvider>
+            </OnboardingProvider>
+          </AuthProvider>
+        </CaptureProvider>
+      </SafeAreaProvider>
+    </FontScaleProvider>
   );
 }
