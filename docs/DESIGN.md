@@ -158,6 +158,9 @@ components:
 
 # 🎨 PalmSight Design System — Terminal Minimalist
 
+> **Tài liệu lịch sử (cập nhật 2026-11-05).** Viết cho bản web + app cũ (đăng nhập email/Google/Facebook, credits, ảnh không lưu, ONNX trên trình duyệt). Hướng sản phẩm hiện tại là app Android không đăng nhập, GEM, ảnh của lần xem thành công lưu trên Cloudinary và xoá tài khoản ngay trong app. Đừng dùng file này làm nguồn sự thật; xem [README.md](README.md), [business-rules.md](business-rules.md) và [CONSISTENCY_PLAN.md](CONSISTENCY_PLAN.md). Thư mục `adr/` không có trong repo nên các liên kết ADR không còn đích.
+
+
 > **Source:** Stitch MCP Project `PalmSight Terminal Landing Page` (`15464591816682045618`)  
 > **Aesthetic:** Terminal-native, editorial-technical, flat, high-contrast monospace.
 

@@ -27,8 +27,6 @@ export interface FirstPurchasePayload {
 }
 
 let adjustInitialized = false;
-/** True when Adjust was started without consent (GDPR/UNKNOWN): it must never receive events. */
-let adjustRestricted = false;
 let analyticsOverride: typeof AnalyticsModule | null = null;
 
 let adjustOverride: typeof AdjustModule | null = null;
@@ -104,11 +102,14 @@ function loadCrashlytics(): typeof CrashlyticsModule | null {
 }
 
 /**
- * Starts Adjust after the MAX consent flow (§5.6). GDPR or unknown region: third-party sharing
- * off, Google DMA `eea=1`, no ad personalization, no GAID read.
+ * Starts Adjust after the MAX consent flow (§5.6), only when the region is known to be outside
+ * GDPR scope (`measurementAllowed`). GDPR or unknown region: Adjust is not started at all, so it
+ * sends nothing, not even basic install data. If the consent wait times out (UNKNOWN) there is
+ * no Adjust for that session; `adjustInitialized` stays false and every Adjust event is dropped.
  */
 export async function initializeAdjust(consentRegion: ConsentRegion): Promise<void> {
   applyMeasurementConsent(consentRegion);
+  if (!measurementAllowed(consentRegion)) return;
   const appToken = ADS_CONFIG.adjust.appToken;
   if (adjustInitialized || !appToken) return;
 
@@ -116,26 +117,15 @@ export async function initializeAdjust(consentRegion: ConsentRegion): Promise<vo
   if (!sdk) return;
 
   try {
-    const { Adjust, AdjustConfig, AdjustThirdPartySharing } = sdk;
+    const { Adjust, AdjustConfig } = sdk;
     const environment =
       ADS_CONFIG.adjust.environment === 'production'
         ? AdjustConfig.EnvironmentProduction
         : AdjustConfig.EnvironmentSandbox;
     const config = new AdjustConfig(appToken, environment);
 
-    if (consentRegion !== 'OTHER') {
-      config.disableGoogleAdIdReading();
-
-      const sharing = new AdjustThirdPartySharing(false);
-      sharing.addGranularOption('google_dma', 'eea', '1');
-      sharing.addGranularOption('google_dma', 'ad_personalization', '0');
-      sharing.addGranularOption('google_dma', 'ad_user_data', '0');
-      Adjust.trackThirdPartySharing(sharing);
-    }
-
     Adjust.initSdk(config);
     adjustInitialized = true;
-    adjustRestricted = !measurementAllowed(consentRegion);
   } catch (err) {
     if (__DEV__) console.warn('[Adjust] Init failed:', err);
   }
@@ -174,7 +164,7 @@ function sendToFirebaseAnalytics(params: Record<string, string | number>): void 
 }
 
 function adjustSdkIfAllowed(): typeof AdjustModule | null {
-  if (!adjustInitialized || adjustRestricted || !measurementAllowed()) return null;
+  if (!adjustInitialized || !measurementAllowed()) return null;
   return loadAdjust();
 }
 
@@ -231,5 +221,4 @@ export function reportMissingHiddenEvent(format: string, networkName?: string): 
 
 export function resetRevenueForTesting(): void {
   adjustInitialized = false;
-  adjustRestricted = false;
 }

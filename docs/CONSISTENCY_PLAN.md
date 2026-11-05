@@ -1,6 +1,6 @@
 # Kế hoạch thống nhất PalmSight
 
-Cập nhật: 2026-11-05. Nhánh: `feat/advertise`. Trạng thái: **chưa bắt đầu theo hướng chỉ có app**. Working tree có 26 file sửa chưa commit, làm lúc 12:05 đến 12:35 ngày 2026-11-05 theo bản kế hoạch cũ, chưa rõ tác giả và chưa review. Phải đối chiếu các thay đổi này với kế hoạch dưới đây trước khi làm tiếp.
+Cập nhật: 2026-11-05. Nhánh: `feat/app-only-content` (từ `origin/main` f0be6c6). Trạng thái: **nhóm A và B đã xong và nằm trong `main`; nhóm C (C1 đến C5) đã làm xong phần nội dung ở dạng bản nháp trên nhánh này**, chưa commit. Còn lại: các chỗ `[ĐIỀN]` và `[XÁC NHẬN]` trong `legal/` (tên và địa chỉ người vận hành, email hỗ trợ, ngày đăng, điều khoản huấn luyện của Gemini và Groq, chính sách hoàn tiền, thời hạn lưu), chủ app và tư vấn pháp lý duyệt, Claude Doc của chính sách, việc ngoài repo (Render, Play Console, MAX/Adjust, Cloudinary, tách database dev) và các việc chủ app tự làm (xoá `frontend/` và `vercel.json` gốc, `pnpm install` đầy đủ, build EAS kiểm manifest). Mục B4 (xác nhận 16 tuổi) đã chốt là không thêm bước riêng: bước chọn nhóm tuổi là xác nhận, Điều khoản ghi rõ.
 
 **Hướng sản phẩm đã chốt: chỉ phát hành app Android, không còn bản web.** Repo này là nguồn duy nhất cho app, backend và các trang chính sách.
 
@@ -32,7 +32,7 @@ Tài liệu này đủ để một phiên mới làm tiếp mà không cần đ�
 ## Quyết định đã chốt
 
 - Tên guest: "Nhà chiêm tinh" / "Stargazer" theo ngôn ngữ. Avatar bỏ bóng vàng.
-- Bản chính sách đã được duyệt: https://claude.ai/artifact/8uePn95qz1wAn6RMV81nSx. Phải sửa lại cho phù hợp với hướng chỉ có app (nhóm B2).
+- Bản chính sách đã được duyệt: https://claude.ai/artifact/8uePn95qz1wAn6RMV81nSx. Phải sửa lại cho phù hợp với hướng chỉ có app (nhóm B2). Nguồn nội dung hiện là `legal/privacy.html` (bản nháp đã sửa theo hướng chỉ có app); Claude Doc cần cập nhật lại từ file này sau khi chủ app duyệt.
 - Giữ quy tắc thiết bị từng xoá tài khoản. Giữ quảng cáo khi back từ sửa hồ sơ. Giữ gap 60 giây cho ads user.
 - Email hỗ trợ: `palmsight.app@gmail.com`.
 - Trong app chỉ có nút "Xoá tài khoản", không thêm nút "Xoá dữ liệu" riêng.

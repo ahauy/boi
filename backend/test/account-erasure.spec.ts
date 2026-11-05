@@ -495,6 +495,37 @@ describe('B2: xoá dữ liệu khi xoá tài khoản', () => {
       expect(reading.completedAt ?? null).toBeNull();
     });
 
+    it('deleteReading một lần xem còn hiệu lực: xoá kết quả, ảnh và đặt topics về []', async () => {
+      const g = await createGuest(testApp);
+      const id = new Types.ObjectId(g.id);
+      const readingId = new Types.ObjectId();
+      await col('readings').insertOne({
+        _id: readingId,
+        userId: id,
+        idempotencyKey: crypto.randomUUID(),
+        school: ReadingSchool.WESTERN,
+        topics: ['heartLine', 'career'],
+        hand: HandOrientation.LEFT,
+        status: ReadingStatus.DONE,
+        result: { summary: 'x' },
+        palmLines: [{ a: 1 }],
+        imagePublicId: 'pub-del',
+        imageUrl: 'https://img/del.jpg',
+        deletedAt: null,
+        createdAt: new Date(),
+      });
+      const del = vi.spyOn(cloudinary, 'deleteImage').mockResolvedValue(true);
+
+      await testApp.app.get(ReadingsService).deleteReading(id, readingId.toString());
+
+      expect(del).toHaveBeenCalledWith('pub-del');
+      const after = (await col('readings').findOne({ _id: readingId }))!;
+      expect(after.deletedAt).toBeInstanceOf(Date);
+      expect(after.result).toBeNull();
+      expect(after.imagePublicId).toBeNull();
+      expect(after.topics).toEqual([]);
+    });
+
     it('deleteReading với bản ghi đã xoá: 404, không gọi Cloudinary và không ghi lại deletedAt', async () => {
       const g = await createGuest(testApp);
       const id = new Types.ObjectId(g.id);

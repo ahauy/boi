@@ -598,6 +598,8 @@ export class ReadingsService {
     if (del1 && del2) {
       updates.result = null;
       updates.palmLines = null;
+      // Chủ đề đã chọn lộ mối quan tâm; bản ghi đã xoá không có nơi nào đọc lại.
+      updates.topics = [];
       updates.deletedAt = new Date();
       await this.readingModel.updateOne(
         { _id: readingObjId, deletedAt: null },

@@ -18,6 +18,9 @@ schema-version: "1.2"
 
 # 🗺️ Product Backlog & Execution Roadmap — PalmSight
 
+> **Tài liệu lịch sử (cập nhật 2026-11-05).** Viết cho bản web + app cũ (đăng nhập email/Google/Facebook, credits, ảnh không lưu, ONNX trên trình duyệt). Hướng sản phẩm hiện tại là app Android không đăng nhập, GEM, ảnh của lần xem thành công lưu trên Cloudinary và xoá tài khoản ngay trong app. Đừng dùng file này làm nguồn sự thật; xem [README.md](README.md), [business-rules.md](business-rules.md) và [CONSISTENCY_PLAN.md](CONSISTENCY_PLAN.md). Thư mục `adr/` không có trong repo nên các liên kết ADR không còn đích.
+
+
 > **Sản phẩm:** PalmSight — Ứng dụng Web/PWA bói chỉ tay thông minh đa trường phái bằng AI Vision (Groq/Gemini), phong cách giao diện Terminal Minimalist, quản lý lượt bói minh bạch qua Sổ cái Credits và đòn bẩy lan tỏa giới thiệu bạn bè.  
 > **Cập nhật lần cuối:** 2026-10-15  
 > **Trạng thái tài liệu:** Living Document — Quản lý tiến độ và đồng bộ với `/command-continue-project`
@@ -280,7 +283,7 @@ schema-version: "1.2"
     - [x] Cho phép xem trước ảnh chụp, nút `[ Chụp lại ]` và nút hành động `[ Xem bói (-1 credit) ]`.
     - [x] Bắt buộc người dùng tích chọn checkbox đồng ý: `[x] Tôi đồng ý gửi ảnh lòng bàn tay để AI phân tích theo chính sách bảo mật`. Nút gửi bị disable nếu chưa tích.
     - [x] Backend tiếp nhận file qua `multipart/form-data` với Multer `memoryStorage` (giới hạn file tối đa 8MB), sử dụng thư viện `sharp` tiền xử lý hoàn toàn trong bộ nhớ buffer: chuyển đổi định dạng (HEIC/PNG → JPEG), tự động xoay đúng chiều theo EXIF, xóa sạch toàn bộ metadata EXIF nhạy cảm (định vị GPS, thông số thiết bị), resize cạnh dài nhất tối đa 1280px, nén quality 85%.
-    - [x] **Tuyệt đối không lưu trữ ảnh lòng bàn tay** trên server dưới bất kỳ hình thức nào (không lưu ổ đĩa, không lưu thư mục tạm `/tmp`, không lưu object storage Cloudflare R2 hay MinIO, không lưu database, không log ảnh) theo đúng [ADR-0010](file:///Users/vutuanhau/Documents/PROJECT/PalmSight/docs/adr/0010-no-image-storage.md); buffer ảnh chỉ được chuyển thành base64 data URL gửi sang AI Vision và tự động giải phóng ngay khi request kết thúc.
+    - [x] ~~Tuyệt đối không lưu trữ ảnh lòng bàn tay trên server~~ (đã thay đổi: ảnh của lần xem thành công được lưu trên Cloudinary; ảnh bị từ chối hoặc lỗi không lưu) — dưới bất kỳ hình thức nào (không lưu ổ đĩa, không lưu thư mục tạm `/tmp`, không lưu object storage Cloudflare R2 hay MinIO, không lưu database, không log ảnh) theo đúng [ADR-0010](file:///Users/vutuanhau/Documents/PROJECT/PalmSight/docs/adr/0010-no-image-storage.md); buffer ảnh chỉ được chuyển thành base64 data URL gửi sang AI Vision và tự động giải phóng ngay khi request kết thúc.
   - **Tasks (Phân rã kỹ thuật cho Subagents):**
     - [x] **Backend:** Cấu hình Multer `memoryStorage` với file size limit 8MB và mimetype whitelist (`image/jpeg`, `image/png`, `image/webp`, `image/heic`); xây dựng pipeline tiền xử lý ảnh in-memory bằng `sharp`; không triển khai `StorageService` hay Cloudflare R2/MinIO SDK theo ADR-0010.
     - [x] **Frontend:**

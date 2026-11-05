@@ -72,7 +72,8 @@ export class ImageProcessorService {
       );
     }
 
-    // In-Memory Preprocessing (ADR-0010: Never store image on server)
+    // Xử lý trong bộ nhớ, không ghi ra đĩa của máy chủ. Sau khi AI đọc xong, ảnh của lần xem
+    // thành công được tải lên Cloudinary (readings.service); lần xem bị từ chối hoặc lỗi thì không lưu.
     // 1. Auto-rotate based on EXIF
     // 2. Resize longest dimension to max 1280px
     // 3. Strip all EXIF / metadata
