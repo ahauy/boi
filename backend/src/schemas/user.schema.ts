@@ -52,6 +52,10 @@ export class User {
   @Prop({ type: String, default: null, trim: true })
   avatarUrl?: string | null;
 
+  // publicId Cloudinary của ảnh do người dùng tải lên; null với ảnh Google/Facebook (không được xoá)
+  @Prop({ type: String, default: null })
+  avatarPublicId?: string | null;
+
   @Prop({
     type: String,
     required: true,

@@ -1,22 +1,27 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { changePasswordSchema } from "@palmsight/shared";
+import { changePasswordSchema, updateProfileSchema } from "@palmsight/shared";
 import type {
   MeResponseDto,
   CreditTransactionListResponseDto,
   ChangePasswordRequestDto,
+  UpdateProfileRequestDto,
   EnterReferralRequestDto,
   EnterReferralResponseDto,
   ReferralListResponseDto,
@@ -29,6 +34,8 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { PasswordService } from "../auth/password.service";
 import { UserDocument } from "../schemas/user.schema";
 import { UsersService } from "./users.service";
+import { AvatarService } from "./avatar.service";
+import { AvatarUploadInterceptor } from "./avatar-upload.interceptor";
 import { CreditLedgerService } from "../credits/credit-ledger.service";
 import { ReferralsService } from "../referrals/referrals.service";
 import { enterReferralBodySchema } from "../referrals/schemas";
@@ -41,12 +48,44 @@ export class UsersController {
     private readonly creditLedgerService: CreditLedgerService,
     private readonly passwordService: PasswordService,
     private readonly referralsService: ReferralsService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly avatarService: AvatarService
   ) {}
 
   @Get()
   getMe(@CurrentUser() user: UserDocument): Promise<MeResponseDto> {
     return this.usersService.getMe(user);
+  }
+
+  // Chỉ sửa chính mình: user luôn lấy từ token, không nhận id từ body/params
+  @Patch()
+  @UseGuards(UserRateLimitGuard)
+  @UserRateLimit({ limit: 10, windowMs: 60 * 1000 })
+  async updateProfile(
+    @CurrentUser() user: UserDocument,
+    @Body() body: UpdateProfileRequestDto
+  ): Promise<MeResponseDto> {
+    const validated = await updateProfileSchema.validate(body ?? {}, { abortEarly: false });
+    return this.usersService.updateDisplayName(user, validated.displayName);
+  }
+
+  @Post("avatar")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(UserRateLimitGuard)
+  @UserRateLimit({ limit: 5, windowMs: 60 * 1000 })
+  @UseInterceptors(AvatarUploadInterceptor)
+  uploadAvatar(
+    @CurrentUser() user: UserDocument,
+    @UploadedFile() file?: Express.Multer.File
+  ): Promise<MeResponseDto> {
+    return this.avatarService.replaceAvatar(user, file);
+  }
+
+  @Delete("avatar")
+  @UseGuards(UserRateLimitGuard)
+  @UserRateLimit({ limit: 5, windowMs: 60 * 1000 })
+  removeAvatar(@CurrentUser() user: UserDocument): Promise<MeResponseDto> {
+    return this.avatarService.removeAvatar(user);
   }
 
   @Get("credit-transactions")

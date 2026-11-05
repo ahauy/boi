@@ -40,9 +40,15 @@ export interface UserDto {
   billingRef?: string;
   grantedNow?: boolean;
   vipDailyGranted?: number;
+  /** Người dùng đã tải ảnh đại diện riêng (có thể gỡ); false với ảnh Google/Facebook */
+  hasCustomAvatar?: boolean;
 }
 
 export type MeResponseDto = UserDto;
+
+export interface UpdateProfileRequestDto {
+  displayName: string;
+}
 
 export interface ChangePasswordRequestDto {
   currentPassword: string;

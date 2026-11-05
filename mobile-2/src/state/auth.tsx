@@ -20,6 +20,8 @@ interface AuthContextValue {
   error: string | null;
   retry(): Promise<void>;
   refreshUser(): Promise<void>;
+  /** Ghi ngay user mà endpoint trả về (sửa hồ sơ) vào cache, không chờ gọi lại /me */
+  applyUserUpdate(next: UserDto): void;
   /** API trả creditBalance trong mọi response, dùng nó để cập nhật header ngay */
   setCreditBalance(balance: number): void;
 }
@@ -152,6 +154,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [refreshUser]
   );
 
+  const applyUserUpdate = useCallback((next: UserDto) => {
+    // Gộp lên user cũ: các trường chỉ có ở lần mở phiên (grantedNow...) không bị mất
+    setUser((current) => (current ? { ...current, ...next } : next));
+  }, []);
+
   const retry = useCallback(async () => {
     setStatus('loading');
     setError(null);
@@ -182,8 +189,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [setCreditBalance]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, error, retry, refreshUser, setCreditBalance }),
-    [status, user, error, retry, refreshUser, setCreditBalance]
+    () => ({ status, user, error, retry, refreshUser, applyUserUpdate, setCreditBalance }),
+    [status, user, error, retry, refreshUser, applyUserUpdate, setCreditBalance]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

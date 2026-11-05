@@ -17,6 +17,7 @@ import { useAuth } from '../state/auth';
 import { useReadingDraft } from '../state/readingDraft';
 import { useReduceMotion } from '../lib/motion';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
+import { billingStore } from '../billing';
 import { triggerPaywall } from '../premium/paywall-triggers';
 
 const STEPS = [
@@ -42,6 +43,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
   const draft = useReadingDraft();
   const reduceMotion = useReduceMotion();
   const [step, setStep] = useState(0);
+  const [vipUnavailable, setVipUnavailable] = useState(false);
 
   const isVip = Boolean((user as any)?.isVip || user?.vip?.active);
   const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
@@ -179,7 +181,12 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                         onPress={() => {
                           if (isLocked) {
                             haptic.warning();
-                            void triggerPaywall('locked_feature');
+                            if (billingStore.getState().billingEnabled) {
+                              setVipUnavailable(false);
+                              void triggerPaywall('locked_feature');
+                            } else {
+                              setVipUnavailable(true);
+                            }
                             return;
                           }
                           haptic.select();
@@ -233,6 +240,8 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                       <Text style={[type.caption, { color: colors.mute }]}>{summary}</Text>
                     </View>
                   </View>
+
+                  {vipUnavailable ? <Banner variant="warning" title={t('setup.vipUnavailable')} /> : null}
 
                   {user && gemBalance < CORE_READING_COST_GEM ? (
                     <Banner

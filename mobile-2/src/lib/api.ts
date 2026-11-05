@@ -253,6 +253,10 @@ export function put<T>(path: string, body?: unknown, options?: Omit<RequestOptio
   return request<T>(path, { ...options, method: 'PUT', body });
 }
 
+export function patch<T>(path: string, body?: unknown, options?: Omit<RequestOptions, 'method' | 'body' | 'form'>) {
+  return request<T>(path, { ...options, method: 'PATCH', body });
+}
+
 export function del<T>(path: string, options?: Omit<RequestOptions, 'method' | 'body' | 'form'>) {
   return request<T>(path, { ...options, method: 'DELETE' });
 }

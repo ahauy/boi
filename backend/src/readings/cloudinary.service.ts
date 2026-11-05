@@ -1,4 +1,4 @@
-import { Injectable, Optional } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 
@@ -7,6 +7,8 @@ export interface CloudinaryUploadResult {
   publicId: string;
 }
 
+export class CloudinaryUploadError extends Error {}
+
 export interface CloudinaryUploadOptions {
   folder?: string;
   publicId?: string;
@@ -14,6 +16,8 @@ export interface CloudinaryUploadOptions {
 
 @Injectable()
 export class CloudinaryService {
+  private readonly logger = new Logger(CloudinaryService.name);
+
   constructor(@Optional() private readonly configService?: ConfigService) {}
 
   private getConfig() {
@@ -42,6 +46,18 @@ export class CloudinaryService {
     };
   }
 
+  // Folder ảnh đại diện tách khỏi ảnh lòng bàn tay: cùng gốc với CLOUDINARY_FOLDER
+  getAvatarFolder(): string {
+    const explicit = (
+      this.configService?.get<string>("CLOUDINARY_AVATAR_FOLDER") ??
+      process.env.CLOUDINARY_AVATAR_FOLDER ??
+      ""
+    ).trim();
+    if (explicit) return explicit;
+    const root = this.getConfig().folder.replace(/\/+$/, "");
+    return `${root.replace(/\/readings$/, "")}/avatars`;
+  }
+
   isConfigured(): boolean {
     const { cloudName, apiKey, apiSecret } = this.getConfig();
     return Boolean(cloudName && apiKey && apiSecret);
@@ -60,6 +76,25 @@ export class CloudinaryService {
       .digest("hex");
   }
 
+  // Data URI chỉ dùng cho dev. Production không lưu ảnh vào MongoDB: thiếu cấu hình hoặc
+  // tải lỗi thì trả null, lần xem vẫn hoàn tất nhưng không có ảnh.
+  private fallbackUpload(
+    dataUri: string,
+    reason: string,
+    publicId?: string
+  ): CloudinaryUploadResult | null {
+    const nodeEnv =
+      this.configService?.get<string>("NODE_ENV") ?? process.env.NODE_ENV;
+    if (nodeEnv === "production") {
+      this.logger.error(`Không lưu ảnh: ${reason}`);
+      return null;
+    }
+    return {
+      url: dataUri,
+      publicId: `local:${publicId || crypto.randomUUID()}`,
+    };
+  }
+
   async uploadImage(
     buffer: Buffer,
     options?: CloudinaryUploadOptions
@@ -73,10 +108,11 @@ export class CloudinaryService {
     const dataUri = `data:image/jpeg;base64,${buffer.toString("base64")}`;
 
     if (!cloudName || !apiKey || !apiSecret) {
-      return {
-        url: dataUri,
-        publicId: `local:${options?.publicId || crypto.randomUUID()}`,
-      };
+      return this.fallbackUpload(
+        dataUri,
+        "Cloudinary chưa được cấu hình",
+        options?.publicId
+      );
     }
 
     const timestamp = Math.floor(Date.now() / 1000);
@@ -113,10 +149,11 @@ export class CloudinaryService {
       );
 
       if (!response.ok) {
-        return {
-          url: dataUri,
-          publicId: `local:${options?.publicId || crypto.randomUUID()}`,
-        };
+        return this.fallbackUpload(
+          dataUri,
+          `Cloudinary trả về ${response.status}`,
+          options?.publicId
+        );
       }
 
       const payload = (await response.json()) as {
@@ -125,10 +162,11 @@ export class CloudinaryService {
       };
 
       if (!payload.secure_url || !payload.public_id) {
-        return {
-          url: dataUri,
-          publicId: `local:${options?.publicId || crypto.randomUUID()}`,
-        };
+        return this.fallbackUpload(
+          dataUri,
+          "Phản hồi Cloudinary không hợp lệ",
+          options?.publicId
+        );
       }
 
       return {
@@ -136,11 +174,66 @@ export class CloudinaryService {
         publicId: payload.public_id,
       };
     } catch {
-      return {
-        url: dataUri,
-        publicId: `local:${options?.publicId || crypto.randomUUID()}`,
-      };
+      return this.fallbackUpload(
+        dataUri,
+        "Không kết nối được Cloudinary",
+        options?.publicId
+      );
     }
+  }
+
+  /**
+   * Upload thật, không có đường lùi về data URI như uploadImage: avatar lưu vào DB nên
+   * phải là URL https của Cloudinary, mọi lỗi đều ném CloudinaryUploadError.
+   */
+  async uploadImageStrict(
+    buffer: Buffer,
+    mimeType: string,
+    options: CloudinaryUploadOptions
+  ): Promise<CloudinaryUploadResult> {
+    const { cloudName, apiKey, apiSecret } = this.getConfig();
+    if (!cloudName || !apiKey || !apiSecret) {
+      throw new CloudinaryUploadError("Cloudinary chưa được cấu hình");
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const paramsToSign: Record<string, string | number> = { timestamp };
+    if (options.folder) paramsToSign.folder = options.folder;
+    if (options.publicId) paramsToSign.public_id = options.publicId;
+
+    const body = new URLSearchParams({
+      file: `data:${mimeType};base64,${buffer.toString("base64")}`,
+      api_key: apiKey,
+      timestamp: String(timestamp),
+      signature: this.signParams(paramsToSign, apiSecret),
+    });
+    if (options.folder) body.set("folder", options.folder);
+    if (options.publicId) body.set("public_id", options.publicId);
+
+    let payload: { secure_url?: string; public_id?: string };
+    try {
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/image/upload`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body.toString(),
+          signal: AbortSignal.timeout(20_000),
+        }
+      );
+      if (!response.ok) {
+        throw new CloudinaryUploadError(`Cloudinary trả về ${response.status}`);
+      }
+      payload = (await response.json()) as typeof payload;
+    } catch (error) {
+      if (error instanceof CloudinaryUploadError) throw error;
+      throw new CloudinaryUploadError("Không kết nối được Cloudinary");
+    }
+
+    if (!payload.secure_url?.startsWith("https://") || !payload.public_id) {
+      throw new CloudinaryUploadError("Phản hồi Cloudinary không hợp lệ");
+    }
+    return { url: payload.secure_url, publicId: payload.public_id };
   }
 
   async deleteImage(publicId?: string | null): Promise<boolean> {

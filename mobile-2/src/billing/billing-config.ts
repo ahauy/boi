@@ -1,3 +1,5 @@
+import Constants from 'expo-constants';
+
 /**
  * Billing Configuration (Playbook §1.2, §6.1)
  *
@@ -8,6 +10,10 @@
  *
  * If either weekly or yearly ID is missing, billing and paywall are disabled (§1.2).
  */
+
+/** Package của app trên Google Play, dùng để mở đúng trang gói đăng ký. */
+export const ANDROID_PACKAGE_NAME: string =
+  Constants.expoConfig?.android?.package ?? 'com.palmsight.mobile2';
 
 export interface BillingConfig {
   weeklyId: string;

@@ -279,6 +279,43 @@ export const resetPasswordFormSchema = resetPasswordSchema.shape({
     .oneOf([yup.ref("newPassword")], "Mật khẩu xác nhận không khớp"),
 });
 
+// Ký tự điều khiển, zero-width và bidi: dùng để giả mạo hoặc làm hỏng hiển thị tên
+// eslint-disable-next-line no-control-regex
+const DISPLAY_NAME_FORBIDDEN_REGEX =
+  /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/;
+// Chỉ gộp khoảng trắng "nhìn thấy được"; tab/xuống dòng không gộp để test phía dưới còn bắt được
+const DISPLAY_NAME_SPACES_REGEX =
+  /[ \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/g;
+
+export const updateProfileSchema = yup
+  .object({
+    displayName: yup
+      .string()
+      // yup tự ép số/boolean thành chuỗi; giữ giá trị gốc để kiểu sai bị báo lỗi thay vì lọt qua
+      .transform((val, original) =>
+        typeof original === "string"
+          ? original.replace(DISPLAY_NAME_SPACES_REGEX, " ").replace(/^ | $/g, "")
+          : original
+      )
+      .required("Tên hiển thị không được để trống")
+      .min(1, "Tên hiển thị phải có ít nhất 1 ký tự")
+      .max(50, "Tên hiển thị tối đa 50 ký tự")
+      .test(
+        "no-hidden-chars",
+        "Tên hiển thị chứa ký tự không hợp lệ",
+        (val) => !val || !DISPLAY_NAME_FORBIDDEN_REGEX.test(val)
+      ),
+  })
+  // noUnknown của yup chỉ báo lỗi ở chế độ strict (mà strict tắt transform), nên so với giá trị gốc
+  .test("no-unknown-fields", "Không chấp nhận trường lạ", (_value, ctx) => {
+    const original = ctx.originalValue;
+    return (
+      !original ||
+      typeof original !== "object" ||
+      Object.keys(original).every((key) => key === "displayName")
+    );
+  });
+
 export const changePasswordSchema = yup.object({
   currentPassword: yup
     .string()

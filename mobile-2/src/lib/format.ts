@@ -85,3 +85,16 @@ export const REFERRAL_AMOUNTS = {
 
 export const SHARE_TEXT_INTRO = (code: string) =>
   t('referral.shareText', { code, invitee: REFERRAL_AMOUNTS.invitee });
+
+/** Tên mặc định backend gán cho khách mới tạo (backend giữ nguyên tiếng Việt). */
+export const DEFAULT_GUEST_DISPLAY_NAME = 'Khách';
+
+/**
+ * Tên hiển thị. Chỉ khách chưa đặt tên mới được dịch theo ngôn ngữ app; tên người dùng tự đặt
+ * giữ nguyên, kể cả khi trùng chữ "Khách" ở tài khoản thường.
+ */
+export function displayNameOf(user: { isAnonymous?: boolean; displayName?: string | null } | null | undefined): string {
+  const name = (user?.displayName ?? '').trim();
+  if (user?.isAnonymous && (name === '' || name === DEFAULT_GUEST_DISPLAY_NAME)) return t('profile.anonymousName');
+  return name;
+}

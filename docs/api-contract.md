@@ -490,6 +490,7 @@ Không cần đăng nhập. Trả `200 { "status": "ok", "db": "ok" }`, hoặc `
   "hasPassword": true,
   "providers": ["GOOGLE"],
   "isAnonymous": false,
+  "hasCustomAvatar": false,
   "referral": {
     "canEnterCode": true,
     "enteredCode": null
@@ -499,6 +500,7 @@ Không cần đăng nhập. Trả `200 { "status": "ok", "db": "ok" }`, hoặc `
 
 | Trường | Ghi chú |
 | --- | --- |
+| `hasCustomAvatar` | `true` khi `avatarUrl` là ảnh người dùng tự tải lên qua `POST /me/avatar` (gỡ được bằng `DELETE /me/avatar`). `false` với ảnh lấy từ Google/Facebook hoặc khi không có ảnh |
 | `username` | `null` nếu user chưa từng đăng ký bằng mật khẩu |
 | `email` | `null` nếu user chỉ đăng nhập Facebook và Facebook không trả email |
 | `hasPassword` | `true` khi đăng nhập được bằng email/username + mật khẩu. `/account` dựa vào trường này để hiện "Đổi mật khẩu" hay "Đặt mật khẩu" |
@@ -507,6 +509,38 @@ Không cần đăng nhập. Trả `200 { "status": "ok", "db": "ok" }`, hoặc `
 | `id` | Hiện ở `/account` (web) và tab Hồ sơ (mobile) dưới tên "Mã/ID tài khoản". Người dùng gửi kèm ID này khi yêu cầu xoá tài khoản |
 | `referral.canEnterCode` | `true` khi user chưa từng nhập mã **và** không bị `referralBlocked` |
 | `referral.enteredCode` | Mã đã nhập, hoặc `null` |
+
+### PATCH /me
+
+Đổi tên hiển thị của chính mình. Không đổi được `username` (là định danh đăng nhập).
+
+| Vị trí | Trường | Kiểu | Bắt buộc | Ràng buộc |
+| --- | --- | --- | --- | --- |
+| header | `Authorization` | — | có | |
+| body | `displayName` | string | có | Cắt khoảng trắng hai đầu, thu gọn khoảng trắng liên tiếp, 1–50 ký tự; không nhận chuỗi chỉ gồm khoảng trắng và ký tự điều khiển hay ký tự ẩn |
+
+Body có field lạ bị từ chối. Trả `200` cùng dạng [GET /me](#get-me). Giới hạn 10 lần/phút/user.
+
+Lỗi: `VALIDATION_ERROR`, `RATE_LIMITED`.
+
+Tài khoản khách (`isAnonymous = true`) tạo mới có `displayName = "Khách"`. Client hiển thị tên mặc định này theo ngôn ngữ người dùng và không dịch tên do người dùng tự đặt.
+
+### POST /me/avatar
+
+Tải ảnh đại diện. Body `multipart/form-data`, một file ở field `avatar`.
+
+| Ràng buộc | Giá trị |
+| --- | --- |
+| Định dạng | JPEG, PNG, WebP; kiểm tra theo nội dung file, không theo phần mở rộng |
+| Kích thước | Tối đa 5 MB |
+
+Server xoay ảnh theo EXIF rồi bỏ toàn bộ metadata, cắt vuông tối đa 512×512 (không phóng to ảnh nhỏ) và tải lên Cloudinary trong thư mục avatar riêng. Ảnh mới thay ảnh cũ thì ảnh cũ bị xoá sau khi ảnh mới đã lưu. Upload lỗi thì avatar cũ giữ nguyên. Trả `200` cùng dạng [GET /me](#get-me) với `avatarUrl` mới và `hasCustomAvatar = true`. Giới hạn 5 lần/phút/user.
+
+Lỗi: `VALIDATION_ERROR` (thiếu file, sai tên field hoặc nhiều file), `AVATAR_TOO_LARGE` (413), `AVATAR_INVALID_TYPE` (415), `AVATAR_UPLOAD_FAILED` (502), `AVATAR_UNAVAILABLE` (503, Cloudinary chưa cấu hình), `RATE_LIMITED`.
+
+### DELETE /me/avatar
+
+Gỡ ảnh đại diện đã tải lên: xoá ảnh trên Cloudinary rồi đặt `avatarUrl = null`. Cloudinary xoá lỗi thì giữ nguyên avatar và trả `502 AVATAR_DELETE_FAILED` để thử lại. Nếu avatar đến từ Google/Facebook (không phải ảnh tự tải lên) thì không làm gì và vẫn trả `200` với `avatarUrl` giữ nguyên. Trả `200` cùng dạng [GET /me](#get-me).
 
 ### PUT /me/password
 

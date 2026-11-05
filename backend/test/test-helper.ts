@@ -110,6 +110,8 @@ async function startTestApp(
     imports: [
       ConfigModule.forRoot({
         isGlobal: true,
+        // Không đọc backend/.env: test không được gọi dịch vụ thật như Cloudinary
+        ignoreEnvFile: true,
         load: [
           () => ({
             MONGODB_URI: mongoUri,

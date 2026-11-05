@@ -1,4 +1,4 @@
-import { AppState, AppStateStatus, Platform } from 'react-native';
+import { AppState, AppStateStatus, Linking, Platform } from 'react-native';
 import type {
   BillingVerifyRequestDto,
   BillingVerifyResponseDto,
@@ -12,6 +12,7 @@ import {
 import { getAttributionIds, trackFirstPurchase } from '../ads/revenue';
 import { adsStore } from '../ads/ads-store';
 import {
+  ANDROID_PACKAGE_NAME,
   getBillingConfig,
   getConfiguredSubscriptionSkus,
   isBillingConfigured,
@@ -580,6 +581,76 @@ export async function initializeBilling(): Promise<boolean> {
     if (isDev()) console.warn('[BillingService] initConnection failed:', err);
     billingStore.setState({ connected: false, billingEnabled: false });
     return false;
+  }
+}
+
+export const PLAY_SUBSCRIPTIONS_URL =
+  'https://play.google.com/store/account/subscriptions';
+
+// Nếu app không nhận lại được trạng thái "active" thì vẫn phải nhả external activity
+const MANAGE_SUBSCRIPTION_RETURN_TIMEOUT_MS = 10 * 60 * 1000;
+
+export type ManageSubscriptionResult =
+  | { ok: true; via: 'play' | 'web' }
+  | { ok: false };
+
+/**
+ * Giữ external activity cho tới khi người dùng quay lại app từ Google Play (§6.3),
+ * để paywall không tự mở khi quay về.
+ */
+function holdPaymentActivityUntilReturn(): void {
+  recordExternalActivity('payment');
+  let leftApp = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let subscription: { remove: () => void } | null = null;
+
+  const release = () => {
+    if (timer) clearTimeout(timer);
+    subscription?.remove();
+    finishExternalActivity('payment');
+  };
+
+  subscription = AppState.addEventListener('change', (next: AppStateStatus) => {
+    if (next !== 'active') {
+      leftApp = true;
+      return;
+    }
+    if (leftApp) release();
+  });
+  timer = setTimeout(release, MANAGE_SUBSCRIPTION_RETURN_TIMEOUT_MS);
+}
+
+/**
+ * Opens the Google Play subscription page for the active VIP plan (§6.3):
+ * SDK `deepLinkToSubscriptions` first, then the web URL, otherwise reports failure
+ * so the caller can tell the user. Never opens the paywall.
+ */
+export async function openSubscriptionManagement(
+  productId?: string | null,
+): Promise<ManageSubscriptionResult> {
+  if (Platform.OS !== 'android') return { ok: false };
+
+  holdPaymentActivityUntilReturn();
+
+  const sdk = getIapSdk();
+  if (sdk) {
+    try {
+      await sdk.deepLinkToSubscriptions({
+        skuAndroid: productId || undefined,
+        packageNameAndroid: ANDROID_PACKAGE_NAME,
+      });
+      return { ok: true, via: 'play' };
+    } catch {
+      // Rơi xuống đường web bên dưới
+    }
+  }
+
+  try {
+    await Linking.openURL(PLAY_SUBSCRIPTIONS_URL);
+    return { ok: true, via: 'web' };
+  } catch {
+    finishExternalActivity('payment');
+    return { ok: false };
   }
 }
 

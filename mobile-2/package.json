@@ -63,10 +63,10 @@
     "vitest": "3.2.7"
   },
   "scripts": {
-    "start": "expo start --port 8082",
-    "android": "expo start --android --port 8082",
-    "ios": "expo start --ios --port 8082",
-    "web": "expo start --web --port 8082",
+    "start": "node scripts/adb-reverse.js && expo start --port 8081",
+    "android": "node scripts/adb-reverse.js && expo start --android --port 8081",
+    "ios": "expo start --ios --port 8081",
+    "web": "expo start --web --port 8081",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

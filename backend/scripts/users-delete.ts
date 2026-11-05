@@ -24,6 +24,7 @@ export async function deleteUserAccount(
   userId: string | Types.ObjectId,
   note?: string,
   identitySecret?: string,
+  cloudinary: CloudinaryService = new CloudinaryService(),
 ): Promise<DeleteUserAccountResult> {
   if (!userId || !Types.ObjectId.isValid(userId)) {
     throw new Error(`Invalid user ID: ${userId}`);
@@ -58,6 +59,9 @@ export async function deleteUserAccount(
     if (!user) {
       throw new Error(`User not found or already deleted: ${userId}`);
     }
+
+    // avatarPublicId chỉ có với ảnh do người dùng tải lên; ảnh Google/Facebook không có nên không xoá trên Cloudinary
+    const avatarPublicId = user.avatarPublicId ?? null;
 
     const identitiesToRecord: Array<{ kind: DeletedIdentityKind; input: string }> = [];
 
@@ -161,6 +165,7 @@ export async function deleteUserAccount(
           passwordHash: null,
           passwordUpdatedAt: null,
           avatarUrl: null,
+          avatarPublicId: null,
           identities: [],
           deletedAt: now,
         },
@@ -170,14 +175,13 @@ export async function deleteUserAccount(
 
     await session.commitTransaction();
 
-    const cloudinary = new CloudinaryService();
-    if (cloudinary.isConfigured() && userReadings.length > 0) {
-      await Promise.all(
-        userReadings.flatMap((doc: any) => [
-          cloudinary.deleteImage(doc.imagePublicId),
-          cloudinary.deleteImage(doc.annotatedImagePublicId),
-        ]),
-      );
+    // Dữ liệu DB đã commit; lỗi Cloudinary chỉ để lại ảnh mồ côi, không được làm hỏng việc xoá
+    if (cloudinary.isConfigured()) {
+      const publicIds: Array<string | null | undefined> = [
+        ...userReadings.flatMap((doc: any) => [doc.imagePublicId, doc.annotatedImagePublicId]),
+        avatarPublicId,
+      ];
+      await Promise.allSettled(publicIds.map((id) => cloudinary.deleteImage(id)));
     }
 
     return {

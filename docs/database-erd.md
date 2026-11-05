@@ -152,7 +152,8 @@ Mỗi user phải đăng nhập được bằng ít nhất một cách: có `pas
 | `email` | string \| null | lowercase, unique | Luôn là email **đã xác minh** (qua link xác minh hoặc qua Google/Facebook). `null` nếu user chỉ có Facebook không trả email |
 | `passwordHash` | string \| null | | argon2id. `null` nếu chưa đặt mật khẩu |
 | `passwordUpdatedAt` | Date \| null | | |
-| `avatarUrl` | string \| null | | Chỉ có khi lấy từ Google/Facebook |
+| `avatarUrl` | string \| null | | Ảnh từ Google/Facebook, hoặc ảnh người dùng tự tải lên (khi đó có `avatarPublicId`) |
+| `avatarPublicId` | string \| null | không index | `public_id` trên Cloudinary của ảnh tự tải lên; `null` với ảnh Google/Facebook. Dùng để xoá ảnh khi thay, gỡ hoặc xoá tài khoản. Không trả ra API |
 | `referralCode` | string | 8 ký tự, unique | Mã của chính user để chia sẻ |
 | `creditBalance` | int | bắt buộc, validator `minimum: 0` | Cache của sổ cái |
 | `identities` | array | 0–2 phần tử | Xem bảng dưới |

@@ -68,4 +68,65 @@ describe("CloudinaryService", () => {
     expect(deleted).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
+
+  describe("production không lưu ảnh vào MongoDB", () => {
+    const sample = Buffer.from("palm-image-content");
+    const prodConfig = (extra: Record<string, string> = {}) =>
+      new ConfigService({ NODE_ENV: "production", ...extra });
+    const configured = {
+      CLOUDINARY_CLOUD_NAME: "demo-cloud",
+      CLOUDINARY_API_KEY: "123456789",
+      CLOUDINARY_API_SECRET: "my-secret",
+    };
+
+    it("trả null khi thiếu cấu hình Cloudinary", async () => {
+      const service = new CloudinaryService(prodConfig());
+      await expect(
+        service.uploadImage(sample, { publicId: "reading_1" })
+      ).resolves.toBeNull();
+    });
+
+    it("trả null khi Cloudinary trả lỗi", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: false,
+        status: 500,
+      } as Response);
+      const service = new CloudinaryService(prodConfig(configured));
+      await expect(service.uploadImage(sample)).resolves.toBeNull();
+    });
+
+    it("trả null khi phản hồi thiếu URL", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ({}),
+      } as Response);
+      const service = new CloudinaryService(prodConfig(configured));
+      await expect(service.uploadImage(sample)).resolves.toBeNull();
+    });
+
+    it("trả null khi mất kết nối", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network"));
+      const service = new CloudinaryService(prodConfig(configured));
+      await expect(service.uploadImage(sample)).resolves.toBeNull();
+    });
+  });
+
+  it("dev vẫn lùi về data URI khi Cloudinary trả lỗi", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 500,
+    } as Response);
+    const service = new CloudinaryService(
+      new ConfigService({
+        NODE_ENV: "development",
+        CLOUDINARY_CLOUD_NAME: "demo-cloud",
+        CLOUDINARY_API_KEY: "123456789",
+        CLOUDINARY_API_SECRET: "my-secret",
+      })
+    );
+    const uploaded = await service.uploadImage(Buffer.from("x"), {
+      publicId: "reading_1",
+    });
+    expect(uploaded?.publicId).toBe("local:reading_1");
+  });
 });

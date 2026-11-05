@@ -23,7 +23,7 @@ export interface ImagePart {
  * Native phải nhận một Blob thật — `File` của expo-file-system implements Blob và đọc thẳng từ URI,
  * không nạp cả ảnh vào bộ nhớ JS. Web giữ object vì ImagePicker ở đó trả blob URL trình duyệt hiểu.
  */
-function toUploadPart(image: ImagePart): Blob {
+export function toUploadPart(image: ImagePart): Blob {
   if (Platform.OS === 'web') return image as unknown as Blob;
   return new File(image.uri) as unknown as Blob;
 }

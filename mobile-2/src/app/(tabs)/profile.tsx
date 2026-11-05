@@ -16,12 +16,19 @@ import {
   showPrivacyOptions,
 } from '../../ads/ads-service';
 import { markNoInterstitialTap } from '../../ads/interstitial-policy';
+import { useAdsStore } from '../../ads/ads-store';
 import { triggerPaywall } from '../../premium/paywall-triggers';
-import { billingStore } from '../../billing';
+import {
+  billingStore,
+  getBillingConfig,
+  openSubscriptionManagement,
+  useBillingStore,
+} from '../../billing';
 import { SUPPORTED_LANGUAGES, SupportedLanguage, t, useI18n } from '../../i18n';
-import { REFERRAL_AMOUNTS } from '../../lib/format';
+import { REFERRAL_AMOUNTS, displayNameOf } from '../../lib/format';
+import Avatar from '../../components/Avatar';
 import { useAuth } from '../../state/auth';
-import { colors, font, radius, shadow, spacing, text as type } from '../../theme';
+import { colors, radius, shadow, spacing, text as type } from '../../theme';
 import { haptic } from '../../lib/haptics';
 
 export default function ProfileScreen() {
@@ -32,9 +39,21 @@ export default function ProfileScreen() {
   const [copiedId, setCopiedId] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [langModalVisible, setLangModalVisible] = useState(false);
+  const [manageVipFailed, setManageVipFailed] = useState(false);
+  const [privacyFailed, setPrivacyFailed] = useState(false);
+  const { billingEnabled, products } = useBillingStore();
+  const { consentRegion } = useAdsStore();
 
   const isVip = Boolean((user as any)?.isVip || user?.vip?.active);
   const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
+  const vipProductId = user?.vip?.productId ?? null;
+  const yearlyId = getBillingConfig().yearlyId;
+  // Chỉ có nút khi bấm được: gói VIP đang hoạt động, hoặc billing đã bật để mở paywall
+  const showVipCard = isVip || billingEnabled;
+  const canUpgradeToYearly =
+    isVip && billingEnabled && vipProductId !== yearlyId && Boolean(products[yearlyId]);
+  // §5.6: chỉ người dùng vùng GDPR mới có form đổi lựa chọn quyền riêng tư quảng cáo
+  const showPrivacyChoices = consentRegion === 'GDPR';
   const currentLangSpec = SUPPORTED_LANGUAGES.find((l) => l.code === language) ?? SUPPORTED_LANGUAGES[0];
 
   if (!user) {
@@ -57,15 +76,36 @@ export default function ProfileScreen() {
     }
   }
 
+  function openEditProfile() {
+    haptic.select();
+    router.push('/edit-profile');
+  }
+
   function handleOpenPaywall() {
     haptic.tap();
     markNoInterstitialTap();
     void triggerPaywall('settings_entry');
   }
 
-  function handlePrivacyChoices() {
+  function handleUpgradeYearly() {
+    haptic.tap();
+    markNoInterstitialTap();
+    void triggerPaywall('settings_vip');
+  }
+
+  async function handleManageVip() {
+    haptic.tap();
+    markNoInterstitialTap();
+    setManageVipFailed(false);
+    const result = await openSubscriptionManagement(vipProductId);
+    if (!result.ok) setManageVipFailed(true);
+  }
+
+  async function handlePrivacyChoices() {
     haptic.select();
-    void showPrivacyOptions();
+    setPrivacyFailed(false);
+    const opened = await showPrivacyOptions();
+    if (!opened) setPrivacyFailed(true);
   }
 
   function handleMediationDebugger() {
@@ -79,10 +119,12 @@ export default function ProfileScreen() {
         {/* User Card */}
         <LinearGradient colors={['rgba(124,108,246,0.3)', 'rgba(22,32,66,0.9)', 'rgba(8,13,30,0.96)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.userCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <Avatar name={user.displayName} />
+            <Pressable accessibilityRole="button" accessibilityLabel={t('editProfile.entry')} onPress={openEditProfile}>
+              <Avatar name={displayNameOf(user)} uri={user.avatarUrl} />
+            </Pressable>
             <View style={{ flex: 1, gap: 3 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                <Text style={[type.headingMd, { color: colors.ink }]} numberOfLines={1}>{user.isAnonymous ? t('profile.anonymousName') : user.displayName}</Text>
+                <Text style={[type.headingMd, { color: colors.ink }]} numberOfLines={1}>{displayNameOf(user)}</Text>
                 {isVip ? (
                   <View style={styles.vipTagSmall}>
                     <MaterialCommunityIcons name="crown" size={12} color={colors.onGold} />
@@ -95,6 +137,16 @@ export default function ProfileScreen() {
               </Text>
             </View>
           </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('editProfile.entry')}
+            onPress={openEditProfile}
+            style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, opacity: pressed ? 0.75 : 1 }]}>
+            <MaterialCommunityIcons name="account-edit-outline" size={19} color={colors.goldLight} />
+            <Text style={[type.bodyBold, { color: colors.goldLight, flex: 1 }]}>{t('editProfile.entry')}</Text>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
+          </Pressable>
 
           <View style={{ height: 1, backgroundColor: colors.glassBorder }} />
 
@@ -125,6 +177,7 @@ export default function ProfileScreen() {
         </LinearGradient>
 
         {/* VIP Status or Upgrade Banner */}
+        {showVipCard ? (
         <LinearGradient
           colors={
             isVip
@@ -155,10 +208,15 @@ export default function ProfileScreen() {
             label={isVip ? t('profile.manageVip') : t('profile.getVip')}
             size="md"
             variant={isVip ? 'outline' : 'primary'}
-            onPress={handleOpenPaywall}
+            onPress={isVip ? () => void handleManageVip() : handleOpenPaywall}
             icon={<MaterialCommunityIcons name="crown" size={17} color={isVip ? colors.goldLight : colors.onGold} />}
           />
+          {canUpgradeToYearly ? (
+            <Button label={t('profile.vipUpgradeYearly')} size="md" variant="primary" onPress={handleUpgradeYearly} />
+          ) : null}
+          {isVip && manageVipFailed ? <Banner variant="error" title={t('profile.manageVipFailed')} /> : null}
         </LinearGradient>
+        ) : null}
 
         {/* Resources & Connections */}
         <View style={{ gap: spacing.sm }}>
@@ -259,11 +317,12 @@ export default function ProfileScreen() {
               <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
             </Pressable>
 
-            {/* Ad Privacy Choices */}
+            {/* Ad Privacy Choices (chỉ GDPR, §5.6) */}
+            {showPrivacyChoices ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t('profile.adPrivacyA11y')}
-              onPress={handlePrivacyChoices}
+              onPress={() => void handlePrivacyChoices()}
               style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.75 : 1 }]}>
               <View style={styles.menuIconCircle}>
                 <MaterialCommunityIcons name="shield-account-outline" size={19} color={colors.goldLight} />
@@ -274,6 +333,12 @@ export default function ProfileScreen() {
               </View>
               <MaterialCommunityIcons name="chevron-right" size={20} color={colors.stone} />
             </Pressable>
+            ) : null}
+            {showPrivacyChoices && privacyFailed ? (
+              <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.md }}>
+                <Banner variant="error" title={t('profile.adPrivacyFailed')} />
+              </View>
+            ) : null}
 
             {/* Mediation Debugger (dev/test builds only) */}
             {isMediationDebuggerEnabled() ? (
@@ -372,30 +437,6 @@ export default function ProfileScreen() {
         </Pressable>
       </Modal>
     </>
-  );
-}
-
-function Avatar({ name }: { name: string }) {
-  const initial = (name.trim()[0] ?? 'K').toUpperCase();
-  return (
-    <View
-      style={{
-        width: 66,
-        height: 66,
-        borderRadius: 33,
-        borderWidth: 1,
-        borderColor: colors.gold,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.surfaceSoft,
-        shadowColor: colors.gold,
-        shadowOpacity: 0.24,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 0 },
-      }}>
-      <Text style={{ fontFamily: font.displayStrong, fontSize: 29, color: colors.goldLight }}>{initial}</Text>
-      <Text style={{ position: 'absolute', right: 4, bottom: 6, fontFamily: font.display, fontSize: 10, color: colors.gold }}>✦</Text>
-    </View>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model } from 'mongoose';
@@ -41,6 +41,34 @@ export class UsersService {
   }
 
   async getMe(user: UserDocument): Promise<MeResponseDto> {
+    return this.buildMe(user, true);
+  }
+
+  /**
+   * Đổi tên hiển thị. Trả cùng dạng DTO với GET /me nhưng KHÔNG đi qua nhánh cộng VIP
+   * hằng ngày của getMe, để thao tác sửa hồ sơ không có tác dụng phụ lên ví.
+   */
+  async updateDisplayName(user: UserDocument, displayName: string): Promise<MeResponseDto> {
+    const updated = await this.userModel.findOneAndUpdate(
+      { _id: user._id, deletedAt: null },
+      { $set: { displayName } },
+      { new: true },
+    );
+    if (!updated) {
+      throw new HttpException(
+        { code: 'UNAUTHENTICATED', message: 'Tài khoản không còn tồn tại.' },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    return this.buildMe(updated, false);
+  }
+
+  /** DTO hồ sơ từ doc user đã nạp sẵn, không cộng thưởng (dùng sau khi sửa hồ sơ). */
+  getProfileDto(user: UserDocument): Promise<MeResponseDto> {
+    return this.buildMe(user, false);
+  }
+
+  private async buildMe(user: UserDocument, claimVipDaily: boolean): Promise<MeResponseDto> {
     const now = this.now();
     const enteredReferral = await this.referralModel
       .findOne({ refereeId: user._id })
@@ -84,7 +112,7 @@ export class UsersService {
     let grantedNow = false;
     let vipDailyGranted: number | undefined;
 
-    if (vipActive && user.vipDailyDay !== currentRewardDay && vipDaily > 0) {
+    if (claimVipDaily && vipActive && user.vipDailyDay !== currentRewardDay && vipDaily > 0) {
       const session = await this.connection.startSession();
       try {
         session.startTransaction();
@@ -134,6 +162,7 @@ export class UsersService {
       username: user.username ?? null,
       email: user.email ?? null,
       avatarUrl: user.avatarUrl ?? null,
+      hasCustomAvatar: Boolean(user.avatarPublicId),
       creditBalance: currentBalance,
       balance: currentBalance,
       vip: {

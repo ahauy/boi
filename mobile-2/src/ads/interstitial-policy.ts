@@ -52,6 +52,8 @@ const EXCLUDED_INTERSTITIAL_ROUTE_PATTERNS = [
   /^\/?login/i,
   /^\/?register/i,
   /^\/?auth/i,
+  // Form sửa hồ sơ: đi ra bộ chọn ảnh/camera rồi quay lại, không được chen quảng cáo
+  /^\/?edit-profile/i,
 ];
 
 let state: InterstitialPolicyState = {

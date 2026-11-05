@@ -81,6 +81,7 @@ function Gate({ appReady }: { appReady: boolean }) {
           <Stack.Screen name="reading/[id]" />
           <Stack.Screen name="referral" />
           <Stack.Screen name="enter-referral" />
+          <Stack.Screen name="edit-profile" />
         </Stack.Protected>
 
         <Stack.Screen name="camera" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
