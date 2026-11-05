@@ -17,29 +17,6 @@ export const PALM_LINE_NAMES: PalmLineName[] = [
   "other",
 ];
 
-export const palmLineSchema = yup.object({
-  name: yup
-    .mixed<PalmLineName>()
-    .oneOf(PALM_LINE_NAMES, "Tên đường chỉ tay không hợp lệ")
-    .required("Tên đường chỉ tay là bắt buộc"),
-  points: yup
-    .array()
-    .of(
-      yup
-        .array()
-        .of(yup.number().min(0).max(1).required())
-        .min(2)
-        .max(2)
-        .required()
-    )
-    .min(2, "Đường chỉ tay phải có ít nhất 2 điểm")
-    .max(512, "Đường chỉ tay tối đa 512 điểm")
-    .required("Tọa độ đường chỉ tay là bắt buộc"),
-  lengthRel: yup.number().min(0).max(5).required(),
-  curvature: yup.number().min(0).max(10).required(),
-  branches: yup.number().integer().min(0).max(100).required(),
-});
-
 export function parsePalmLinesInput(input: unknown): PalmLineDto[] | null {
   if (input === undefined || input === null || input === "") {
     return null;
@@ -96,89 +73,6 @@ export function parsePalmLinesInput(input: unknown): PalmLineDto[] | null {
   return sanitized.length > 0 ? sanitized : null;
 }
 
-export const registerSchema = yup.object({
-  displayName: yup
-    .string()
-    .trim()
-    .required("Tên hiển thị không được để trống")
-    .min(1, "Tên hiển thị phải có ít nhất 1 ký tự")
-    .max(50, "Tên hiển thị tối đa 50 ký tự"),
-  username: yup
-    .string()
-    .trim()
-    .lowercase()
-    .required("Username không được để trống")
-    .matches(
-      USERNAME_REGEX,
-      "Username chỉ gồm chữ thường, số, dấu gạch dưới, từ 3-20 ký tự"
-    ),
-  email: yup
-    .string()
-    .trim()
-    .lowercase()
-    .required("Email không được để trống")
-    .email("Email không đúng định dạng")
-    .max(254, "Email tối đa 254 ký tự"),
-  password: yup
-    .string()
-    .required("Mật khẩu không được để trống")
-    .min(8, "Mật khẩu phải có ít nhất 8 ký tự")
-    .max(128, "Mật khẩu tối đa 128 ký tự")
-    .test(
-      "not-equal-username-or-email",
-      "Mật khẩu không được trùng với username hoặc email",
-      function (value) {
-        if (!value) return true;
-        const { username, email } = this.parent as {
-          username?: string;
-          email?: string;
-        };
-        const lowerVal = value.toLowerCase();
-        if (username && lowerVal === String(username).toLowerCase())
-          return false;
-        if (email && lowerVal === String(email).toLowerCase()) return false;
-        return true;
-      }
-    ),
-  referralCode: yup
-    .string()
-    .trim()
-    .transform((val) => (val === "" ? undefined : val?.toUpperCase()))
-    .matches(REFERRAL_CODE_REGEX, {
-      message: "Mã giới thiệu phải gồm 8 ký tự hợp lệ",
-      excludeEmptyString: true,
-    })
-    .optional(),
-  claimToken: yup
-    .string()
-    .trim()
-    .matches(UUID_V4_REGEX, {
-      message: "Mã nhận bài bói phải là UUID v4 hợp lệ",
-      excludeEmptyString: true,
-    })
-    .optional(),
-});
-
-export const registerFormSchema = registerSchema.shape({
-  confirmPassword: yup
-    .string()
-    .required("Vui lòng xác nhận lại mật khẩu")
-    .oneOf([yup.ref("password")], "Mật khẩu xác nhận không khớp"),
-});
-
-export const loginSchema = yup.object({
-  login: yup
-    .string()
-    .trim()
-    .lowercase()
-    .required("Email hoặc username không được để trống"),
-  password: yup
-    .string()
-    .required("Mật khẩu không được để trống")
-    .min(1, "Mật khẩu không được để trống")
-    .max(128, "Mật khẩu tối đa 128 ký tự"),
-});
-
 export const deviceSessionSchema = yup.object({
   deviceId: yup
     .string()
@@ -187,96 +81,6 @@ export const deviceSessionSchema = yup.object({
     .min(16, "Mã thiết bị quá ngắn")
     .max(128, "Mã thiết bị quá dài")
     .matches(/^[A-Za-z0-9_-]+$/, "Mã thiết bị không hợp lệ"),
-});
-
-export const googleAuthSchema = yup
-  .object({
-    idToken: yup.string().trim().max(4096, "Mã đăng nhập Google không hợp lệ"),
-    code: yup.string().trim().max(2048, "Mã đăng nhập Google không hợp lệ"),
-    claimToken: yup
-      .string()
-      .trim()
-      .matches(UUID_V4_REGEX, {
-        message: "Mã nhận bài bói phải là UUID v4 hợp lệ",
-        excludeEmptyString: true,
-      })
-      .optional(),
-  })
-  .test("google-credential", "Thiếu mã đăng nhập Google", function (value) {
-    return (
-      Boolean(value?.idToken || value?.code) ||
-      this.createError({ path: "code", message: "Thiếu mã đăng nhập Google" })
-    );
-  });
-
-export const facebookAuthSchema = yup.object({
-  accessToken: yup
-    .string()
-    .trim()
-    .required("Thiếu mã đăng nhập Facebook")
-    .max(4096, "Mã đăng nhập Facebook không hợp lệ"),
-  claimToken: yup
-    .string()
-    .trim()
-    .matches(UUID_V4_REGEX, "Mã nhận bài bói phải là UUID v4 hợp lệ")
-    .optional(),
-});
-
-export const googleBrowserStartSchema = yup.object({
-  nativeRedirect: yup
-    .string()
-    .trim()
-    .required("Thiếu đường dẫn quay lại app")
-    .max(2048, "Đường dẫn quay lại app quá dài")
-    // Chỉ cho phép deep link của chính app/Expo Go để tránh open redirect
-    .test(
-      "native-redirect-scheme",
-      "Đường dẫn quay lại app không hợp lệ",
-      (value) =>
-        !value || /^(exp|exps|palmsight|com\.palmsight\.app):\/\//i.test(value)
-    ),
-  claimToken: yup
-    .string()
-    .trim()
-    .matches(UUID_V4_REGEX, {
-      message: "Mã nhận bài bói phải là UUID v4 hợp lệ",
-      excludeEmptyString: true,
-    })
-    .optional(),
-});
-
-export const googleBrowserExchangeSchema = yup.object({
-  code: yup
-    .string()
-    .trim()
-    .required("Thiếu mã đăng nhập Google")
-    .max(64, "Mã đăng nhập Google không hợp lệ"),
-});
-
-export const forgotPasswordSchema = yup.object({
-  email: yup
-    .string()
-    .trim()
-    .lowercase()
-    .required("Email không được để trống")
-    .email("Email không đúng định dạng")
-    .max(254, "Email tối đa 254 ký tự"),
-});
-
-export const resetPasswordSchema = yup.object({
-  token: yup.string().trim().required("Mã xác thực không được để trống"),
-  newPassword: yup
-    .string()
-    .required("Mật khẩu mới không được để trống")
-    .min(8, "Mật khẩu mới phải có ít nhất 8 ký tự")
-    .max(128, "Mật khẩu tối đa 128 ký tự"),
-});
-
-export const resetPasswordFormSchema = resetPasswordSchema.shape({
-  confirmPassword: yup
-    .string()
-    .required("Vui lòng xác nhận lại mật khẩu")
-    .oneOf([yup.ref("newPassword")], "Mật khẩu xác nhận không khớp"),
 });
 
 // Ký tự điều khiển, zero-width và bidi: dùng để giả mạo hoặc làm hỏng hiển thị tên
@@ -315,21 +119,6 @@ export const updateProfileSchema = yup
       Object.keys(original).every((key) => key === "displayName")
     );
   });
-
-export const changePasswordSchema = yup.object({
-  currentPassword: yup
-    .string()
-    .required("Mật khẩu hiện tại không được để trống"),
-  newPassword: yup
-    .string()
-    .required("Mật khẩu mới không được để trống")
-    .min(8, "Mật khẩu mới phải có ít nhất 8 ký tự")
-    .max(128, "Mật khẩu tối đa 128 ký tự")
-    .notOneOf(
-      [yup.ref("currentPassword")],
-      "Mật khẩu mới không được trùng với mật khẩu hiện tại"
-    ),
-});
 
 export const enterReferralSchema = yup.object({
   code: yup
@@ -502,70 +291,3 @@ export const createReadingRequestSchema = yup
       .optional(),
   })
   .noUnknown();
-
-export const createReadingSchema = createReadingRequestSchema;
-export type CreateReadingRequestInput = yup.InferType<
-  typeof createReadingRequestSchema
->;
-
-export const guestReadingRequestSchema = yup
-  .object({
-    school: yup
-      .mixed<ReadingSchool>()
-      .oneOf(Object.values(ReadingSchool), "Trường phái bói không hợp lệ.")
-      .required("Vui lòng chọn trường phái bói."),
-    hand: yup
-      .mixed<HandOrientation>()
-      .oneOf(Object.values(HandOrientation), "Hướng bàn tay không hợp lệ.")
-      .required("Vui lòng chọn hướng bàn tay."),
-    topics: yup
-      .string()
-      .trim()
-      .optional()
-      .test(
-        "valid-topics",
-        "Mục bói không hợp lệ theo trường phái đã chọn",
-        function (val) {
-          const school = this.parent.school as ReadingSchool;
-          if (!val || !school || !Object.values(ReadingSchool).includes(school))
-            return true;
-          try {
-            normalizeReadingTopics(school, val);
-            return true;
-          } catch {
-            return false;
-          }
-        }
-      ),
-    fingerprint: yup
-      .string()
-      .trim()
-      .min(16, "Dấu vân tay trình duyệt không hợp lệ.")
-      .required("Thiếu thông tin nhận diện thiết bị."),
-    aiConsent: yup
-      .mixed()
-      .test(
-        "is-true",
-        "Bạn phải đồng ý với điều khoản phân tích AI.",
-        (val) => val === true || val === "true"
-      )
-      .required("Bạn phải đồng ý với điều khoản phân tích AI."),
-    palmLines: yup.mixed().optional(),
-  })
-  .noUnknown();
-
-export type GuestReadingRequestInput = yup.InferType<
-  typeof guestReadingRequestSchema
->;
-
-export const claimReadingSchema = yup
-  .object({
-    claimToken: yup
-      .string()
-      .trim()
-      .matches(UUID_V4_REGEX, "Mã nhận bài bói phải là UUID v4 hợp lệ.")
-      .required("Thiếu mã nhận bài bói."),
-  })
-  .noUnknown();
-
-export type ClaimReadingInput = yup.InferType<typeof claimReadingSchema>;

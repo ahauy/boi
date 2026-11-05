@@ -130,7 +130,13 @@ export class ReferralsService {
     );
 
     const networkSlot = await this.referralNetworkQuota.prepare(
-      clientIp ? hashIp(clientIp) : null,
+      clientIp
+        ? hashIp(
+            this.configService?.get<string>('IDENTITY_HASH_SECRET') ??
+              DEFAULT_IDENTITY_HASH_SECRET,
+            clientIp,
+          )
+        : null,
     );
 
     // Ghi referral, dấu thiết bị và credits trong một transaction: lỗi ở bước nào cũng không để lại gì.

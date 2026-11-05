@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   Optional,
   HttpException,
   HttpStatus,
@@ -37,8 +38,12 @@ import {
   formatReading,
 } from "./utils/readings.util";
 
+/** Dấu riêng cho "bản ghi đã bị xoá giữa chừng", để không lẫn với NotFoundException khác (ví dụ USER_NOT_FOUND). */
+class ReadingErasedError extends NotFoundException {}
+
 @Injectable()
 export class ReadingsService {
+  private readonly logger = new Logger(ReadingsService.name);
   private readonly cloudinary: CloudinaryService;
   private clockFn: () => Date = () => new Date();
 
@@ -294,7 +299,7 @@ export class ReadingsService {
             refundSession
           );
           await this.readingModel.updateOne(
-            { _id: readingId },
+            { _id: readingId, deletedAt: null },
             {
               status: ReadingStatus.REJECTED,
               rejectReason:
@@ -324,14 +329,20 @@ export class ReadingsService {
         };
       }
 
+      // Tài khoản có thể bị xoá trong lúc AI chạy: đừng tải ảnh của người đã xoá lên nữa.
+      if (!(await this.readingModel.exists({ _id: readingId, deletedAt: null }))) {
+        throw this.readingDeletedError();
+      }
+
       const uploadedAssets = await this.uploadReadingAssets(
         readingId,
         processedImage.buffer,
         annotatedFile
       );
 
-      await this.readingModel.updateOne(
-        { _id: readingId },
+      // `deletedAt: null` chặn ghi kết quả/ảnh vào bản ghi vừa bị xoá giữa chừng.
+      const written = await this.readingModel.updateOne(
+        { _id: readingId, deletedAt: null },
         {
           status: ReadingStatus.DONE,
           result,
@@ -347,6 +358,16 @@ export class ReadingsService {
         }
       );
 
+      if (written.matchedCount === 0) {
+        // Bản ghi đã bị xoá khi ảnh vừa lên Cloudinary: dọn ảnh, không ghi gì thêm. Tài khoản
+        // đã xoá nên cũng không hoàn GEM (không còn ai dùng số dư đó).
+        await this.discardOrphanedAssets([
+          uploadedAssets.imagePublicId,
+          uploadedAssets.annotatedImagePublicId,
+        ]);
+        throw this.readingDeletedError();
+      }
+
       const user = await this.userModel.findById(userObjId).lean();
       const updated = await this.readingModel.findById(readingId).lean();
       return {
@@ -354,7 +375,8 @@ export class ReadingsService {
         creditBalance: user?.creditBalance ?? 0,
         idempotentReplayed: false,
       };
-    } catch {
+    } catch (aiErr) {
+      if (aiErr instanceof ReadingErasedError) throw aiErr;
       const latencyMs = Date.now() - start;
       const refundSession = await this.connection.startSession();
       refundSession.startTransaction();
@@ -368,7 +390,7 @@ export class ReadingsService {
         );
         currentBalance = tx.balanceAfter;
         await this.readingModel.updateOne(
-          { _id: readingId },
+          { _id: readingId, deletedAt: null },
           {
             status: ReadingStatus.FAILED,
             errorCode: "AI_UNAVAILABLE",
@@ -396,6 +418,30 @@ export class ReadingsService {
         },
         HttpStatus.SERVICE_UNAVAILABLE
       );
+    }
+  }
+
+  private readingDeletedError(): NotFoundException {
+    return new ReadingErasedError({
+      code: "NOT_FOUND",
+      message: "Lần xem bói này đã bị xoá.",
+    });
+  }
+
+  private async discardOrphanedAssets(
+    publicIds: Array<string | null>
+  ): Promise<void> {
+    for (const publicId of publicIds) {
+      if (!publicId) continue;
+      try {
+        if (!(await this.cloudinary.deleteImage(publicId))) {
+          this.logger.warn(`Không gỡ được ảnh mồ côi ${publicId} trên Cloudinary`);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Lỗi khi gỡ ảnh mồ côi ${publicId}: ${(err as Error).message}`
+        );
+      }
     }
   }
 
@@ -553,7 +599,10 @@ export class ReadingsService {
       updates.result = null;
       updates.palmLines = null;
       updates.deletedAt = new Date();
-      await this.readingModel.updateOne({ _id: readingObjId }, { $set: updates });
+      await this.readingModel.updateOne(
+        { _id: readingObjId, deletedAt: null },
+        { $set: updates }
+      );
     } else {
       // Chưa xoá hết ảnh: giữ nguyên kết quả và deletedAt để lần xem vẫn dùng được
       // và lần thử lại không mất dấu ảnh còn sót.

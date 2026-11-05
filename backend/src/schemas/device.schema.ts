@@ -23,6 +23,13 @@ export class Device {
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   checkinUserId?: Types.ObjectId | null;
 
+  /** Ngày thiết bị này đã nhận quà VIP hằng ngày và tài khoản nhận (chống nhận lại bằng tài khoản khác). */
+  @Prop({ type: String, default: null, trim: true })
+  vipDailyDay?: string | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  vipDailyUserId?: Types.ObjectId | null;
+
   @Prop({ type: String, default: null, trim: true })
   freeSpinDay?: string | null;
 

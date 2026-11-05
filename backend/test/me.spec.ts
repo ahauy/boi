@@ -49,8 +49,6 @@ describe('GET /api/v1/me + JwtAuthGuard', () => {
       displayName: 'Khách',
       username: null,
       email: null,
-      hasPassword: false,
-      providers: [],
       isAnonymous: true,
       creditBalance: 3,
       referral: { canEnterCode: true, enteredCode: null },

@@ -9,8 +9,7 @@ import {
   finishExternalActivity,
   recordExternalActivity,
 } from '../lib/external-activity';
-import { getAttributionIds, trackFirstPurchase } from '../ads/revenue';
-import { adsStore } from '../ads/ads-store';
+import { trackFirstPurchase } from '../ads/revenue';
 import {
   ANDROID_PACKAGE_NAME,
   getBillingConfig,
@@ -341,10 +340,6 @@ export async function verifyAndFinishPurchase(
 
   const priceCurrencyCode = knownProduct?.priceCurrencyCode || 'USD';
   const orderId = rawPurchase.transactionId || rawPurchase.id || null;
-  const { adjustAdid, gaid } = await getAttributionIds(
-    adsStore.getState().consentRegion,
-  );
-
   const verifyPayload: BillingVerifyRequestDto = {
     productId,
     purchaseToken,
@@ -353,8 +348,6 @@ export async function verifyAndFinishPurchase(
     priceCurrencyCode,
     obfuscatedAccountId:
       rawPurchase.obfuscatedAccountIdAndroid ?? currentBillingRef ?? null,
-    adjustAdid,
-    gaid,
   };
 
   // Call server verify BEFORE finishTransaction (§6.5, §11.10).

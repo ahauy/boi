@@ -39,14 +39,6 @@ export interface PalmResult {
   disclaimer?: string | null;
 }
 
-export interface CreateReadingRequestDto {
-  school: ReadingSchool;
-  topics?: string;
-  hand: HandOrientation;
-  aiConsent: boolean | string;
-  palmLines?: string | PalmLineDto[];
-}
-
 export interface ReadingDto {
   id: string;
   status: ReadingStatus;
@@ -74,53 +66,4 @@ export interface ReadingListItemDto {
   createdAt: string;
 }
 
-export interface CreateReadingResponseDto {
-  reading: ReadingDto;
-  creditBalance: number;
-}
-
 export type ReadingListResponseDto = PaginatedResponseDto<ReadingListItemDto>;
-
-export interface ReadingSectionPreviewDto {
-  key: string;
-  title: string;
-  observation: string | null;
-  meaning: string | null;
-  isLocked: boolean;
-}
-
-export interface ReadingAspectPreviewDto {
-  title: string;
-  content: string | null;
-  isLocked: boolean;
-}
-
-export interface ReadingAdvicePreviewDto {
-  content: string | null;
-  isLocked: boolean;
-}
-
-export interface GuestReadingPreviewDto {
-  id: string;
-  school: ReadingSchool;
-  hand: HandOrientation;
-  topics: string[];
-  status: ReadingStatus;
-  summary: string | null;
-  sections: ReadingSectionPreviewDto[];
-  aspects: Record<string, ReadingAspectPreviewDto>;
-  advice: ReadingAdvicePreviewDto | null;
-  disclaimer: string;
-  imageUrl?: string | null;
-  annotatedImageUrl?: string | null;
-  palmLines?: PalmLineDto[] | null;
-  previewExpiresAt: string;
-  createdAt: string;
-  claimToken?: string;
-  rejectReason?: string | null;
-}
-
-export interface CreateGuestReadingResponseDto {
-  reading: GuestReadingPreviewDto;
-  claimToken: string;
-}

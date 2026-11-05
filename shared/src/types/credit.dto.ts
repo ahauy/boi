@@ -206,8 +206,6 @@ export interface BillingVerifyRequestDto {
   priceCurrencyCode?: string | null;
   isTrial?: boolean;
   obfuscatedAccountId?: string | null;
-  adjustAdid?: string | null;
-  gaid?: string | null;
 }
 
 export interface BillingVerifyResponseDto {

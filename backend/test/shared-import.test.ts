@@ -8,7 +8,7 @@ import {
   HandOrientation,
   READING_SCHOOLS,
   CREDIT_AMOUNTS,
-  registerSchema,
+  updateProfileSchema,
 } from '@palmsight/shared';
 
 describe('Backend @palmsight/shared import test', () => {
@@ -27,13 +27,6 @@ describe('Backend @palmsight/shared import test', () => {
   });
 
   it('should import and execute yup schema', async () => {
-    await expect(
-      registerSchema.validate({
-        displayName: 'Test',
-        username: 'testuser',
-        email: 'test@example.com',
-        password: 'password123',
-      }),
-    ).resolves.toBeTruthy();
+    await expect(updateProfileSchema.validate({ displayName: 'Test' })).resolves.toBeTruthy();
   });
 });

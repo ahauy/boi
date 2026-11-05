@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module";
 import { CreditsModule } from "../credits/credits.module";
 import { User, UserSchema } from "../schemas/user.schema";
 import { Referral, ReferralSchema } from "../schemas/referral.schema";
+import { Device, DeviceSchema } from "../schemas/device.schema";
 import { ReferralsModule } from "../referrals/referrals.module";
 import { ReadingsModule } from "../readings/readings.module";
 import { UsersController } from "./users.controller";
@@ -22,6 +23,7 @@ import { UserRateLimitGuard } from "../auth/guards/user-rate-limit.guard";
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: Referral.name, schema: ReferralSchema },
+      { name: Device.name, schema: DeviceSchema },
     ]),
   ],
   controllers: [UsersController],

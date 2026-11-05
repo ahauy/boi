@@ -18,7 +18,6 @@ export enum ReadingStatus {
   DONE = "DONE",
   FAILED = "FAILED",
   REJECTED = "REJECTED",
-  GUEST_PREVIEW = "GUEST_PREVIEW",
 }
 
 export enum CreditTransactionType {
@@ -29,21 +28,6 @@ export enum CreditTransactionType {
   READING_REFUND = "READING_REFUND",
   REWARDED_AD = "REWARDED_AD",
   ADMIN_ADJUST = "ADMIN_ADJUST",
-  STARTER = "starter",
-  SINGLE = "single",
-  REFUND = "refund",
-  CHECKIN = "checkin",
-  CHECKIN_MILESTONE = "checkin_milestone",
-  CHECKIN_RESTORE = "checkin_restore",
-  AD_REWARD = "ad_reward",
-  WHEEL = "wheel",
-  WHEEL_SPIN = "wheel_spin",
-  VIP_DAILY = "vip_daily",
-  GUEST_MERGE = "guest_merge",
-  OPERATOR = "operator",
-}
-
-export enum LedgerReason {
   STARTER = "starter",
   SINGLE = "single",
   REFUND = "refund",

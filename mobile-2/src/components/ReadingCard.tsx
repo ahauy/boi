@@ -18,7 +18,6 @@ const STATUS_LABEL: Record<ReadingStatus, string> = {
   [ReadingStatus.PROCESSING]: 'status.processing',
   [ReadingStatus.FAILED]: 'status.failed',
   [ReadingStatus.REJECTED]: 'status.rejected',
-  [ReadingStatus.GUEST_PREVIEW]: 'status.preview',
 };
 
 function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; compact?: boolean }) {
