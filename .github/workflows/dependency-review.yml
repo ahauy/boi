@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Khác biệt so với "pnpm audit": audit sẽ đỏ ngay từ đầu vì repo đang có 19 lỗ hổng tồn đọng.
       # Dependency review chỉ chặn khi chính PR này đưa lỗ hổng MỚI vào, nên nó dùng làm gate được.
