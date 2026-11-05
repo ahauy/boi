@@ -23,7 +23,7 @@
     "@nestjs/core": "^11.2.7",
     "@nestjs/jwt": "^12.0.3",
     "@nestjs/mongoose": "^11.0.4",
-    "@nestjs/platform-express": "^11.2.7",
+    "@nestjs/platform-express": "^12.3.2",
     "@palmsight/shared": "workspace:*",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
