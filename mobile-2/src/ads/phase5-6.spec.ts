@@ -180,7 +180,7 @@ describe('Phase 5 & 6: Interstitial, Tap Gate & Rewarded Ads Unit Tests', () => 
       ).toBe(false);
     });
 
-    it('Gap: interstitials are 90 s apart, or 30 s for ads users, with no session cap', () => {
+    it('Gap: interstitials are 90 s apart, or 60 s for ads users, with no session cap', () => {
       const firstShownAt = BASE_TIME;
       expect(canTriggerInterstitial('screen_change', { now: firstShownAt })).toBe(true);
       recordInterstitialShown(firstShownAt);

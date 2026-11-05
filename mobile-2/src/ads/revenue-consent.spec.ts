@@ -133,13 +133,18 @@ describe('third-party measurement by consent region', () => {
     expect(setCrashlyticsCollectionEnabled).toHaveBeenCalledWith('crashlytics', false);
   });
 
-  it('GDPR: still starts Adjust with sharing off', async () => {
-    await startWithRegion('GDPR');
-    expect(initSdk).toHaveBeenCalledTimes(1);
-    expect(trackThirdPartySharing).toHaveBeenCalledTimes(1);
+  it.each(['GDPR', 'UNKNOWN'] as const)('%s: does not start Adjust at all', async (region) => {
+    await startWithRegion(region);
+    expect(initSdk).not.toHaveBeenCalled();
+    expect(trackThirdPartySharing).not.toHaveBeenCalled();
   });
 
-  it('blocks Adjust events when Adjust started restricted even if the store later says OTHER', async () => {
+  it('OTHER: starts Adjust once', async () => {
+    await startWithRegion('OTHER');
+    expect(initSdk).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops Adjust events in a session where Adjust never started, even if the store later says OTHER', async () => {
     await startWithRegion('UNKNOWN'); // consent wait timed out
     adsStore.setConsentRegion('OTHER');
     trackAdRevenue({ adUnitId: 'u', revenue: 0.01 });

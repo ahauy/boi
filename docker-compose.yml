@@ -1,6 +1,6 @@
 # PalmSight Local Development Infrastructure
 # MongoDB 7 Replica Set (không còn gửi email nên không cần Mailpit)
-# See docs/getting-started.md and docs/adr/0010-no-image-storage.md
+# See docs/getting-started.md
 
 services:
   # MongoDB 7 with single-node replica set (rs0) auto-initiation

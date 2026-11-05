@@ -6,7 +6,7 @@ Dự án có 2 thành viên chính. Mọi người đều có thể mở issue h
 
 1. Đọc [CONTEXT.md](CONTEXT.md), nhất là mục **Quy tắc bất biến**.
 2. Cài môi trường theo [docs/getting-started.md](docs/getting-started.md).
-3. Thay đổi nghiệp vụ (credits, referral, trường phái bói, API contract, schema MongoDB) phải sửa tài liệu trong `docs/` **cùng PR** với code.
+3. Thay đổi nghiệp vụ (GEM, referral, trường phái bói, API contract, schema MongoDB) phải sửa tài liệu trong `docs/` **cùng PR** với code.
 
 ## Nhánh
 
@@ -21,7 +21,7 @@ Theo [Conventional Commits](https://www.conventionalcommits.org/), viết bằng
 <type>(<scope>): <mô tả ngắn, thì hiện tại>
 
 feat(credits): add READING_REFUND on AI timeout
-fix(auth): reject Facebook token issued for another app
+fix(auth): reject refresh token that was already rotated
 docs(api): document REFERRAL_CYCLE error
 ```
 
@@ -34,7 +34,7 @@ docs(api): document REFERRAL_CYCLE error
 | `test` | Thêm/sửa test |
 | `chore` | Build, dependency, cấu hình |
 
-`scope` gợi ý: `frontend`, `backend`, `auth`, `credits`, `referrals`, `readings`, `ai`, `db`, `shared`.
+`scope` gợi ý: `mobile`, `backend`, `legal`, `auth`, `credits`, `referrals`, `readings`, `ai`, `db`, `shared`.
 
 ## Pull request
 
@@ -60,7 +60,7 @@ docs(api): document REFERRAL_CYCLE error
 
 ## Test
 
-Xem [docs/testing.md](docs/testing.md). Logic credits và referral bắt buộc có test integration với MongoDB replica set chạy trong bộ nhớ, gồm cả test request song song.
+Xem [docs/testing.md](docs/testing.md). Logic GEM và referral bắt buộc có test integration với MongoDB replica set chạy trong bộ nhớ, gồm cả test request song song.
 
 ## Ảnh tay trong repo
 

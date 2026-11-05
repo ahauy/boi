@@ -1,130 +1,62 @@
-# business-rules — Credits & mã giới thiệu
+# business-rules — Quy tắc nghiệp vụ
 
-## Quy tắc credits
+Số liệu lấy từ `shared/src/constants/index.ts` (`ECONOMY_DEFAULTS`, `CREDIT_AMOUNTS`). Backend có thể ghi đè bằng biến môi trường (xem `backend/.env.example`); `GET /api/v1/config` trả giá trị đang áp dụng cho app.
 
-Mọi thay đổi credits đều ghi một document vào sổ cái `credit_transactions`; `users.creditBalance` chỉ là số dư cache, luôn cập nhật trong cùng MongoDB transaction với document sổ cái.
+## Tài khoản
 
-| `type` | Khi nào phát sinh | Credits | Người nhận | Điều kiện |
-| --- | --- | --- | --- | --- |
-| `SIGNUP_BONUS` | User được tạo: khi bấm link xác minh email đăng ký, hoặc lần đầu đăng nhập Google/Facebook. Đăng ký chưa xác minh không có credits | +`STARTER_GRANT` (5) | Người dùng mới | 1 lần/tài khoản (unique index). **Không** cộng nếu tài khoản được tạo lại từ email/Google/Facebook đã bị xoá |
-| `REFERRAL_BONUS` | Người khác nhập mã giới thiệu hợp lệ | +3 | Chủ mã (referrer) | Cộng ngay khi nhập mã; qua đủ kiểm tra ở mục dưới; tối đa `REFERRAL_DAILY_CAP` lượt/ngày |
-| `REFEREE_BONUS` | Mình nhập mã giới thiệu hợp lệ của người khác | +5 | Người nhập mã (referee) | Cộng ngay khi nhập mã; một lần/tài khoản và một lần/thiết bị. **Không** bị ảnh hưởng bởi trần của chủ mã |
-| `READING_SPEND` | Bắt đầu một lần xem bói | −`PRICE_PER_ACTION` (5) | Người xem | Đủ số dư |
-| `READING_REFUND` | AI lỗi, timeout hoặc trả sai định dạng; ảnh không phải lòng bàn tay (người dùng không mất credit) | +1 | Người xem | Tối đa 1 lần cho mỗi reading |
-| `REWARDED_AD` | Người dùng xem trọn một rewarded ad và Google xác minh bằng callback có chữ ký | +1 | Người xem | Tối đa `REWARDED_AD_DAILY_CAP` lượt/24 giờ/tài khoản |
-| `ADMIN_ADJUST` | Dev cộng/trừ tay bằng script (không có trang admin) | ±n | Bất kỳ | Bắt buộc có `note` |
+- Không có đăng ký hay đăng nhập. App gửi định danh thiết bị (Android ID, hoặc UUID nếu không đọc được) tới `POST /auth/device`; backend chỉ lưu mã băm HMAC (`IDENTITY_HASH_SECRET`) và trả phiên khách (access token + refresh token).
+- Mỗi thiết bị một tài khoản. Cài lại app trên cùng thiết bị thì về đúng tài khoản cũ.
+- Tạo tài khoản mới bị giới hạn theo IP (`ANONYMOUS_SIGNUP_DAILY_CAP`, mặc định 20 mỗi ngày); vượt giới hạn trả `DEVICE_SESSION_LIMIT_REACHED`.
+- Tên hiển thị mặc định là "Nhà chiêm tinh" (theo ngôn ngữ); người dùng có thể đổi tên và ảnh đại diện trong Sửa hồ sơ.
+- Dữ liệu giới tính, nhóm tuổi, sở thích chọn lúc onboarding chỉ lưu trên thiết bị.
+- Dịch vụ dành cho người từ 16 tuổi. App không có bước xác nhận riêng: bước chọn nhóm tuổi là xác nhận, và Điều khoản ghi rõ điều đó.
 
-**Hằng số cấu hình** (đọc từ env, không hard-code):
+## GEM
 
-| Biến | Giá trị mặc định |
+| Mục | Giá trị |
 | --- | --- |
-| `STARTER_GRANT` (bí danh `SIGNUP_BONUS_CREDITS`) | 5 |
-| `PRICE_PER_ACTION` (bí danh `READING_COST_CREDITS`) | 5 |
-| `REFERRAL_DAILY_CAP` | 5 |
-| `REFERRAL_NETWORK_DAILY_CAP` | 5 |
-| `CLIENT_IP_HEADER` | rỗng (dùng `req.ip`); Render đặt `x-forwarded-for` |
-| `REWARDED_ADS_ENABLED` | `false` |
-| `REWARDED_AD_REWARD_CREDITS` | 1 |
-| `REWARDED_AD_DAILY_CAP` | 3 |
-| `REWARDED_AD_INTENT_TTL_MS` | 600000 |
+| Giá một lần xem | 5 GEM (`PRICE_PER_ACTION`) |
+| Quà khởi đầu | 5 GEM, mỗi thiết bị một lần, tối đa 5 lần mỗi ngày mỗi mạng (`STARTER_NETWORK_DAILY_CAP`) |
+| Điểm danh | thang 3, 3, 5, 3, 3, 8, 10 theo ngày liên tiếp; thưởng mốc 20/30/50/80/100/200 GEM ở ngày 30/60/100/180/270/365; khôi phục chuỗi tốn 10 GEM mỗi ngày bỏ lỡ, tối đa 3 ngày |
+| Vòng quay | giải 2, 3, 5, 10, 20, 50 GEM theo trọng số phía server; 1 lượt miễn phí và 3 lượt xem quảng cáo mỗi ngày; quay trả phí 3 GEM (kỳ vọng nhỏ hơn giá quay) |
+| Quảng cáo có thưởng | +3 GEM, tối đa 5 lần mỗi ngày; điểm danh nhân đôi bằng quảng cáo 1 lần mỗi ngày |
+| Giới thiệu | người nhập mã +5 GEM, người mời +3 GEM; người mời tối đa 5 lượt mỗi ngày và 5 lượt mỗi mạng mỗi ngày |
+| VIP hằng ngày | +50 GEM mỗi ngày cho người đang VIP |
 
-## Quảng cáo thưởng (rewarded ads)
+- Ngày thưởng tính theo múi giờ `Asia/Ho_Chi_Minh` (`REWARD_TZ`).
+- GEM không quy ra tiền, không chuyển giữa tài khoản, mất khi xoá tài khoản.
+- Sổ cái `credit_transactions` là nguồn sự thật: tổng `amount` của một tài khoản phải bằng `creditBalance` (script `pnpm --filter backend credits:reconcile`).
+- Lần xem trừ GEM trước khi gọi AI; AI lỗi hoặc ảnh không phải lòng bàn tay thì hoàn đúng một lần (`READING_REFUND`).
 
-Credit chỉ là phần thưởng khi người dùng **chủ động** xem quảng cáo, nên luồng phải chịu được hai
-điều: client nói dối "đã xem xong", và Google gửi callback trùng lặp. Thiết kế theo đó.
+## Xem bói
 
-| # | Bước | Nội dung |
-| --- | --- | --- |
-| 1 | `POST /ads/rewarded/intent` (cần đăng nhập) | Server cấp `nonce` một lần, snapshot mức thưởng, kiểm tra trần 24 giờ **ngay tại đây**. App đưa nonce vào `serverSideVerificationOptions.userId` của AdMob |
-| 2 | User xem quảng cáo | App không cộng credit ở bước này, dù SDK báo `onUserEarnedReward` |
-| 3 | Google gọi `GET /ads/rewarded/verify` | Server xác minh chữ ký ECDSA P-256/SHA-256 trên chính query string (bỏ `signature` và `key_id`, sắp xếp theo tên tham số, giá trị đã giải mã), khoá public tải từ `gstatic.com/admob/reward/verifier-keys.json` theo `key_id` |
-| 4 | Cộng credit | `findOneAndUpdate` với điều kiện `status = ISSUED` và `expiresAt > now`, rồi ghi `CreditTransaction` — tất cả trong một MongoDB transaction |
-| 5 | `GET /ads/rewarded/status` | App polling kết quả này tới 20 giây để báo cho user; hết thời gian thì hẹn "đang chờ xác nhận" |
+- Header `Idempotency-Key` (UUID v4) bắt buộc; gửi lại cùng key không trừ thêm GEM.
+- Gửi lại cùng key khi lần xem trước còn đang xử lý trả `READING_IN_PROGRESS`; `POST /readings` giới hạn 5 yêu cầu mỗi phút mỗi tài khoản.
+- Trường phái phương Tây dùng được cho mọi người; Phương Đông và Ấn Độ (Vedic) chỉ cho VIP khi `ENFORCE_VIP_SCHOOLS` bật (mặc định bật), nếu không trả `vip_required`.
+- Ảnh tối đa 8 MB; backend đổi HEIC sang JPEG, xoay theo EXIF, xoá toàn bộ EXIF, thu nhỏ cạnh dài tối đa 1280 px.
+- Ảnh chỉ được lưu lên Cloudinary khi AI xác nhận là lòng bàn tay. Lần xem bị từ chối hoặc lỗi không lưu ảnh. Ở production, nếu Cloudinary lỗi thì lần xem vẫn hoàn tất nhưng không có ảnh.
+- Xoá một lần xem: xoá ảnh trên Cloudinary trước; nếu không xoá được ảnh thì giữ lần xem và báo `IMAGE_DELETE_FAILED` để thử lại. Khi xoá xong, kết quả, đường chỉ tay và chủ đề (`topics = []`) bị xoá, chỉ còn bản ghi rút gọn.
 
-**Vì sao bắt buộc xác minh phía server**: nếu app tự báo hoàn thành thì chỉ cần một request giả là
-nhận credit miễn phí, mà mỗi credit lại là một lần gọi AI tốn tiền thật. Vì chữ ký do Google tạo,
-client không thể tự ký lại.
+## VIP
 
-**Chống phát lại**: `nonce` unique, `transaction_id` unique, và index unique
-`{ adClaimId: 1, type: 1 }` trên `credit_transactions`. Callback lặp lại của Google trả `200` nhưng
-không cộng thêm.
+- Gói đăng ký Google Play: `weeklyid`, `monthlyid`, `yearlyid` (ghi đè bằng `SUB_*_ID`). App gửi giao dịch tới `POST /billing/verify`; backend xác minh với Google Play bằng service account và nhận thông báo gia hạn/huỷ qua RTDN (`POST /billing/rtdn?token=`).
+- Quyền lợi: mở trường phái Phương Đông và Ấn Độ, không banner/quảng cáo xen kẽ/quảng cáo gốc, +50 GEM mỗi ngày.
+- Quà hằng ngày chỉ phát một lần mỗi thiết bị mỗi ngày (dấu `vipDailyDay`/`vipDailyUserId` trong `devices`), nên xoá tài khoản rồi khôi phục VIP trong cùng ngày không nhận lại.
+- Khôi phục: cùng `purchaseToken` được chuyển sang tài khoản hiện tại và tài khoản cũ mất VIP.
+- Xoá tài khoản **không** huỷ gói Play; người dùng phải tự huỷ trong Google Play.
 
-**Quy tắc trần 24 giờ**: đếm theo `createdAt` của claim trong 24 giờ trượt (không phải ngày lịch),
-tính cả claim đã dùng lẫn claim đã hết hạn. Claim hết hạn vẫn chiếm suất vì người dùng đã được phát
-cho một lượt xem.
+## Mã giới thiệu
 
-**Fail closed**: thiếu chữ ký, sai chữ ký, `key_id` lạ không tải được khoá, `reward_item` không phải
-`palmsight-credit` — mọi trường hợp đều **không** cộng credit.
+- Mỗi tài khoản có mã 8 ký tự; người khác nhập một lần, bất cứ lúc nào.
+- Từ chối khi: tự nhập mã của mình (`REFERRAL_SELF`), vòng giới thiệu (`REFERRAL_CYCLE`), thiết bị đã nhập mã (`REFERRAL_DEVICE_USED`), vượt giới hạn mạng (`REFERRAL_NETWORK_LIMIT`), thiết bị từng xoá tài khoản (`REFERRAL_NOT_ALLOWED`), mã không tồn tại (`REFERRAL_CODE_NOT_FOUND`), đã nhập rồi (`REFERRAL_ALREADY_USED`).
+- Link `…/r/<mã>` mở trang tĩnh `legal/referral` (nút sao chép mã và cài từ Google Play); người dùng nhập mã tay trong app.
 
-`REWARDED_ADS_ENABLED=false` (mặc định) làm `/ads/rewarded/availability` trả `enabled: false`, app
-ẩn toàn bộ lời đề nghị, và `POST /ads/rewarded/intent` trả 404. Bật/tắt không cần bản build mới.
+## Quảng cáo
 
-**Quy tắc khác**
+- Người không VIP thấy banner, quảng cáo xen kẽ và quảng cáo gốc; khoảng cách tối thiểu giữa hai quảng cáo xen kẽ là 90 giây, và 60 giây cho "ads user" (người từ chối paywall 3 lần).
+- Quảng cáo có thưởng chỉ hiện khi người dùng chọn xem.
+- Đo lường bên thứ ba (Adjust, Firebase Analytics, Crashlytics) chỉ bật khi vùng được xác định là `OTHER` (ngoài GDPR); vùng GDPR hoặc chưa rõ thì tắt.
 
-- Credits **không hết hạn**.
-- MVP **không bán** credits.
-- Mỗi lần xem tốn đúng 1 credit, dù chọn trường phái nào và dù bói 1 mục hay toàn bộ.
-- Email/mật khẩu, Google và Facebook có cùng email đã xác minh → **gộp thành một tài khoản**, chỉ nhận `SIGNUP_BONUS` một lần. Thứ tự đăng ký trước sau không quan trọng. Chi tiết ở [ADR-0008](adr/0008-email-password-auth.md).
-- **Không có tính năng tự xoá tài khoản.** Người dùng gửi yêu cầu xoá qua email; dev xoá bằng script `users:delete`. Xem [ADR-0009](adr/0009-manual-account-deletion.md).
-  - Khi xoá, email và ID Google/Facebook được ghi vào `deleted_identities` dạng HMAC.
-  - Đăng ký lại hoặc đăng nhập lại bằng một định danh đã bị xoá vẫn tạo được tài khoản mới, nhưng bắt đầu với **0 credits** (không `SIGNUP_BONUS`) và **không được nhập mã giới thiệu**.
-  - Guest đã xoá: mở app lại trên cùng thiết bị tạo guest mới với **0 GEM** và **không được nhập mã giới thiệu**. Giới hạn check-in, lượt quay miễn phí và quà khởi đầu theo thiết bị vẫn giữ. Dữ liệu của tài khoản cũ không được gắn lại.
-  - Mục đích: chặn vòng xoá–đăng ký lại để farm +5 và +5/+3.
-- Chỉnh credits tay: `pnpm --filter backend credits:adjust --user <id> --amount <n> --note "<lý do>"`, script này cũng đi qua `CreditLedgerService`.
+## Xoá tài khoản
 
-**Mã giới thiệu**: 8 ký tự in hoa, bảng chữ bỏ ký tự dễ nhầm (`0 O 1 I L`), sinh ngẫu nhiên khi tạo user, unique. Link chia sẻ `https://<domain>/r/<CODE>` lưu mã vào cookie `ref_code` (7 ngày), rồi chuyển tới trang đăng ký. Mã được nhập theo một trong hai cách:
-
-- **Đăng ký bằng email:** ô "Mã giới thiệu" trên form được điền sẵn. Gửi form coi như đã xác nhận; mã được áp dụng ngay khi xác minh email.
-- **Google/Facebook:** sau khi đăng nhập lần đầu, ô nhập mã ở `/referral/enter` được điền sẵn và người dùng bấm xác nhận.
-
-Người dùng có thể nhập mã **bất cứ lúc nào**, nhưng chỉ **một lần**.
-
-## Kiểm tra khi nhập mã giới thiệu
-
-Các kiểm tra chạy theo thứ tự; kiểm tra đầu tiên thất bại quyết định mã lỗi trả về.
-
-| # | Kiểm tra | Thất bại thì | Mã lỗi / trạng thái |
-| --- | --- | --- | --- |
-| 1 | Tài khoản được phép nhập mã (không phải tài khoản tạo lại từ định danh đã xoá) | Từ chối | `REFERRAL_NOT_ALLOWED` (403) |
-| 2 | Mã tồn tại | Từ chối | `REFERRAL_CODE_NOT_FOUND` (404) |
-| 3 | Không phải mã của chính mình | Từ chối | `REFERRAL_SELF` (422) |
-| 4 | Tài khoản chưa từng nhập mã (unique `referrals.refereeId`) | Từ chối | `REFERRAL_ALREADY_USED` (409) |
-| 5 | Chủ mã không phải người do mình giới thiệu (chặn hai người nhập mã của nhau) | Từ chối | `REFERRAL_CYCLE` (422) |
-| 6 | Thiết bị chưa từng nhập mã (`devices.referralRedeemedAt`). Định danh lấy từ `users.deviceIdHash`, nếu không có thì từ header `x-device-id`; không có cả hai (web) thì bỏ qua kiểm tra này | Từ chối | `REFERRAL_DEVICE_USED` (409) |
-| 7 | Mạng chưa nhận đủ `REFERRAL_NETWORK_DAILY_CAP` lượt `REFEREE_BONUS` trong ngày (theo giờ Việt Nam). Đếm theo hash IP trong `referral_network_counters`; không xác định được IP công khai thì bỏ qua kiểm tra này | Từ chối, không ghi referral, không ai được cộng | `REFERRAL_NETWORK_LIMIT` (429) |
-| 8 | Chủ mã chưa nhận đủ `REFERRAL_DAILY_CAP` lượt thưởng trong ngày (theo giờ Việt Nam) | Vẫn ghi nhận; người nhập **+5**, chủ mã không được cộng | `status = CAPPED` |
-| — | Qua tất cả | Người nhập **+5**, chủ mã **+3**, cộng ngay | `status = REWARDED` |
-
-Ghi `referrals`, đánh dấu thiết bị và cộng credits cho cả hai người chạy trong **một** MongoDB transaction: hoặc tất cả cùng thành công, hoặc không có gì được ghi.
-
-Đăng ký email kèm mã (`processReferralReward`) không có định danh thiết bị nên không qua kiểm tra 6. Kiểm tra 7 dùng IP lúc đăng ký, không có thì dùng IP lúc xác minh; quá giới hạn thì tài khoản vẫn được tạo, chỉ bỏ qua thưởng. Mức thưởng lấy từ `CREDIT_AMOUNTS` trong `shared`, không đọc từ env.
-
-| Trạng thái | Người nhập mã | Chủ mã |
-| --- | --- | --- |
-| `REWARDED` | +5 (`REFEREE_BONUS`) | +3 (`REFERRAL_BONUS`) |
-| `CAPPED` | +5 (`REFEREE_BONUS`) | 0 |
-
-Thưởng +5 để người nhập có lý do nhập mã của bạn bè. Chủ mã bị giới hạn bởi trần 5 lượt/ngày; bản ghi cũ không có `referrerReward` vẫn hiển thị đúng mức +2 đã nhận.
-
-Trần 5 lượt/ngày là trần cứng: transaction ghi vào document chủ mã trước khi đếm nên các lượt nhập đồng thời được tuần tự hoá, và trạng thái được tính lại ở mỗi lần retry. Đường đăng ký email kèm mã dùng chung trần.
-
-## Quy tắc toàn vẹn (MongoDB)
-
-- Mọi thao tác credits chạy trong **MongoDB transaction** (cần replica set; MongoDB Atlas và cấu hình docker local đều đáp ứng).
-- Số dư không bao giờ âm:
-  - Trừ bằng một lệnh có điều kiện: `updateOne({ _id, deletedAt: null, creditBalance: { $gte: 1 } }, { $inc: { creditBalance: -1 } })`.
-  - Nếu `modifiedCount = 0` → trả `INSUFFICIENT_CREDITS` (402). Auth guard đã chặn user không tồn tại hoặc đã xoá từ trước, nên ở bước này `modifiedCount = 0` chỉ còn nghĩa là hết credits.
-  - Collection `users` có thêm validator `creditBalance: { minimum: 0 }`.
-- **Cộng credits phải trúng đúng một user:** lệnh cộng dùng `updateOne({ _id, deletedAt: null }, { $inc: ... })`, sau đó kiểm tra `matchedCount === 1`.
-  - Nếu là 0: ném lỗi → transaction rollback → không ghi giao dịch vào sổ cái.
-  - Lý do: MongoDB không có khoá ngoại, lệnh `updateOne` trúng 0 document không báo lỗi. Thiếu kiểm tra này thì sổ cái sẽ có giao dịch cho user không tồn tại, trong khi không số dư nào thay đổi.
-  - Áp dụng cho mọi loại cộng: `SIGNUP_BONUS`, `REFERRAL_BONUS`, `REFEREE_BONUS`, `READING_REFUND`, `ADMIN_ADJUST`.
-  - Riêng `READING_REFUND` cho user đã bị xoá thì bỏ qua, chỉ đánh dấu reading là `FAILED`.
-- Unique index chặn cộng/hoàn trùng: `SIGNUP_BONUS` theo user, `(readingId, type)`, `(referralId, type)`. Chi tiết ở [database-erd.md](database-erd.md).
-- `POST /readings` bắt buộc header `Idempotency-Key`. Gửi lại cùng key không bao giờ trừ thêm credit:
-  - reading cũ đang `PROCESSING` → `409 READING_IN_PROGRESS`;
-  - reading cũ đã xong → trả lại kết quả cũ.
-
-  Chi tiết ở [api-contract.md](api-contract.md#post-readings).
-- Tổng `amount` trong `credit_transactions` của một user phải luôn bằng `users.creditBalance`; script `credits:reconcile` kiểm tra điều này.
-- **Không sửa hay xoá trực tiếp trên database** các collection `users`, `credit_transactions`, `referrals`, `readings`. Mọi thay đổi đi qua API hoặc script (`credits:adjust`, `users:delete`). Script `db:check` phát hiện dữ liệu mồ côi nếu quy tắc này từng bị vi phạm. Xem [deployment.md](deployment.md#vận-hành).
+`DELETE /me` (và `pnpm --filter backend users:delete` cho xử lý thủ công) dùng chung một hàm. Ảnh trên Cloudinary được xoá trước; lỗi ảnh thì không đụng DB và báo lại. Sau đó một transaction MongoDB xoá hoặc ẩn dữ liệu. Chi tiết dữ liệu xoá/giữ nằm ở [database-erd.md](database-erd.md). Thiết bị từng xoá tài khoản nhận tài khoản mới với 0 GEM, không quà khởi đầu và không nhập được mã giới thiệu.

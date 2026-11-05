@@ -8,7 +8,7 @@
 
 Báo cáo nên có:
 
-- Mô tả lỗ hổng và ảnh hưởng (ví dụ: tự cộng credits, xem ảnh của người khác).
+- Mô tả lỗ hổng và ảnh hưởng (ví dụ: tự cộng GEM, xem ảnh của người khác).
 - Các bước tái hiện.
 - Commit bị ảnh hưởng.
 
@@ -16,9 +16,9 @@ Chúng tôi sẽ phản hồi sớm nhất có thể; không cam kết thời h�
 
 ## Phạm vi quan tâm
 
-- Cộng credits trái phép: xem nhiều lần bằng 1 credit, bỏ qua bước trừ credit, được hoàn credit nhiều lần.
+- Cộng GEM trái phép: xem nhiều lần bằng một lần trừ GEM, bỏ qua bước trừ GEM, được hoàn GEM nhiều lần, nhận lại quà thiết bị hoặc quà VIP hằng ngày bằng nhiều tài khoản.
 - Truy cập ảnh hoặc kết quả bói của người dùng khác.
-- Chiếm tài khoản qua luồng Google/Facebook.
+- Chiếm hoặc giả mạo phiên của một thiết bị khác (token, `POST /auth/device`, `POST /auth/refresh`).
 - Lộ API key, secret hoặc dữ liệu cá nhân.
 - Chữ chèn trong ảnh khiến AI trả nội dung độc hại (prompt injection).
 

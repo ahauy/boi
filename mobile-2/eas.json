@@ -22,7 +22,6 @@
         "EXPO_PUBLIC_ADJUST_ENVIRONMENT": "sandbox",
         "EXPO_PUBLIC_SUB_WEEKLY_ID": "weeklyid",
         "EXPO_PUBLIC_SUB_YEARLY_ID": "yearlyid",
-        "EXPO_PUBLIC_SUB_MONTHLY_ID": "",
         "EXPO_PUBLIC_WEB_URL": "https://boi-two-delta.vercel.app"
       }
     },
@@ -39,13 +38,11 @@
         "EXPO_PUBLIC_MAX_ANDROID_NATIVE_ID": "4dd9b27164711893",
         "EXPO_PUBLIC_MAX_ANDROID_MREC_ID": "69c7cf67395d10e5",
         "EXPO_PUBLIC_MAX_ANDROID_APP_OPEN_ID": "3b1705c21afe5780",
-        "EXPO_PUBLIC_MAX_TEST_DEVICE_IDS": "",
         "EXPO_PUBLIC_ADJUST_APP_TOKEN": "Aj_Purchase",
         "EXPO_PUBLIC_ADJUST_PURCHASE_EVENT_TOKEN": "855k3k",
         "EXPO_PUBLIC_ADJUST_ENVIRONMENT": "sandbox",
         "EXPO_PUBLIC_SUB_WEEKLY_ID": "weeklyid",
         "EXPO_PUBLIC_SUB_YEARLY_ID": "yearlyid",
-        "EXPO_PUBLIC_SUB_MONTHLY_ID": "",
         "EXPO_PUBLIC_ADS_ENABLED": "true",
         "EXPO_PUBLIC_ADS_MOCK": "false",
         "EXPO_PUBLIC_WEB_URL": "https://boi-two-delta.vercel.app"
@@ -64,13 +61,11 @@
         "EXPO_PUBLIC_MAX_ANDROID_NATIVE_ID": "4dd9b27164711893",
         "EXPO_PUBLIC_MAX_ANDROID_MREC_ID": "69c7cf67395d10e5",
         "EXPO_PUBLIC_MAX_ANDROID_APP_OPEN_ID": "3b1705c21afe5780",
-        "EXPO_PUBLIC_MAX_TEST_DEVICE_IDS": "",
         "EXPO_PUBLIC_ADJUST_APP_TOKEN": "Aj_Purchase",
         "EXPO_PUBLIC_ADJUST_PURCHASE_EVENT_TOKEN": "855k3k",
         "EXPO_PUBLIC_ADJUST_ENVIRONMENT": "production",
         "EXPO_PUBLIC_SUB_WEEKLY_ID": "weeklyid",
         "EXPO_PUBLIC_SUB_YEARLY_ID": "yearlyid",
-        "EXPO_PUBLIC_SUB_MONTHLY_ID": "",
         "EXPO_PUBLIC_ADS_ENABLED": "true",
         "EXPO_PUBLIC_ADS_MOCK": "false",
         "EXPO_PUBLIC_WEB_URL": "https://boi-two-delta.vercel.app"

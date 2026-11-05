@@ -1,5 +1,8 @@
 # Log phiên: Sửa mobile — Guest trial + Google/FB login + Onboarding mới
 
+> **Tài liệu lịch sử (cập nhật 2026-11-05).** Viết cho bản web + app cũ (đăng nhập email/Google/Facebook, credits, ảnh không lưu, ONNX trên trình duyệt). Hướng sản phẩm hiện tại là app Android không đăng nhập, GEM, ảnh của lần xem thành công lưu trên Cloudinary và xoá tài khoản ngay trong app. Đừng dùng file này làm nguồn sự thật; xem [README.md](README.md), [business-rules.md](business-rules.md) và [CONSISTENCY_PLAN.md](CONSISTENCY_PLAN.md). Thư mục `adr/` không có trong repo nên các liên kết ADR không còn đích.
+
+
 > **CẬP NHẬT MỚI NHẤT (2026-10-30, mục G): mobile đã bỏ hoàn toàn đăng ký/đăng nhập.**
 > App dùng phiên khách tự động theo thiết bị; các mục 1–7 bên dưới chỉ còn giá trị lịch sử.
 > Đọc mục G trước khi làm tiếp.
