@@ -31,10 +31,6 @@ pnpm-debug.log*
 docker-data/
 *.sqlite
 uploads/
-frontend/public/models/*.onnx
-frontend/public/models/*.task
-frontend/public/onnx/
-frontend/public/mediapipe/
 
 # Editor / OS
 .vscode/*

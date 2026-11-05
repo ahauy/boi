@@ -1,5 +1,5 @@
 # PalmSight Local Development Infrastructure
-# Managed by SETUP-003: MongoDB 7 Replica Set, Mailpit SMTP
+# MongoDB 7 Replica Set (không còn gửi email nên không cần Mailpit)
 # See docs/getting-started.md and docs/adr/0010-no-image-storage.md
 
 services:
@@ -45,18 +45,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 3s
-
-  # Mailpit local email testing (SMTP server + Web UI)
-  # SMTP port: 1025, Web UI: 8025
-  mailpit:
-    image: axllent/mailpit:v1.31.6
-    restart: unless-stopped
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    environment:
-      MP_MAX_MESSAGES: 500
-      MP_DATABASE: ""
 
 volumes:
   mongodb_data:

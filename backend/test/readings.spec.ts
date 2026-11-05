@@ -8,17 +8,13 @@ import {
   ImageQuality,
   PalmResult,
 } from "@palmsight/shared";
-import { createTestApp, closeTestApp, TestAppInstance } from "./test-helper";
+import {
+  createTestApp,
+  closeTestApp,
+  createGuest,
+  TestAppInstance,
+} from "./test-helper";
 import { AiService } from "../src/ai/ai.service";
-import type { GoogleProfile } from "../src/auth/google-auth.verifier";
-
-const googleProfile: GoogleProfile = {
-  sub: "google-sub-readings",
-  email: "readings.user@example.com",
-  emailVerified: true,
-  name: "Readings Tester",
-  picture: null,
-};
 
 describe("US-AI-001: POST /api/v1/readings - AI Vision Palm Reading & Credit Management", () => {
   let testApp: TestAppInstance;
@@ -56,17 +52,7 @@ describe("US-AI-001: POST /api/v1/readings - AI Vision Palm Reading & Credit Man
   };
 
   beforeAll(async () => {
-    testApp = await createTestApp({
-      googleVerifier: {
-        // sub và email đều dẫn từ idToken: backend gộp tài khoản theo email đã xác minh, nên chỉ
-        // đổi sub thôi thì vẫn ra đúng một user dùng chung
-        verify: async (idToken: string): Promise<GoogleProfile> => ({
-          ...googleProfile,
-          sub: `google-sub-${idToken}`,
-          email: `readings.${idToken}@example.com`,
-        }),
-      },
-    });
+    testApp = await createTestApp();
     aiService = testApp.app.get(AiService);
 
     // Create a valid 100x100 JPEG image buffer
@@ -82,13 +68,7 @@ describe("US-AI-001: POST /api/v1/readings - AI Vision Palm Reading & Credit Man
       .toBuffer();
 
     // Authenticate user
-    const res = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken: "any" }),
-    });
-    const body = (await res.json()) as any;
-    accessToken = body.accessToken;
+    accessToken = (await createGuest(testApp)).accessToken;
   }, 60000);
 
   afterAll(async () => {
@@ -249,12 +229,7 @@ describe("US-AI-001: POST /api/v1/readings - AI Vision Palm Reading & Credit Man
 
     // POST /readings giới hạn 5 request/phút/user (api-contract.md); user của các test trên đã dùng
     // hết 5 slot trong phút này, nên test cần một tài khoản riêng để đo đúng luồng hoàn credit.
-    const session = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken: "ai-failure-user" }),
-    });
-    const { accessToken: secondToken } = (await session.json()) as any;
+    const { accessToken: secondToken } = await createGuest(testApp);
 
     const res = await sendReadingRequest(
       {

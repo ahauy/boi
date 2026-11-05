@@ -1,17 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import mongoose, { Model, Schema, Connection } from 'mongoose';
+import mongoose, { Model, Schema } from 'mongoose';
 import {
   UserSchema,
-  PendingRegistrationSchema,
-  PasswordResetSchema,
   SessionSchema,
   ReferralSchema,
   ReferralNetworkCounterSchema,
   ReadingSchema,
   CreditTransactionSchema,
   DeletedIdentitySchema,
-  GuestTrialSchema,
   DeviceSchema,
   AdRewardSchema,
   PlaySubscriptionSchema,
@@ -45,79 +42,17 @@ export interface SyncTarget {
 
 export const SYNC_TARGETS: SyncTarget[] = [
   { name: 'User', schema: UserSchema },
-  { name: 'PendingRegistration', schema: PendingRegistrationSchema },
-  { name: 'PasswordReset', schema: PasswordResetSchema },
   { name: 'Session', schema: SessionSchema },
   { name: 'Referral', schema: ReferralSchema },
   { name: 'Reading', schema: ReadingSchema },
   { name: 'CreditTransaction', schema: CreditTransactionSchema },
   { name: 'DeletedIdentity', schema: DeletedIdentitySchema },
-  { name: 'GuestTrial', schema: GuestTrialSchema },
   { name: 'Device', schema: DeviceSchema },
   { name: 'AdReward', schema: AdRewardSchema },
   { name: 'PlaySubscription', schema: PlaySubscriptionSchema },
   { name: 'BillingEvent', schema: BillingEventSchema },
   { name: 'ReferralNetworkCounter', schema: ReferralNetworkCounterSchema },
 ];
-
-export async function syncGuestTrialIndexes(connection: Connection): Promise<void> {
-  const db = connection.db;
-  if (!db) return;
-
-  const guestTrialsColl = db.collection('guest_trials');
-  await guestTrialsColl.createIndex(
-    { fingerprintHash: 1 },
-    { unique: true, name: 'uniq_fingerprint_hash' },
-  );
-  await guestTrialsColl.createIndex(
-    { guestTokenHash: 1 },
-    { unique: true, name: 'uniq_guest_token_hash' },
-  );
-  await guestTrialsColl.createIndex(
-    { ipHash: 1, createdAt: -1 },
-    { name: 'idx_ip_hash_created_at' },
-  );
-  await guestTrialsColl.createIndex(
-    { expiresAt: 1 },
-    { expireAfterSeconds: 0, name: 'ttl_expires_at' },
-  );
-  await guestTrialsColl.createIndex(
-    { isClaimed: 1 },
-    { name: 'idx_is_claimed' },
-  );
-
-  const readingsColl = db.collection('readings');
-  try {
-    await readingsColl.dropIndex('userId_1_idempotencyKey_1');
-  } catch {
-    // Ignore if not found
-  }
-
-  await readingsColl.createIndex(
-    { userId: 1, idempotencyKey: 1 },
-    {
-      unique: true,
-      partialFilterExpression: { userId: { $type: 'objectId' } },
-      name: 'uniq_user_idempotency_partial',
-    },
-  );
-
-  await readingsColl.createIndex(
-    { guestTokenHash: 1 },
-    { sparse: true, name: 'idx_guest_token_hash_sparse' },
-  );
-
-  await readingsColl.createIndex(
-    { previewExpiresAt: 1 },
-    {
-      expireAfterSeconds: 0,
-      partialFilterExpression: { previewExpiresAt: { $type: 'date' } },
-      name: 'ttl_preview_expires_at',
-    },
-  );
-
-  console.log('✓ Guest Trial and Readings indexes synchronized successfully.');
-}
 
 export async function syncDatabaseIndexes(mongoUri?: string): Promise<void> {
   loadEnv();

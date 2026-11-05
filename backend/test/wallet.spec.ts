@@ -2,17 +2,8 @@ import "reflect-metadata";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Types } from "mongoose";
 import { CreditTransactionType } from "@palmsight/shared";
-import { createTestApp, closeTestApp, TestAppInstance } from "./test-helper";
+import { createTestApp, closeTestApp, createGuest, TestAppInstance } from "./test-helper";
 import { CreditLedgerService } from "../src/credits/credit-ledger.service";
-import type { GoogleProfile } from "../src/auth/google-auth.verifier";
-
-const googleProfile: GoogleProfile = {
-  sub: "google-sub-wallet",
-  email: "wallet.user@example.com",
-  emailVerified: true,
-  name: "Wallet User",
-  picture: null,
-};
 
 describe("US-WALLET-001: CreditLedgerService & GET /api/v1/me/credit-transactions", () => {
   let testApp: TestAppInstance;
@@ -31,20 +22,13 @@ describe("US-WALLET-001: CreditLedgerService & GET /api/v1/me/credit-transaction
     );
 
   beforeAll(async () => {
-    testApp = await createTestApp({
-      googleVerifier: { verify: async () => googleProfile },
-    });
+    testApp = await createTestApp();
     creditLedgerService = testApp.app.get(CreditLedgerService);
 
-    // Create user and get token
-    const res = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken: "any" }),
-    });
-    const body = (await res.json()) as any;
-    accessToken = body.accessToken;
-    userId = new Types.ObjectId(body.user.id);
+    // Create guest user and get token
+    const guest = await createGuest(testApp);
+    accessToken = guest.accessToken;
+    userId = new Types.ObjectId(guest.id);
   }, 60000);
 
   afterAll(async () => {

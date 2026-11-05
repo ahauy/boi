@@ -2,14 +2,11 @@ import { describe, it, expect } from 'vitest';
 import mongoose, { Types } from 'mongoose';
 import {
   UserSchema,
-  PendingRegistrationSchema,
-  PasswordResetSchema,
   SessionSchema,
   ReferralSchema,
   ReadingSchema,
   CreditTransactionSchema,
   DeletedIdentitySchema,
-  GuestTrialSchema,
   DeviceSchema,
   AdRewardSchema,
   PlaySubscriptionSchema,
@@ -30,14 +27,11 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
   describe('Collection Names', () => {
     it('should have exact snake_case collection names', () => {
       expect((UserSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('users');
-      expect((PendingRegistrationSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('pending_registrations');
-      expect((PasswordResetSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('password_resets');
       expect((SessionSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('sessions');
       expect((ReferralSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('referrals');
       expect((ReadingSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('readings');
       expect((CreditTransactionSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('credit_transactions');
       expect((DeletedIdentitySchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('deleted_identities');
-      expect((GuestTrialSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('guest_trials');
       expect((DeviceSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('devices');
       expect((AdRewardSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('ad_rewards');
       expect((PlaySubscriptionSchema as unknown as { get: (k: string) => unknown }).get('collection')).toBe('play_subscriptions');
@@ -142,45 +136,6 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
     });
   });
 
-  describe('PendingRegistrationSchema & Indexes', () => {
-    it('should have unique indexes on email, username, tokenHash, and TTL on expiresAt', () => {
-      const indexes = PendingRegistrationSchema.indexes();
-
-      const emailIdx = indexes.find(([fields]) => fields.email === 1);
-      expect(emailIdx).toBeDefined();
-      expect(emailIdx![1]).toMatchObject({ unique: true });
-
-      const usernameIdx = indexes.find(([fields]) => fields.username === 1);
-      expect(usernameIdx).toBeDefined();
-      expect(usernameIdx![1]).toMatchObject({ unique: true });
-
-      const tokenHashIdx = indexes.find(([fields]) => fields.tokenHash === 1);
-      expect(tokenHashIdx).toBeDefined();
-      expect(tokenHashIdx![1]).toMatchObject({ unique: true });
-
-      const ttlIdx = indexes.find(([fields]) => fields.expiresAt === 1);
-      expect(ttlIdx).toBeDefined();
-      expect(ttlIdx![1]).toMatchObject({ expireAfterSeconds: 0 });
-    });
-  });
-
-  describe('PasswordResetSchema & Indexes', () => {
-    it('should have unique tokenHash, userId index, and TTL on expiresAt', () => {
-      const indexes = PasswordResetSchema.indexes();
-
-      const tokenHashIdx = indexes.find(([fields]) => fields.tokenHash === 1);
-      expect(tokenHashIdx).toBeDefined();
-      expect(tokenHashIdx![1]).toMatchObject({ unique: true });
-
-      const userIdIdx = indexes.find(([fields]) => fields.userId === 1);
-      expect(userIdIdx).toBeDefined();
-
-      const ttlIdx = indexes.find(([fields]) => fields.expiresAt === 1);
-      expect(ttlIdx).toBeDefined();
-      expect(ttlIdx![1]).toMatchObject({ expireAfterSeconds: 0 });
-    });
-  });
-
   describe('SessionSchema & Indexes', () => {
     it('should have unique refreshTokenHash, userId index, and TTL on expiresAt', () => {
       const indexes = SessionSchema.indexes();
@@ -252,6 +207,22 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
         ([fields]) => fields.status === 1 && fields.createdAt === 1,
       );
       expect(statusIdx).toBeDefined();
+
+      // Chỉ còn đúng 3 index (không còn index guest)
+      expect(indexes).toHaveLength(3);
+      expect(idempotencyIdx![1]).toMatchObject({ unique: true, partialFilterExpression: expect.anything() });
+    });
+
+    it('should require userId', () => {
+      const ReadingModel = mongoose.model('TestReadingUserIdRequired', ReadingSchema);
+      const doc = new ReadingModel({
+        idempotencyKey: '12345678-1234-1234-1234-123456789abc',
+        school: ReadingSchool.WESTERN,
+        topics: ['love'],
+        hand: HandOrientation.RIGHT,
+        status: ReadingStatus.DONE,
+      });
+      expect(doc.validateSync()?.errors.userId).toBeDefined();
     });
 
     it('should validate school, topics length >= 1, hand, and status', () => {
@@ -366,24 +337,6 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
     });
   });
 
-  describe('GuestTrialSchema & Indexes', () => {
-    it('should have fingerprintHash unique, guestTokenHash unique, and expiresAt TTL index', () => {
-      const indexes = GuestTrialSchema.indexes();
-
-      const fpIdx = indexes.find(([fields]) => fields.fingerprintHash === 1);
-      expect(fpIdx).toBeDefined();
-      expect(fpIdx![1]).toMatchObject({ unique: true });
-
-      const tokenIdx = indexes.find(([fields]) => fields.guestTokenHash === 1);
-      expect(tokenIdx).toBeDefined();
-      expect(tokenIdx![1]).toMatchObject({ unique: true });
-
-      const ttlIdx = indexes.find(([fields]) => fields.expiresAt === 1);
-      expect(ttlIdx).toBeDefined();
-      expect(ttlIdx![1]).toMatchObject({ expireAfterSeconds: 0 });
-    });
-  });
-
   describe('DeviceSchema & Indexes', () => {
     it('should have deviceIdHash unique and starterIpHash compound index', () => {
       const indexes = DeviceSchema.indexes();
@@ -400,19 +353,16 @@ describe('SETUP-006: Mongoose Schemas & Indexes Verification', () => {
   });
 
   describe('sync-indexes targets', () => {
-    it('should register all 14 schemas in SYNC_TARGETS', () => {
-      expect(SYNC_TARGETS).toHaveLength(14);
+    it('should register all 11 schemas in SYNC_TARGETS', () => {
+      expect(SYNC_TARGETS).toHaveLength(11);
       const names = SYNC_TARGETS.map((t) => t.name);
       expect(names).toEqual([
         'User',
-        'PendingRegistration',
-        'PasswordReset',
         'Session',
         'Referral',
         'Reading',
         'CreditTransaction',
         'DeletedIdentity',
-        'GuestTrial',
         'Device',
         'AdReward',
         'PlaySubscription',

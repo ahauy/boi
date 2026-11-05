@@ -2,19 +2,10 @@ import 'reflect-metadata';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { JwtService } from '@nestjs/jwt';
 import { Types } from 'mongoose';
-import { AuthProvider, ReferralStatus } from '@palmsight/shared';
-import { createTestApp, closeTestApp, TestAppInstance } from './test-helper';
-import type { GoogleProfile } from '../src/auth/google-auth.verifier';
+import { ReferralStatus } from '@palmsight/shared';
+import { createTestApp, closeTestApp, createGuest, TestAppInstance } from './test-helper';
 
 const JWT_SECRET = 'test-jwt-secret-palm-sight-at-least-32-chars-long';
-
-const googleProfile: GoogleProfile = {
-  sub: 'google-sub-me',
-  email: 'me.user@example.com',
-  emailVerified: true,
-  name: 'Me User',
-  picture: null,
-};
 
 describe('GET /api/v1/me + JwtAuthGuard', () => {
   let testApp: TestAppInstance;
@@ -27,16 +18,11 @@ describe('GET /api/v1/me + JwtAuthGuard', () => {
     });
 
   beforeAll(async () => {
-    testApp = await createTestApp({ googleVerifier: { verify: async () => googleProfile } });
+    testApp = await createTestApp();
 
-    const res = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken: 'any' }),
-    });
-    const body = (await res.json()) as any;
-    accessToken = body.accessToken;
-    userId = body.user.id;
+    const guest = await createGuest(testApp);
+    accessToken = guest.accessToken;
+    userId = guest.id;
   }, 60000);
 
   afterAll(async () => {
@@ -60,11 +46,12 @@ describe('GET /api/v1/me + JwtAuthGuard', () => {
     const body = (await res.json()) as any;
     expect(body).toMatchObject({
       id: userId,
-      displayName: 'Me User',
+      displayName: 'Khách',
       username: null,
-      email: 'me.user@example.com',
+      email: null,
       hasPassword: false,
-      providers: [AuthProvider.GOOGLE],
+      providers: [],
+      isAnonymous: true,
       creditBalance: 3,
       referral: { canEnterCode: true, enteredCode: null },
     });

@@ -49,7 +49,6 @@ Yêu cầu: Node 22, pnpm 9, Docker, tài khoản ngrok (free), API key Gemini/G
 ```bash
 git clone <repo-url> palmsight && cd palmsight
 cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
 pnpm install
 docker compose up -d
 pnpm --filter backend db:sync-indexes
@@ -63,7 +62,6 @@ Hướng dẫn đầy đủ, gồm cách tạo Google OAuth client và Facebook 
 
 ```text
 palmsight/
-├─ frontend/        # SPA React + Vite, PWA, ONNX palm lines; .env.example riêng (chỉ biến VITE_*)
 ├─ backend/         # NestJS API + Mongoose + Cloudinary; .env.example riêng (secret của server)
 ├─ shared/          # @palmsight/shared: DTO, enum, trường phái bói, Yup schema dùng chung
 ├─ docs/            # tài liệu thiết kế

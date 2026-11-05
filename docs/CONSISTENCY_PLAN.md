@@ -22,7 +22,7 @@ Tài liệu này đủ để một phiên mới làm tiếp mà không cần đ�
 | Tài khoản | Mỗi thiết bị là một tài khoản khách, tạo tự động khi mở app. Không đăng nhập |
 | Route auth app dùng | Chỉ `/auth/device` và `/auth/refresh` |
 | Backend giữ lại | `boi-qvgy.onrender.com`. Cần xác nhận service này có deploy từ repo này không, vì hiện trả 404 cho `/currency/earn` |
-| Backend bỏ | `palmsight-backend` và site `palm-sight-theta.vercel.app`, tắt sau khi trang chính sách mới đã chạy |
+| Backend bỏ | `palmsight-backend` và site `palm-sight-theta.vercel.app`, có thể tắt vì trang chính sách mới đã chạy |
 | `palmsight.app` | Không phân giải được, không được dùng làm mặc định |
 | Database | Atlas DB `boi`. `backend/.env` đang dùng chung, cần tách DB dev trước khi ra mắt |
 | Lưu ảnh trong code | Cloudinary. Production lỗi thì không lưu ảnh; dev lưu base64 |
@@ -35,6 +35,7 @@ Tài liệu này đủ để một phiên mới làm tiếp mà không cần đ�
 - Bản chính sách đã được duyệt: https://claude.ai/artifact/8uePn95qz1wAn6RMV81nSx. Phải sửa lại cho phù hợp với hướng chỉ có app (nhóm B2).
 - Giữ quy tắc thiết bị từng xoá tài khoản. Giữ quảng cáo khi back từ sửa hồ sơ. Giữ gap 60 giây cho ads user.
 - Email hỗ trợ: `palmsight.app@gmail.com`.
+- Trong app chỉ có nút "Xoá tài khoản", không thêm nút "Xoá dữ liệu" riêng.
 - Xoá ảnh base64 cũ, không chuyển lên Cloudinary.
 - Chính sách hiện trong app bằng trình duyệt nội bộ, mở từ trang tĩnh công khai. Không viết màn hình riêng, để chỉ có một bản nội dung.
 
@@ -54,7 +55,7 @@ Làm theo thứ tự. Mỗi bước để lại repo chạy được.
 ### A1. Tách trang chính sách ra `legal/`
 - Chuyển `privacy.html`, `terms.html`, `data-deletion.html` từ `frontend/public/` sang `legal/`, kèm CSS cần thiết. Không còn phụ thuộc app web.
 - Dùng `cleanUrls` để có `/privacy`, `/terms`, `/data-deletion`. Chủ app đã chọn tạo project Vercel **mới** với Root Directory là `legal/`, Framework Preset Other, rồi gửi URL. Không nối vào project `palm-sight-theta`.
-- Chỉ `EXPO_PUBLIC_WEB_URL` trong `eas.json` và fallback trong `ads-config.ts` giữ URL. Tạm dùng domain cũ cho tới khi có URL mới.
+- Đã deploy `legal/` tại `https://boi-two-delta.vercel.app`. Chỉ `EXPO_PUBLIC_WEB_URL` trong `eas.json` và fallback trong `ads-config.ts` giữ URL; backend dùng `PUBLIC_BASE_URL`.
 - Nội dung vòng 3 trong `PrivacyContent.tsx` và `DataDeletionContent.tsx` là bản mới nhất, đối chiếu trước khi xoá `frontend/`.
 - Xem có cần `app-ads.txt` ở domain này không.
 

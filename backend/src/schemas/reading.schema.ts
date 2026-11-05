@@ -6,8 +6,8 @@ import { HandOrientation, PalmLineDto, ReadingSchool, ReadingStatus } from '@pal
 export class Reading {
   _id: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: false, default: null })
-  userId?: Types.ObjectId | null;
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  userId: Types.ObjectId;
 
   @Prop({
     type: String,
@@ -21,12 +21,6 @@ export class Reading {
     },
   })
   idempotencyKey: string;
-
-  @Prop({ type: Boolean, default: false, required: true })
-  isGuest: boolean;
-
-  @Prop({ type: String, default: null, minlength: 64, maxlength: 64, trim: true })
-  guestTokenHash?: string | null;
 
   @Prop({ type: String, required: true, enum: Object.values(ReadingSchool) })
   school: ReadingSchool;
@@ -80,15 +74,6 @@ export class Reading {
   @Prop({ type: Number, default: null })
   latencyMs?: number | null;
 
-  @Prop({ type: Date, default: null })
-  previewExpiresAt?: Date | null;
-
-  @Prop({ type: Date, default: null })
-  claimedAt?: Date | null;
-
-  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
-  claimedByUserId?: Types.ObjectId | null;
-
   createdAt: Date;
 
   @Prop({ type: Date, default: null })
@@ -109,7 +94,3 @@ ReadingSchema.index(
 ReadingSchema.index({ userId: 1, createdAt: -1 });
 
 ReadingSchema.index({ status: 1, createdAt: 1 });
-
-ReadingSchema.index({ guestTokenHash: 1 }, { sparse: true });
-
-ReadingSchema.index({ previewExpiresAt: 1 });

@@ -8,25 +8,13 @@ import {
   ImageQuality,
   PalmResult,
 } from "@palmsight/shared";
-import { createTestApp, closeTestApp, TestAppInstance } from "./test-helper";
+import {
+  createTestApp,
+  closeTestApp,
+  createGuest,
+  TestAppInstance,
+} from "./test-helper";
 import { ReadingsService } from "../src/readings/readings.service";
-import type { GoogleProfile } from "../src/auth/google-auth.verifier";
-
-const googleProfileUserA: GoogleProfile = {
-  sub: "google-sub-readings-history-a",
-  email: "history.a@example.com",
-  emailVerified: true,
-  name: "User A History",
-  picture: null,
-};
-
-const googleProfileUserB: GoogleProfile = {
-  sub: "google-sub-readings-history-b",
-  email: "history.b@example.com",
-  emailVerified: true,
-  name: "User B History",
-  picture: null,
-};
 
 describe("US-READ-001: Readings History & Detail API (GET /readings, GET /readings/:id, DELETE /readings/:id)", () => {
   let testApp: TestAppInstance;
@@ -56,33 +44,15 @@ describe("US-READ-001: Readings History & Detail API (GET /readings, GET /readin
   };
 
   beforeAll(async () => {
-    testApp = await createTestApp({
-      googleVerifier: {
-        verify: async (token) => {
-          if (token === "token-b") return googleProfileUserB;
-          return googleProfileUserA;
-        },
-      },
-    });
+    testApp = await createTestApp();
 
     // Create User A
-    const resA = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken: "token-a" }),
-    });
-    const bodyA = (await resA.json()) as any;
-    tokenUserA = bodyA.accessToken;
-    userAId = new Types.ObjectId(bodyA.user.id);
+    const guestA = await createGuest(testApp);
+    tokenUserA = guestA.accessToken;
+    userAId = new Types.ObjectId(guestA.id);
 
     // Create User B
-    const resB = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken: "token-b" }),
-    });
-    const bodyB = (await resB.json()) as any;
-    tokenUserB = bodyB.accessToken;
+    tokenUserB = (await createGuest(testApp)).accessToken;
   }, 60000);
 
   afterAll(async () => {
