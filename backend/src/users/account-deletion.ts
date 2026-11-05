@@ -5,7 +5,6 @@ import {
   UserSchema,
   DeletedIdentitySchema,
   SessionSchema,
-  PasswordResetSchema,
   ReadingSchema,
   PlaySubscriptionSchema,
   BillingEventSchema,
@@ -44,8 +43,6 @@ export async function deleteUserAccount(
   const deletedIdentityModel =
     conn.models.DeletedIdentity || conn.model('DeletedIdentity', DeletedIdentitySchema);
   const sessionModel = conn.models.Session || conn.model('Session', SessionSchema);
-  const passwordResetModel =
-    conn.models.PasswordReset || conn.model('PasswordReset', PasswordResetSchema);
   const readingModel = conn.models.Reading || conn.model('Reading', ReadingSchema);
   const playSubscriptionModel =
     conn.models.PlaySubscription || conn.model('PlaySubscription', PlaySubscriptionSchema);
@@ -187,8 +184,6 @@ export async function deleteUserAccount(
     }
 
     await sessionModel.deleteMany({ userId: userObjectId }, { session });
-
-    await passwordResetModel.deleteMany({ userId: userObjectId }, { session });
 
     await readingModel.updateMany(
       { userId: userObjectId },

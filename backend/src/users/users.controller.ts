@@ -8,7 +8,6 @@ import {
   HttpStatus,
   Patch,
   Post,
-  Put,
   Query,
   Req,
   UploadedFile,
@@ -16,11 +15,10 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { changePasswordSchema, updateProfileSchema } from "@palmsight/shared";
+import { updateProfileSchema } from "@palmsight/shared";
 import type {
   MeResponseDto,
   CreditTransactionListResponseDto,
-  ChangePasswordRequestDto,
   UpdateProfileRequestDto,
   EnterReferralRequestDto,
   EnterReferralResponseDto,
@@ -31,7 +29,6 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import type { AuthenticatedRequest } from "../auth/guards/jwt-auth.guard";
 import { UserRateLimit, UserRateLimitGuard } from "../auth/guards/user-rate-limit.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
-import { PasswordService } from "../auth/password.service";
 import { UserDocument } from "../schemas/user.schema";
 import { UsersService } from "./users.service";
 import { AvatarService } from "./avatar.service";
@@ -47,7 +44,6 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly creditLedgerService: CreditLedgerService,
-    private readonly passwordService: PasswordService,
     private readonly referralsService: ReferralsService,
     private readonly configService: ConfigService,
     private readonly avatarService: AvatarService,
@@ -142,17 +138,5 @@ export class UsersController {
       deviceId,
       resolveClientIp(req, this.configService)
     );
-  }
-
-  @Put("password")
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(UserRateLimitGuard)
-  @UserRateLimit({ limit: 5, windowMs: 60 * 60 * 1000 })
-  async changePassword(
-    @Req() req: AuthenticatedRequest,
-    @Body() body: ChangePasswordRequestDto
-  ): Promise<void> {
-    const validated = await changePasswordSchema.validate(body, { abortEarly: false });
-    await this.passwordService.changePassword(req.user, req.sessionId, validated);
   }
 }

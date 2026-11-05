@@ -8,19 +8,15 @@ import {
   AppConfigResponseDto,
   MeResponseDto,
 } from '@palmsight/shared';
-import { createTestApp, closeTestApp, TestAppInstance } from './test-helper';
+import {
+  createTestApp,
+  closeTestApp,
+  createGuest,
+  TestAppInstance,
+} from './test-helper';
 import { CreditLedgerService } from '../src/credits/credit-ledger.service';
 import { AuthService } from '../src/auth/auth.service';
 import { reconcileCreditLedger } from '../scripts/db-check';
-import type { GoogleProfile } from '../src/auth/google-auth.verifier';
-
-const googleProfile: GoogleProfile = {
-  sub: 'google-sub-economy-p1',
-  email: 'economy.user@example.com',
-  emailVerified: true,
-  name: 'Economy Phase 1 User',
-  picture: null,
-};
 
 describe('Phase 1: Server Economy (Playbook §1.1, §2.2, §7.1, §10, §12)', () => {
   let testApp: TestAppInstance;
@@ -44,7 +40,6 @@ describe('Phase 1: Server Economy (Playbook §1.1, §2.2, §7.1, §10, §12)', (
 
   beforeAll(async () => {
     testApp = await createTestApp({
-      googleVerifier: { verify: async () => googleProfile },
       starterGrant: 5,
       pricePerAction: 5,
       starterNetworkDailyCap: 5,
@@ -53,14 +48,9 @@ describe('Phase 1: Server Economy (Playbook §1.1, §2.2, §7.1, §10, §12)', (
     creditLedgerService = testApp.app.get(CreditLedgerService);
 
     // Create a base user for testing
-    const res = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken: 'any' }),
-    });
-    const body = (await res.json()) as any;
-    accessToken = body.accessToken;
-    userId = new Types.ObjectId(body.user.id);
+    const guest = await createGuest(testApp);
+    accessToken = guest.accessToken;
+    userId = new Types.ObjectId(guest.id);
   }, 60000);
 
   afterAll(async () => {

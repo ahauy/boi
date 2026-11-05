@@ -3,25 +3,16 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { JwtService } from '@nestjs/jwt';
 import { Types } from 'mongoose';
 import { CreditTransactionType, ReferralStatus } from '@palmsight/shared';
-import { createTestApp, closeTestApp, TestAppInstance } from './test-helper';
+import { createTestApp, closeTestApp, createGuest, TestAppInstance } from './test-helper';
 import { hashIp } from '../src/common/client-ip.util';
 import { computeDeviceIdHash } from '../src/common/device-id-hash.util';
 import { CreditLedgerService } from '../src/credits/credit-ledger.service';
-import type { GoogleProfile } from '../src/auth/google-auth.verifier';
 import { startOfReferralDay } from '../src/referrals/referral-day.util';
 import { Device } from '../src/schemas/device.schema';
 import { Referral } from '../src/schemas/referral.schema';
 
 const JWT_SECRET = 'test-jwt-secret-palm-sight-at-least-32-chars-long';
 const IDENTITY_SECRET = 'test-identity-secret-at-least-32-chars-long';
-
-const referrerGoogleProfile: GoogleProfile = {
-  sub: 'google-sub-referrer',
-  email: 'referrer.user@example.com',
-  emailVerified: true,
-  name: 'Referrer User',
-  picture: null,
-};
 
 describe('US-REF-001: GET /api/v1/me/referrals', () => {
   let testApp: TestAppInstance;
@@ -34,18 +25,11 @@ describe('US-REF-001: GET /api/v1/me/referrals', () => {
     });
 
   beforeAll(async () => {
-    testApp = await createTestApp({
-      googleVerifier: { verify: async () => referrerGoogleProfile },
-    });
+    testApp = await createTestApp();
 
-    const res = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken: 'any' }),
-    });
-    const body = (await res.json()) as any;
-    accessToken = body.accessToken;
-    referrerId = new Types.ObjectId(body.user.id);
+    const guest = await createGuest(testApp);
+    accessToken = guest.accessToken;
+    referrerId = new Types.ObjectId(guest.id);
   }, 60000);
 
   afterAll(async () => {

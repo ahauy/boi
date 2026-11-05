@@ -3,202 +3,139 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as crypto from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { Types } from 'mongoose';
-import { createTestApp, closeTestApp, TestAppInstance } from './test-helper';
-import type { GoogleProfile } from '../src/auth/google-auth.verifier';
+import { createTestApp, closeTestApp, createGuest, TestAppInstance } from './test-helper';
 
 const JWT_SECRET = 'test-jwt-secret-palm-sight-at-least-32-chars-long';
-const ORIGIN = 'http://localhost:5173';
-
-const googleProfile: GoogleProfile = {
-  sub: 'google-sub-refresh',
-  email: 'refresh.user@example.com',
-  emailVerified: true,
-  name: 'Refresh User',
-  picture: null,
-};
 
 const hashToken = (raw: string) => crypto.createHash('sha256').update(raw).digest('hex');
 
-const rtCookie = (res: Response) =>
-  res.headers.getSetCookie().find((cookie) => cookie.startsWith('rt='));
-
-const rtValue = (res: Response) => rtCookie(res)!.match(/^rt=([^;]*)/)![1];
-
-const expectCookieCleared = (res: Response) => {
-  const cookie = rtCookie(res);
-  expect(cookie).toMatch(/^rt=;/);
-  expect(cookie).toContain('Max-Age=0');
-  expect(cookie).toContain('Path=/api/v1/auth');
-};
-
-describe('POST /auth/refresh + POST /auth/logout', () => {
+describe('POST /auth/refresh', () => {
   let testApp: TestAppInstance;
-  let userId: string;
-  // Each request gets its own IP so the 10 req/min/IP limit on /auth/* never trips mid-suite
+  // Mỗi request một IP riêng để giới hạn 10 req/phút/IP không chạm giữa chừng
   let ipCounter = 0;
 
-  const post = (path: string, opts: { rt?: string; origin?: string | null } = {}) => {
-    const headers: Record<string, string> = { 'X-Forwarded-For': `10.0.0.${++ipCounter}` };
-    if (opts.origin !== null) headers.Origin = opts.origin ?? ORIGIN;
-    if (opts.rt !== undefined) headers.Cookie = `rt=${opts.rt}`;
-    return fetch(`${testApp.baseUrl}/api/v1/auth/${path}`, { method: 'POST', headers });
-  };
-
-  const login = async () => {
-    const res = await fetch(`${testApp.baseUrl}/api/v1/auth/google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `10.0.0.${++ipCounter}` },
-      body: JSON.stringify({ idToken: 'any' }),
-    });
-    expect(res.status).toBe(200);
-    userId = ((await res.json()) as any).user.id;
-    return rtValue(res);
+  const refresh = (rt?: string, ip?: string) => {
+    const headers: Record<string, string> = {
+      'X-Forwarded-For': ip ?? `10.0.0.${++ipCounter}`,
+    };
+    if (rt !== undefined) headers['x-refresh-token'] = rt;
+    return fetch(`${testApp.baseUrl}/api/v1/auth/refresh`, { method: 'POST', headers });
   };
 
   const findSession = (rt: string) =>
     testApp.connection.collection('sessions').findOne({ refreshTokenHash: hashToken(rt) });
 
   beforeAll(async () => {
-    testApp = await createTestApp({ googleVerifier: { verify: async () => googleProfile } });
+    testApp = await createTestApp();
   }, 60000);
 
   afterAll(async () => {
     await closeTestApp(testApp);
   });
 
-  describe('refresh', () => {
-    it('rotates the refresh token and issues an access token for the new session', async () => {
-      const oldRt = await login();
+  it('rotates the refresh token and issues an access token for the new session', async () => {
+    const guest = await createGuest(testApp);
+    const oldRt = guest.refreshToken;
 
-      const res = await post('refresh', { rt: oldRt });
-      expect(res.status).toBe(200);
+    const res = await refresh(oldRt);
+    expect(res.status).toBe(200);
+    // Không còn cookie
+    expect(res.headers.getSetCookie()).toEqual([]);
 
-      const body = (await res.json()) as any;
-      expect(Object.keys(body).sort()).toEqual(['accessToken', 'expiresIn']);
-      expect(body.expiresIn).toBe(900);
+    const body = (await res.json()) as any;
+    expect(Object.keys(body).sort()).toEqual(['accessToken', 'expiresIn', 'refreshToken']);
+    expect(body.expiresIn).toBe(900);
 
-      const newRt = rtValue(res);
-      expect(newRt).not.toBe(oldRt);
-      expect(rtCookie(res)).toContain('Max-Age=2592000');
-      expect(rtCookie(res)).toContain('HttpOnly');
+    const newRt = body.refreshToken as string;
+    expect(newRt).toBeTruthy();
+    expect(newRt).not.toBe(oldRt);
 
-      const newSession = await findSession(newRt);
-      const payload = new JwtService({ secret: JWT_SECRET }).verify(body.accessToken);
-      expect(payload.sub).toBe(userId);
-      expect(payload.sid).toBe(newSession!._id.toString());
-      expect(newSession!.revokedAt ?? null).toBeNull();
+    const newSession = await findSession(newRt);
+    const payload = new JwtService({ secret: JWT_SECRET }).verify(body.accessToken);
+    expect(payload.sub).toBe(guest.id);
+    expect(payload.sid).toBe(newSession!._id.toString());
+    expect(newSession!.revokedAt ?? null).toBeNull();
 
-      const oldSession = await findSession(oldRt);
-      expect(oldSession!.revokedAt).toBeInstanceOf(Date);
+    const oldSession = await findSession(oldRt);
+    expect(oldSession!.revokedAt).toBeInstanceOf(Date);
 
-      const me = await fetch(`${testApp.baseUrl}/api/v1/me`, {
-        headers: { Authorization: `Bearer ${body.accessToken}` },
-      });
-      expect(me.status).toBe(200);
+    const me = await fetch(`${testApp.baseUrl}/api/v1/me`, {
+      headers: { Authorization: `Bearer ${body.accessToken}` },
     });
-
-    it('revokes every session of the user when a rotated token is reused', async () => {
-      const oldRt = await login();
-      const otherDeviceRt = await login();
-      const newRt = rtValue(await post('refresh', { rt: oldRt }));
-
-      const reuse = await post('refresh', { rt: oldRt });
-      expect(reuse.status).toBe(401);
-      expect(((await reuse.json()) as any).error.code).toBe('UNAUTHENTICATED');
-      expectCookieCleared(reuse);
-
-      expect(await testApp.connection.collection('sessions').countDocuments({ userId: new Types.ObjectId(userId) })).toBe(0);
-      expect((await post('refresh', { rt: newRt })).status).toBe(401);
-      expect((await post('refresh', { rt: otherDeviceRt })).status).toBe(401);
-    });
-
-    it('lets only one of two concurrent refreshes with the same token succeed', async () => {
-      const rt = await login();
-      const results = await Promise.all([post('refresh', { rt }), post('refresh', { rt })]);
-      expect(results.map((res) => res.status).sort()).toEqual([200, 401]);
-    });
-
-    it('rejects a missing, unknown or expired token with 401 and clears the cookie', async () => {
-      const missing = await post('refresh');
-      expect(missing.status).toBe(401);
-      expect(((await missing.json()) as any).error.code).toBe('UNAUTHENTICATED');
-      expectCookieCleared(missing);
-
-      const unknown = await post('refresh', { rt: 'not-a-real-token' });
-      expect(unknown.status).toBe(401);
-      expectCookieCleared(unknown);
-
-      await login();
-      const expiredRt = 'expired-refresh-token-for-test';
-      await testApp.connection.collection('sessions').insertOne({
-        userId: new Types.ObjectId(userId),
-        refreshTokenHash: hashToken(expiredRt),
-        expiresAt: new Date(Date.now() - 1000),
-        revokedAt: null,
-        createdAt: new Date(),
-      });
-      const expired = await post('refresh', { rt: expiredRt });
-      expect(expired.status).toBe(401);
-      expectCookieCleared(expired);
-    });
-
-    it('rejects a wrong or missing Origin with 403 ORIGIN_NOT_ALLOWED', async () => {
-      const rt = await login();
-
-      const wrong = await post('refresh', { rt, origin: 'https://evil.example' });
-      expect(wrong.status).toBe(403);
-      expect(((await wrong.json()) as any).error.code).toBe('ORIGIN_NOT_ALLOWED');
-
-      const missing = await post('refresh', { rt, origin: null });
-      expect(missing.status).toBe(403);
-
-      // The rejected requests must not have consumed the token
-      expect((await post('refresh', { rt })).status).toBe(200);
-    });
+    expect(me.status).toBe(200);
   });
 
-  describe('logout', () => {
-    it('ends only the current session and clears the cookie', async () => {
-      const rt = await login();
-      const otherDeviceRt = await login();
+  it('revokes every session of the user when a rotated token is reused', async () => {
+    const guest = await createGuest(testApp);
+    // Cùng deviceId nghĩa là cùng người dùng nhưng một phiên khác (thiết bị mở lại app)
+    const other = await createGuest(testApp, { deviceId: guest.deviceId });
+    expect(other.id).toBe(guest.id);
 
-      const res = await post('logout', { rt });
-      expect(res.status).toBe(204);
-      expectCookieCleared(res);
+    const rotated = (await (await refresh(guest.refreshToken)).json()) as any;
+    const newRt = rotated.refreshToken as string;
 
-      expect(await findSession(rt)).toBeNull();
-      expect((await post('refresh', { rt })).status).toBe(401);
-      expect((await post('refresh', { rt: otherDeviceRt })).status).toBe(200);
-    });
+    const reuse = await refresh(guest.refreshToken);
+    expect(reuse.status).toBe(401);
+    expect(((await reuse.json()) as any).error.code).toBe('UNAUTHENTICATED');
 
-    it('returns 204 without a cookie or with an unknown token', async () => {
-      const noCookie = await post('logout');
-      expect(noCookie.status).toBe(204);
-      expectCookieCleared(noCookie);
-
-      expect((await post('logout', { rt: 'not-a-real-token' })).status).toBe(204);
-    });
-
-    it('rejects a wrong Origin with 403 ORIGIN_NOT_ALLOWED and keeps the session', async () => {
-      const rt = await login();
-
-      const res = await post('logout', { rt, origin: 'https://evil.example' });
-      expect(res.status).toBe(403);
-      expect(((await res.json()) as any).error.code).toBe('ORIGIN_NOT_ALLOWED');
-      expect(await findSession(rt)).not.toBeNull();
-    });
+    expect(
+      await testApp.connection
+        .collection('sessions')
+        .countDocuments({ userId: new Types.ObjectId(guest.id) }),
+    ).toBe(0);
+    expect((await refresh(newRt)).status).toBe(401);
+    expect((await refresh(other.refreshToken)).status).toBe(401);
   });
 
-  // Last, because it soft-deletes the shared Google user
+  it('lets only one of two concurrent refreshes with the same token succeed', async () => {
+    const guest = await createGuest(testApp);
+    const results = await Promise.all([refresh(guest.refreshToken), refresh(guest.refreshToken)]);
+    expect(results.map((res) => res.status).sort()).toEqual([200, 401]);
+  });
+
+  it('rejects a missing, unknown or expired token with 401', async () => {
+    const missing = await refresh();
+    expect(missing.status).toBe(401);
+    expect(((await missing.json()) as any).error.code).toBe('UNAUTHENTICATED');
+
+    const unknown = await refresh('not-a-real-token');
+    expect(unknown.status).toBe(401);
+
+    const guest = await createGuest(testApp);
+    const expiredRt = 'expired-refresh-token-for-test';
+    await testApp.connection.collection('sessions').insertOne({
+      userId: new Types.ObjectId(guest.id),
+      refreshTokenHash: hashToken(expiredRt),
+      expiresAt: new Date(Date.now() - 1000),
+      revokedAt: null,
+      createdAt: new Date(),
+    });
+    const expired = await refresh(expiredRt);
+    expect(expired.status).toBe(401);
+  });
+
+  it('rate limits to 10 requests per minute per IP with 429 RATE_LIMITED', async () => {
+    const ip = '10.200.0.1';
+    for (let i = 0; i < 10; i++) {
+      expect((await refresh('not-a-real-token', ip)).status).toBe(401);
+    }
+    const limited = await refresh('not-a-real-token', ip);
+    expect(limited.status).toBe(429);
+    expect(((await limited.json()) as any).error.code).toBe('RATE_LIMITED');
+    expect(limited.headers.get('retry-after')).toBe('60');
+
+    // IP khác không bị ảnh hưởng
+    expect((await refresh('not-a-real-token', '10.200.0.2')).status).toBe(401);
+  });
+
   it('refuses to refresh for a deleted user and removes that session', async () => {
-    const rt = await login();
+    const guest = await createGuest(testApp);
     await testApp.connection
       .collection('users')
-      .updateOne({ _id: new Types.ObjectId(userId) }, { $set: { deletedAt: new Date() } });
+      .updateOne({ _id: new Types.ObjectId(guest.id) }, { $set: { deletedAt: new Date() } });
 
-    const res = await post('refresh', { rt });
+    const res = await refresh(guest.refreshToken);
     expect(res.status).toBe(401);
-    expectCookieCleared(res);
-    expect(await findSession(rt)).toBeNull();
+    expect(await findSession(guest.refreshToken)).toBeNull();
   });
 });

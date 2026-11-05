@@ -3,8 +3,6 @@ import * as path from 'path';
 import mongoose, { Connection, Model, Types } from 'mongoose';
 import {
   UserSchema,
-  PendingRegistrationSchema,
-  PasswordResetSchema,
   SessionSchema,
   ReferralSchema,
   ReadingSchema,
@@ -35,8 +33,6 @@ export function loadEnv(): void {
 
 export const CHECK_TARGETS = [
   { name: 'User', schema: UserSchema },
-  { name: 'PendingRegistration', schema: PendingRegistrationSchema },
-  { name: 'PasswordReset', schema: PasswordResetSchema },
   { name: 'Session', schema: SessionSchema },
   { name: 'Referral', schema: ReferralSchema },
   { name: 'Reading', schema: ReadingSchema },

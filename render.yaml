@@ -22,34 +22,8 @@ services:
         value: 900
       - key: REFRESH_TOKEN_TTL_DAYS
         value: 30
-      - key: EMAIL_VERIFY_TTL_HOURS
-        value: 24
-      - key: PASSWORD_RESET_TTL_MINUTES
-        value: 60
       - key: IDENTITY_HASH_SECRET
         sync: false
-      - key: SUPPORT_EMAIL
-        value: palmsight.app@gmail.com
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: FACEBOOK_APP_ID
-        sync: false
-      - key: FACEBOOK_APP_SECRET
-        sync: false
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: 465
-      - key: SMTP_SECURE
-        value: true
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
-        sync: false
-      - key: MAIL_FROM
-        value: "PalmSight <no-reply@palmsight.app>"
       - key: AI_PROVIDER
         value: gemini
       - key: AI_MODEL

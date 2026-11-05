@@ -29,7 +29,7 @@ describe('US-ACCT-001: Manual Account Deletion & Credit Reconciliation', () => {
     await closeTestApp(testApp);
   });
 
-  it('deletes user successfully: anonymizes user, wipes sessions, password resets, reading results, and records HMACs', async () => {
+  it('deletes user successfully: anonymizes user, wipes sessions, reading results, and records HMACs', async () => {
     const userId = new Types.ObjectId();
     const email = 'user.to.delete@example.com';
     const googleUid = 'google_uid_delete_123';
@@ -78,15 +78,7 @@ describe('US-ACCT-001: Manual Account Deletion & Credit Reconciliation', () => {
       createdAt: new Date(),
     });
 
-    // 4. Seed password reset
-    await testApp.connection.collection('password_resets').insertOne({
-      userId,
-      tokenHash: 'mock-password-reset-token-hash',
-      expiresAt: new Date(Date.now() + 3600 * 1000),
-      createdAt: new Date(),
-    });
-
-    // 5. Seed reading with result
+    // 4. Seed reading with result
     const readingId = new Types.ObjectId();
     await testApp.connection.collection('readings').insertOne({
       _id: readingId,
@@ -173,12 +165,9 @@ describe('US-ACCT-001: Manual Account Deletion & Credit Reconciliation', () => {
     expect(userDoc!.creditBalance).toBe(3);
     expect(userDoc!.referralCode).toBe(referralCode);
 
-    // Sessions and password resets wiped
+    // Sessions wiped
     const sessionsCount = await testApp.connection.collection('sessions').countDocuments({ userId });
     expect(sessionsCount).toBe(0);
-
-    const passwordResetsCount = await testApp.connection.collection('password_resets').countDocuments({ userId });
-    expect(passwordResetsCount).toBe(0);
 
     // Reading result wiped and marked deletedAt
     const readingDoc = await testApp.connection.collection('readings').findOne({ _id: readingId });
@@ -266,76 +255,6 @@ describe('US-ACCT-001: Manual Account Deletion & Credit Reconciliation', () => {
     const body = (await resAfter.json()) as any;
     expect(body.error).toBeDefined();
     expect(body.error.code).toBe('UNAUTHENTICATED');
-  });
-
-  it('anti-abuse protection: creating a new user or verifying email with deleted email starts with 0 credits and referralBlocked: true (no SIGNUP_BONUS)', async () => {
-    const deletedEmail = 'antiabuse.deleted@example.com';
-    const deletedUserId = new Types.ObjectId();
-
-    // Seed original user and delete them
-    await testApp.connection.collection('users').insertOne({
-      _id: deletedUserId,
-      displayName: 'Original User',
-      username: 'original_user',
-      email: deletedEmail,
-      passwordHash: '$argon2id$somehash',
-      referralCode: 'ORIG0001',
-      creditBalance: 3,
-      identities: [],
-      referralBlocked: false,
-      deletedAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    await testApp.connection.collection('credit_transactions').insertOne({
-      userId: deletedUserId,
-      amount: 3,
-      type: CreditTransactionType.SIGNUP_BONUS,
-      balanceAfter: 3,
-      createdAt: new Date(),
-    });
-
-    await deleteUserAccount(testApp.connection, deletedUserId, 'Testing anti-abuse', IDENTITY_SECRET);
-
-    // Now re-register with the same email
-    const reRegisterToken = 'RE_REGISTER_TOKEN_012345678901234567890123456789';
-    const reRegisterTokenHash = crypto.createHash('sha256').update(reRegisterToken).digest('hex');
-
-    await testApp.connection.collection('pending_registrations').insertOne({
-      displayName: 'Re-registered User',
-      username: 'reregistered_user',
-      email: deletedEmail,
-      passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$newhash',
-      referralCode: null,
-      tokenHash: reRegisterTokenHash,
-      expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
-      createdAt: new Date(),
-    });
-
-    const verifyRes = await fetch(`${testApp.baseUrl}/api/v1/auth/verify-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: reRegisterToken }),
-    });
-
-    expect(verifyRes.status).toBe(200);
-    const verifyData = (await verifyRes.json()) as any;
-    expect(verifyData.user.creditBalance).toBe(0);
-
-    const reCreatedUser = await testApp.connection
-      .collection('users')
-      .findOne({ email: deletedEmail });
-
-    expect(reCreatedUser).toBeDefined();
-    expect(reCreatedUser!.creditBalance).toBe(0);
-    expect(reCreatedUser!.referralBlocked).toBe(true);
-
-    // Verify NO SIGNUP_BONUS credit transaction was created
-    const tx = await testApp.connection
-      .collection('credit_transactions')
-      .findOne({ userId: reCreatedUser!._id, type: CreditTransactionType.SIGNUP_BONUS });
-    expect(tx).toBeNull();
   });
 
   it('cannot delete already deleted user (throws error / fails gracefully)', async () => {

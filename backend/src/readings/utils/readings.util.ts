@@ -1,6 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { GuestReadingPreviewDto } from '@palmsight/shared';
 
 export const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -47,33 +46,4 @@ export const formatReading = (doc: any): Record<string, unknown> => ({
   rejectReason: doc.rejectReason ?? undefined,
   createdAt: doc.createdAt?.toISOString?.() ?? doc.createdAt,
   completedAt: doc.completedAt?.toISOString?.() ?? doc.completedAt,
-});
-
-export const buildGuestPreviewResponse = (
-  reading: any,
-  truncated: any,
-  claimToken?: string | null,
-): GuestReadingPreviewDto => ({
-  id: reading._id.toString(),
-  school: reading.school,
-  hand: reading.hand,
-  topics: reading.topics,
-  status: reading.status,
-  summary: truncated.summary,
-  sections: truncated.sections,
-  aspects: truncated.aspects,
-  advice: truncated.advice,
-  disclaimer: truncated.disclaimer,
-  imageUrl: reading.imageUrl ?? null,
-  annotatedImageUrl: reading.annotatedImageUrl ?? null,
-  palmLines: reading.palmLines ?? null,
-  previewExpiresAt: reading.previewExpiresAt
-    ? typeof reading.previewExpiresAt === 'string'
-      ? reading.previewExpiresAt
-      : reading.previewExpiresAt.toISOString()
-    : '',
-  createdAt: typeof reading.createdAt === 'string'
-    ? reading.createdAt
-    : reading.createdAt.toISOString(),
-  ...(claimToken ? { claimToken } : {}),
 });
