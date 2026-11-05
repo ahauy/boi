@@ -61,7 +61,14 @@ export const useScanSubmit = ({
       const code = errData?.code;
       const message = errData?.message;
 
-      if (status === 403 || code === "GUEST_TRIAL_LIMIT_REACHED") {
+      if (code === "vip_required") {
+        setStatus("NETWORK_ERROR");
+        const msg =
+          "Trường phái này chỉ dành cho tài khoản VIP. Bạn vui lòng nâng cấp VIP trên ứng dụng Android hoặc chọn trường phái Phương Tây.";
+        showError(msg);
+        setErrorMessage(msg);
+        idempotencyKeyRef.current = null;
+      } else if (status === 403 || code === "GUEST_TRIAL_LIMIT_REACHED") {
         setStatus("LIMIT_REACHED");
         const msg =
           message ||
@@ -103,6 +110,13 @@ export const useScanSubmit = ({
 
       if (statusCode === 402 || errCode === "INSUFFICIENT_CREDITS") {
         setStatus("INSUFFICIENT_CREDITS");
+      } else if (statusCode === 403 || errCode === "vip_required") {
+        setStatus("NETWORK_ERROR");
+        const msg =
+          "Trường phái này chỉ dành cho tài khoản VIP. Bạn vui lòng nâng cấp VIP trên ứng dụng Android hoặc chọn trường phái Phương Tây.";
+        showError(msg);
+        setErrorMessage(msg);
+        idempotencyKeyRef.current = null;
       } else if (statusCode === 409 || errCode === "READING_IN_PROGRESS") {
         const readingId = errDetails?.readingId;
         if (readingId) {

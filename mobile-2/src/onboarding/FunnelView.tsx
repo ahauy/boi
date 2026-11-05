@@ -331,6 +331,20 @@ export default function FunnelView({
             </View>
           )}
 
+          {/* Age confirmation note on Screen 3 (§4.2, §13) */}
+          {clampedStep === 3 && (
+            <View style={styles.ageNoticeContainer}>
+              <MaterialCommunityIcons
+                name="shield-check-outline"
+                size={16}
+                color={colors.gold}
+              />
+              <Text style={styles.ageNoticeText}>
+                {t('funnel.step3.ageNotice')}
+              </Text>
+            </View>
+          )}
+
           {/* Screen 7: Pick up to 5 favourite palmistry insights (multi-select, banner only) */}
           {screenSpec.kind === 'multi_choice' && screenSpec.options && (
             <View style={styles.multiChoiceWrapper}>
@@ -679,5 +693,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  ageNoticeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: 'rgba(231,199,119,0.08)',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(231,199,119,0.2)',
+  },
+  ageNoticeText: {
+    ...type.caption,
+    color: colors.stone,
+    textAlign: 'center',
+    flexShrink: 1,
   },
 });

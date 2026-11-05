@@ -138,6 +138,15 @@ export const RegisterFormFields = ({ isSubmitting }: RegisterFormFieldsProps) =>
           </>
         }
       />
+      <div className="mt-3">
+        <FormikField
+          component={CheckBoxField}
+          name="ageConfirmed"
+          terminalStyle
+          disabled={isSubmitting}
+          label="Tôi xác nhận mình từ 16 tuổi trở lên."
+        />
+      </div>
     </>
   );
 };

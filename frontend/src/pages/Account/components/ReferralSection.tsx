@@ -18,7 +18,7 @@ export const ReferralSection = ({ user }: ReferralSectionProps) => {
   const domain =
     typeof window !== "undefined" && window.location.origin
       ? window.location.origin
-      : "https://palmsight.app";
+      : "https://palm-sight-theta.vercel.app";
   const shareLink = user?.referralLink || `${domain}/r/${referralCode}`;
   const sampleMessage = referralCode
     ? `Nhập mã ${referralCode} trên PalmSight: bạn được thêm ${CREDIT_AMOUNTS.REFEREE_REWARD} GEM xem bói miễn phí`

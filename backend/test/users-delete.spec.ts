@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as crypto from 'crypto';
 import { Types } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
@@ -44,6 +44,7 @@ describe('US-ACCT-001: Manual Account Deletion & Credit Reconciliation', () => {
       passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$somehash',
       passwordUpdatedAt: new Date(),
       avatarUrl: 'https://example.com/avatar.jpg',
+      signupIpHash: 'hash_ip_signup_123',
       referralCode,
       creditBalance: 3,
       identities: [
@@ -104,6 +105,32 @@ describe('US-ACCT-001: Manual Account Deletion & Credit Reconciliation', () => {
       createdAt: new Date(),
     });
 
+    const purchaseToken = 'mock_purchase_token_123';
+    await testApp.connection.collection('play_subscriptions').insertOne({
+      userId,
+      purchaseToken,
+      productId: 'weeklyid',
+      expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+      willRenew: true,
+      isTrial: false,
+      acknowledged: true,
+      firstPurchaseCounted: true,
+      gaid: 'raw_gaid_string_123',
+      adjustAdid: 'raw_adjust_adid_123',
+      rawResponse: { some: 'secret_response' },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await testApp.connection.collection('billing_events').insertOne({
+      eventId: 'event_123',
+      purchaseToken,
+      processedAt: new Date(),
+      payload: { sensitive: 'data' },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
     // Verify credit ledger is reconciled before deletion
     const beforeReconcile = await reconcileCreditLedger(testApp.connection);
     expect(beforeReconcile.ok).toBe(true);
@@ -127,8 +154,19 @@ describe('US-ACCT-001: Manual Account Deletion & Credit Reconciliation', () => {
     expect(userDoc!.email).toBeNull();
     expect(userDoc!.passwordHash).toBeNull();
     expect(userDoc!.avatarUrl).toBeNull();
+    expect(userDoc!.signupIpHash).toBeNull();
     expect(userDoc!.identities).toEqual([]);
     expect(userDoc!.deletedAt).toBeInstanceOf(Date);
+
+    const subDoc = await testApp.connection.collection('play_subscriptions').findOne({ userId });
+    expect(subDoc).toBeDefined();
+    expect(subDoc!.gaid).toBeNull();
+    expect(subDoc!.adjustAdid).toBeNull();
+    expect(subDoc!.rawResponse).toBeNull();
+
+    const eventDoc = await testApp.connection.collection('billing_events').findOne({ purchaseToken });
+    expect(eventDoc).toBeDefined();
+    expect(eventDoc!.payload).toBeNull();
 
     // Invariants preserved: _id, creditBalance, referralCode
     expect(userDoc!._id.toString()).toBe(userId.toString());
@@ -334,6 +372,38 @@ describe('US-ACCT-001: Manual Account Deletion & Credit Reconciliation', () => {
     ).rejects.toThrow(/not found or already deleted/i);
   });
 
+  it('reports unremovedImages and ok: false when Cloudinary deletion fails', async () => {
+    const userId = new Types.ObjectId();
+    await testApp.connection.collection('users').insertOne({
+      _id: userId,
+      displayName: 'User With Image',
+      email: 'user.with.img@example.com',
+      avatarPublicId: 'avatar_public_id_fail',
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const mockCloudinary = {
+      isConfigured: () => true,
+      deleteImage: vi.fn(async () => false),
+    } as any;
+
+    const result = await deleteUserAccount(
+      testApp.connection,
+      userId,
+      undefined,
+      IDENTITY_SECRET,
+      mockCloudinary,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.deleted).toBe(false);
+    expect(result.unremovedImages).toContain('avatar_public_id_fail');
+    const stillThere = await testApp.connection.collection('users').findOne({ _id: userId });
+    expect(stillThere?.deletedAt).toBeNull();
+  });
+
   it('reconcile credit ledger: confirms credit ledger remains in sync before and after user deletion', async () => {
     const userId = new Types.ObjectId();
 
@@ -414,4 +484,6 @@ describe('US-ACCT-001: Manual Account Deletion & Credit Reconciliation', () => {
       expect(parsed.note).toBeUndefined();
     });
   });
+
+
 });

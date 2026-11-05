@@ -4,15 +4,12 @@ import { Tabs } from 'expo-router/js-tabs';
 import CosmicTabBar from '../../components/CosmicTabBar';
 import { colors } from '../../theme';
 import { t, useI18n } from '../../i18n';
-import { registerNotificationAsker, runStartupSequence } from '../../startup/startup-sequence';
-import { requestNotificationPermission } from '../../startup/notifications';
+import { runStartupSequence } from '../../startup/startup-sequence';
 import { useAuth } from '../../state/auth';
 
 export default function TabsLayout() {
   useI18n();
   const { user, status } = useAuth();
-
-  useEffect(() => registerNotificationAsker(requestNotificationPermission), []);
 
   useEffect(() => {
     void runStartupSequence({

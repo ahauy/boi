@@ -70,6 +70,10 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
       screen.getByText(/Chúng tôi gửi link xác thực tới email này\./)
     ).toBeInTheDocument();
 
+    // Checkboxes
+    expect(screen.getByLabelText(/Tôi đồng ý với/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/)).toBeInTheDocument();
+
     // Submit button
     expect(
       screen.getByRole('button', { name: 'Tạo tài khoản' })
@@ -124,6 +128,35 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
     });
   });
 
+  it('should show error when age confirmation checkbox is not checked', async () => {
+    renderComponent();
+
+    fireEvent.change(screen.getByLabelText('Tên hiển thị'), {
+      target: { value: 'Trần Văn B' },
+    });
+    fireEvent.change(screen.getByLabelText('Tên đăng nhập'), {
+      target: { value: 'tranvanb' },
+    });
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'tranvanb@example.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Mật khẩu'), {
+      target: { value: 'BaoMat_987654' },
+    });
+    fireEvent.change(screen.getByLabelText('Xác nhận mật khẩu'), {
+      target: { value: 'BaoMat_987654' },
+    });
+    fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Bạn phải từ 16 tuổi trở lên để đăng ký tài khoản.')
+      ).toBeInTheDocument();
+    });
+  });
+
   it('should show validation error when confirm password does not match', async () => {
     renderComponent();
 
@@ -144,6 +177,7 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
     });
     // Check terms
     fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+    fireEvent.click(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/));
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
 
@@ -176,6 +210,7 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
       target: { value: 'BaoMat_987654' },
     });
     fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+    fireEvent.click(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/));
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
 
@@ -225,6 +260,7 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
       target: { value: 'BaoMat_987654' },
     });
     fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+    fireEvent.click(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/));
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
 
@@ -272,6 +308,7 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
       target: { value: 'BaoMat_987654' },
     });
     fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+    fireEvent.click(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/));
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
 
@@ -314,6 +351,7 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
       target: { value: 'BaoMat_987654' },
     });
     fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+    fireEvent.click(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/));
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
 
@@ -356,6 +394,7 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
       target: { value: 'BaoMat_987654' },
     });
     fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+    fireEvent.click(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/));
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
 
@@ -401,6 +440,7 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
       target: { value: 'BaoMat_987654' },
     });
     fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+    fireEvent.click(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/));
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
 
@@ -430,6 +470,7 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
 
     // Accept terms and submit with invalid username
     fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+    fireEvent.click(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/));
     fireEvent.change(usernameInput, { target: { value: 'ab' } });
     fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
 
@@ -462,6 +503,7 @@ describe('RegisterPage (Stitch Screen 59bf8c4b91a04c18a0afbf3139812e0d)', () => 
     fireEvent.change(screen.getByLabelText('Mật khẩu'), { target: { value: 'ValidPassword123!' } });
     fireEvent.change(screen.getByLabelText('Xác nhận mật khẩu'), { target: { value: 'ValidPassword123!' } });
     fireEvent.click(screen.getByLabelText(/Tôi đồng ý với/));
+    fireEvent.click(screen.getByLabelText(/Tôi xác nhận mình từ 16 tuổi trở lên/));
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
 

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -31,6 +30,11 @@ import { useAuth } from '../../state/auth';
 import { colors, radius, shadow, spacing, text as type } from '../../theme';
 import { haptic } from '../../lib/haptics';
 import { openPrivacyPolicy } from '../../lib/open-privacy-policy';
+import { openDataDeletion } from '../../lib/open-data-deletion';
+import { openTerms } from '../../lib/open-terms';
+import { endLocalSession } from '../../lib/api';
+import { deleteAccount } from '../../lib/users';
+import { deleteAccountErrorKey } from '../../lib/delete-account';
 
 export default function ProfileScreen() {
   const { user, refreshUser } = useAuth();
@@ -43,6 +47,10 @@ export default function ProfileScreen() {
   const [manageVipFailed, setManageVipFailed] = useState(false);
   const [privacyFailed, setPrivacyFailed] = useState(false);
   const [privacyPolicyFailed, setPrivacyPolicyFailed] = useState(false);
+  const [termsFailed, setTermsFailed] = useState(false);
+  const [dataDeletionFailed, setDataDeletionFailed] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountFailure, setDeleteAccountFailure] = useState<string | null>(null);
   const { billingEnabled, products } = useBillingStore();
   const { consentRegion } = useAdsStore();
 
@@ -116,6 +124,59 @@ export default function ProfileScreen() {
     setPrivacyPolicyFailed(false);
     const opened = await openPrivacyPolicy();
     if (!opened) setPrivacyPolicyFailed(true);
+  }
+
+  async function handleOpenTerms() {
+    haptic.select();
+    markNoInterstitialTap();
+    setTermsFailed(false);
+    const opened = await openTerms();
+    if (!opened) setTermsFailed(true);
+  }
+
+  async function handleOpenDataDeletion() {
+    haptic.select();
+    markNoInterstitialTap();
+    setDataDeletionFailed(false);
+    const opened = await openDataDeletion();
+    if (!opened) setDataDeletionFailed(true);
+  }
+
+  function handleDeleteAccount() {
+    haptic.select();
+    markNoInterstitialTap();
+    setDeleteAccountFailure(null);
+    Alert.alert(t('profile.deleteAccountStep1Title'), t('profile.deleteAccountStep1Body', { gems: gemBalance }), [
+      { text: t('reading.cancel'), style: 'cancel' },
+      {
+        text: t('profile.deleteAccountContinue'),
+        style: 'destructive',
+        onPress: () => {
+          markNoInterstitialTap();
+          Alert.alert(t('profile.deleteAccountStep2Title'), t('profile.deleteAccountStep2Body'), [
+            { text: t('reading.cancel'), style: 'cancel' },
+            { text: t('profile.deleteAccountConfirm'), style: 'destructive', onPress: () => void performDeleteAccount() },
+          ]);
+        },
+      },
+    ]);
+  }
+
+  async function performDeleteAccount() {
+    markNoInterstitialTap();
+    setDeletingAccount(true);
+    try {
+      await deleteAccount();
+      haptic.success();
+      // Token cục bộ bị xoá; AuthProvider mở lại phiên khách mới. Về màn đầu để không còn dữ liệu cũ.
+      endLocalSession();
+      router.replace('/');
+    } catch (error) {
+      haptic.warning();
+      setDeleteAccountFailure(t(deleteAccountErrorKey(error)));
+    } finally {
+      setDeletingAccount(false);
+    }
   }
 
   function handleMediationDebugger() {
@@ -371,6 +432,27 @@ export default function ProfileScreen() {
               </View>
             ) : null}
 
+            {/* Terms of service (mở trình duyệt) */}
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={t('profile.termsA11y')}
+              onPress={() => void handleOpenTerms()}
+              style={({ pressed }) => [styles.menuRow, { opacity: pressed ? 0.75 : 1 }]}>
+              <View style={styles.menuIconCircle}>
+                <MaterialCommunityIcons name="text-box-check-outline" size={19} color={colors.goldLight} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[type.bodyBold, { color: colors.ink }]}>{t('profile.terms')}</Text>
+                <Text style={[type.caption, { color: colors.mute }]}>{t('profile.termsBody')}</Text>
+              </View>
+              <MaterialCommunityIcons name="open-in-new" size={18} color={colors.stone} />
+            </Pressable>
+            {termsFailed ? (
+              <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.md }}>
+                <Banner variant="error" title={t('profile.termsFailed')} />
+              </View>
+            ) : null}
+
             {/* Mediation Debugger (dev/test builds only) */}
             {isMediationDebuggerEnabled() ? (
               <Pressable
@@ -398,7 +480,20 @@ export default function ProfileScreen() {
             <Text style={[type.caption, { color: colors.mute }]}>
               {t('profile.dataDeletionBody')}
             </Text>
-            <TextLink label={t('profile.dataDeletionLink')} onPress={() => void openDataDeletion()} />
+            <TextLink label={t('profile.dataDeletionLink')} onPress={() => void handleOpenDataDeletion()} />
+            {dataDeletionFailed ? (
+              <Banner variant="error" title={t('profile.dataDeletionFailed')} />
+            ) : null}
+            <Button
+              label={deletingAccount ? t('profile.deleteAccountDeleting') : t('profile.deleteAccount')}
+              accessibilityLabel={t('profile.deleteAccountA11y')}
+              variant="danger"
+              loading={deletingAccount}
+              disabled={deletingAccount}
+              noInterstitial
+              onPress={handleDeleteAccount}
+            />
+            {deleteAccountFailure ? <Banner variant="error" title={deleteAccountFailure} /> : null}
           </Card>
         </View>
 
@@ -469,12 +564,6 @@ export default function ProfileScreen() {
       </Modal>
     </>
   );
-}
-
-function openDataDeletion() {
-  const webRoot = (process.env.EXPO_PUBLIC_WEB_URL ?? '').replace(/\/+$/, '');
-  if (!webRoot) return Promise.resolve();
-  return WebBrowser.openBrowserAsync(`${webRoot}/data-deletion`);
 }
 
 const styles = StyleSheet.create({

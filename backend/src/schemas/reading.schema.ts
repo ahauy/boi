@@ -112,7 +112,4 @@ ReadingSchema.index({ status: 1, createdAt: 1 });
 
 ReadingSchema.index({ guestTokenHash: 1 }, { sparse: true });
 
-ReadingSchema.index(
-  { previewExpiresAt: 1 },
-  { expireAfterSeconds: 0, partialFilterExpression: { previewExpiresAt: { $type: 'date' } } },
-);
+ReadingSchema.index({ previewExpiresAt: 1 });

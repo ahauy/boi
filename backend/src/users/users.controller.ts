@@ -35,6 +35,7 @@ import { PasswordService } from "../auth/password.service";
 import { UserDocument } from "../schemas/user.schema";
 import { UsersService } from "./users.service";
 import { AvatarService } from "./avatar.service";
+import { AccountDeletionService } from "./account-deletion.service";
 import { AvatarUploadInterceptor } from "./avatar-upload.interceptor";
 import { CreditLedgerService } from "../credits/credit-ledger.service";
 import { ReferralsService } from "../referrals/referrals.service";
@@ -49,7 +50,8 @@ export class UsersController {
     private readonly passwordService: PasswordService,
     private readonly referralsService: ReferralsService,
     private readonly configService: ConfigService,
-    private readonly avatarService: AvatarService
+    private readonly avatarService: AvatarService,
+    private readonly accountDeletionService: AccountDeletionService
   ) {}
 
   @Get()
@@ -86,6 +88,15 @@ export class UsersController {
   @UserRateLimit({ limit: 5, windowMs: 60 * 1000 })
   removeAvatar(@CurrentUser() user: UserDocument): Promise<MeResponseDto> {
     return this.avatarService.removeAvatar(user);
+  }
+
+  // Xoá chính tài khoản đang đăng nhập (id lấy từ token). Phiên bị thu hồi nên token cũ hết dùng được.
+  @Delete()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(UserRateLimitGuard)
+  @UserRateLimit({ limit: 5, windowMs: 60 * 60 * 1000 })
+  async deleteAccount(@CurrentUser() user: UserDocument): Promise<void> {
+    await this.accountDeletionService.deleteMyAccount(user);
   }
 
   @Get("credit-transactions")

@@ -1,201 +1,9 @@
-import * as crypto from 'crypto';
-import mongoose, { Connection, Types } from 'mongoose';
-import { DeletedIdentityKind } from '@palmsight/shared';
-import {
-  UserSchema,
-  DeletedIdentitySchema,
-  SessionSchema,
-  PasswordResetSchema,
-  ReadingSchema,
-} from '../src/schemas';
-import { CloudinaryService } from '../src/readings/cloudinary.service';
+import mongoose from 'mongoose';
+import { deleteUserAccount } from '../src/users/account-deletion';
 import { loadEnv } from './db-check';
 
-export { loadEnv };
-
-export interface DeleteUserAccountResult {
-  ok: boolean;
-  message: string;
-  identitiesRecorded: number;
-}
-
-export async function deleteUserAccount(
-  conn: Connection,
-  userId: string | Types.ObjectId,
-  note?: string,
-  identitySecret?: string,
-  cloudinary: CloudinaryService = new CloudinaryService(),
-): Promise<DeleteUserAccountResult> {
-  if (!userId || !Types.ObjectId.isValid(userId)) {
-    throw new Error(`Invalid user ID: ${userId}`);
-  }
-
-  const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
-
-  const userModel = conn.models.User || conn.model('User', UserSchema);
-  const deletedIdentityModel =
-    conn.models.DeletedIdentity || conn.model('DeletedIdentity', DeletedIdentitySchema);
-  const sessionModel = conn.models.Session || conn.model('Session', SessionSchema);
-  const passwordResetModel =
-    conn.models.PasswordReset || conn.model('PasswordReset', PasswordResetSchema);
-  const readingModel = conn.models.Reading || conn.model('Reading', ReadingSchema);
-
-  const secret =
-    identitySecret || process.env.IDENTITY_HASH_SECRET || 'palmsight-identity-secret';
-
-  const userReadings = await readingModel
-    .find({ userId: userObjectId })
-    .select('imagePublicId annotatedImagePublicId')
-    .lean();
-
-  const session = await conn.startSession();
-  session.startTransaction();
-
-  try {
-    const user = await userModel
-      .findOne({ _id: userObjectId, deletedAt: null })
-      .session(session);
-
-    if (!user) {
-      throw new Error(`User not found or already deleted: ${userId}`);
-    }
-
-    // avatarPublicId chỉ có với ảnh do người dùng tải lên; ảnh Google/Facebook không có nên không xoá trên Cloudinary
-    const avatarPublicId = user.avatarPublicId ?? null;
-
-    const identitiesToRecord: Array<{ kind: DeletedIdentityKind; input: string }> = [];
-
-    if (user.email) {
-      identitiesToRecord.push({
-        kind: DeletedIdentityKind.EMAIL,
-        input: user.email.toLowerCase(),
-      });
-    }
-
-    if (Array.isArray(user.identities)) {
-      for (const id of user.identities) {
-        if (id.provider && id.providerUserId) {
-          identitiesToRecord.push({
-            kind: id.provider as unknown as DeletedIdentityKind,
-            input: `${id.provider}:${id.providerUserId}`,
-          });
-        }
-        if (
-          id.email &&
-          (!user.email || id.email.toLowerCase() !== user.email.toLowerCase())
-        ) {
-          identitiesToRecord.push({
-            kind: DeletedIdentityKind.EMAIL,
-            input: id.email.toLowerCase(),
-          });
-        }
-      }
-    }
-
-    const uniqueIdentities = new Map<
-      string,
-      { kind: DeletedIdentityKind; valueHmac: string }
-    >();
-
-    for (const item of identitiesToRecord) {
-      const valueHmac = crypto
-        .createHmac('sha256', secret)
-        .update(item.input)
-        .digest('hex');
-
-      if (!uniqueIdentities.has(valueHmac)) {
-        uniqueIdentities.set(valueHmac, { kind: item.kind, valueHmac });
-      }
-    }
-
-    const now = new Date();
-    let identitiesRecorded = 0;
-
-    for (const item of uniqueIdentities.values()) {
-      try {
-        await deletedIdentityModel.updateOne(
-          { valueHmac: item.valueHmac },
-          {
-            $setOnInsert: {
-              kind: item.kind,
-              valueHmac: item.valueHmac,
-              deletedAt: now,
-            },
-          },
-          { upsert: true, session },
-        );
-        identitiesRecorded++;
-      } catch (err: unknown) {
-        const error = err as { code?: number; message?: string };
-        if (error.code === 11000 || error.message?.includes('E11000')) {
-          identitiesRecorded++;
-        } else {
-          throw err;
-        }
-      }
-    }
-
-    await sessionModel.deleteMany({ userId: userObjectId }, { session });
-
-    await passwordResetModel.deleteMany({ userId: userObjectId }, { session });
-
-    await readingModel.updateMany(
-      { userId: userObjectId },
-      {
-        $set: {
-          result: null,
-          imageUrl: null,
-          annotatedImageUrl: null,
-          imagePublicId: null,
-          annotatedImagePublicId: null,
-          palmLines: null,
-          deletedAt: now,
-        },
-      },
-      { session },
-    );
-
-    await userModel.updateOne(
-      { _id: userObjectId },
-      {
-        $set: {
-          displayName: 'Người dùng đã xoá',
-          username: null,
-          email: null,
-          passwordHash: null,
-          passwordUpdatedAt: null,
-          avatarUrl: null,
-          avatarPublicId: null,
-          identities: [],
-          deletedAt: now,
-        },
-      },
-      { session },
-    );
-
-    await session.commitTransaction();
-
-    // Dữ liệu DB đã commit; lỗi Cloudinary chỉ để lại ảnh mồ côi, không được làm hỏng việc xoá
-    if (cloudinary.isConfigured()) {
-      const publicIds: Array<string | null | undefined> = [
-        ...userReadings.flatMap((doc: any) => [doc.imagePublicId, doc.annotatedImagePublicId]),
-        avatarPublicId,
-      ];
-      await Promise.allSettled(publicIds.map((id) => cloudinary.deleteImage(id)));
-    }
-
-    return {
-      ok: true,
-      message: `Account for user ${userId} deleted successfully.${note ? ` Note: ${note}` : ''}`,
-      identitiesRecorded,
-    };
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    await session.endSession();
-  }
-}
+export { loadEnv, deleteUserAccount };
+export type { DeleteUserAccountResult } from '../src/users/account-deletion';
 
 export function parseArgs(args: string[]): { userId?: string; note?: string } {
   let userId: string | undefined;
@@ -243,9 +51,18 @@ export async function runUsersDeleteCli(): Promise<void> {
   const connection = await mongoose.connect(uri, { autoIndex: false });
   try {
     const result = await deleteUserAccount(connection.connection, userId, note);
-    console.log(`\n✓ SUCCESS: ${result.message}`);
-    console.log(`  Identities recorded to deleted_identities: ${result.identitiesRecorded}`);
-    console.log('================================================================\n');
+    if (!result.ok) {
+      console.error(`\n❌ NOT DELETED: ${result.message}`);
+      if (result.unremovedImages && result.unremovedImages.length > 0) {
+        console.error(`  Unremoved images on Cloudinary: ${result.unremovedImages.join(', ')}`);
+      }
+      console.log('================================================================\n');
+      process.exitCode = 1;
+    } else {
+      console.log(`\n✓ SUCCESS: ${result.message}`);
+      console.log(`  Identities recorded to deleted_identities: ${result.identitiesRecorded}`);
+      console.log('================================================================\n');
+    }
   } catch (err: unknown) {
     console.error('\n❌ FAILED to delete user account:');
     console.error((err as Error).message || err);

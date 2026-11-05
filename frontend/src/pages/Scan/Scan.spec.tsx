@@ -66,7 +66,7 @@ describe("Scan Page (/scan)", () => {
     );
   };
 
-  it("should render 3 schools and show Eastern school selected by default with hint", () => {
+  it("should render 3 schools and show Western school selected by default, with Eastern/Vedic VIP-locked", () => {
     renderScan();
 
     expect(screen.getByText("1. Trường phái")).toBeInTheDocument();
@@ -74,10 +74,17 @@ describe("Scan Page (/scan)", () => {
     expect(screen.getByText(/Chỉ tay phương Đông/)).toBeInTheDocument();
     expect(screen.getByText(/Chỉ tay Ấn Độ/)).toBeInTheDocument();
 
-    // Eastern hint
+    // Western school selected by default
+    expect(screen.getByText(/\(x\) Chỉ tay phương Tây/)).toBeInTheDocument();
+
+    // Eastern and Vedic schools locked with VIP tag
+    const vipTags = screen.getAllByText("Chỉ VIP, mua trên app Android");
+    expect(vipTags).toHaveLength(2);
+
+    // Eastern hint is not displayed by default because Western is selected
     expect(
-      screen.getByText("[i] Nam xem tay trái, nữ xem tay phải.")
-    ).toBeInTheDocument();
+      screen.queryByText("[i] Nam xem tay trái, nữ xem tay phải.")
+    ).not.toBeInTheDocument();
 
     // Fixed price note
     expect(
@@ -85,18 +92,56 @@ describe("Scan Page (/scan)", () => {
     ).toBeInTheDocument();
   });
 
-  it("should remember selected school in localStorage and update hint", () => {
+  it("should automatically reset Eastern or Vedic in localStorage to Western and prevent selecting VIP schools", () => {
+    const showErrorSpy = vi.spyOn(toastHelper, "showError");
+    localStorage.setItem("palmsight_last_school", ReadingSchool.EASTERN);
+
     renderScan();
 
-    // Select Western school
-    fireEvent.click(screen.getByText(/Chỉ tay phương Tây/));
+    // Should have reset to Western
     expect(localStorage.getItem("palmsight_last_school")).toBe(
       ReadingSchool.WESTERN
     );
-    // Eastern hint should not be shown for Western school
-    expect(
-      screen.queryByText("[i] Nam xem tay trái, nữ xem tay phải.")
-    ).not.toBeInTheDocument();
+    expect(screen.getByText(/\(x\) Chỉ tay phương Tây/)).toBeInTheDocument();
+
+    // Clicking locked VIP school shows error toast
+    fireEvent.click(screen.getByText(/Chỉ tay phương Đông/));
+    expect(showErrorSpy).toHaveBeenCalledWith(
+      "Trường phái này chỉ dành cho tài khoản VIP. Bạn vui lòng nâng cấp VIP trên ứng dụng Android hoặc chọn trường phái Phương Tây."
+    );
+  });
+
+  it("should handle 403 vip_required by showing friendly VIP error message", async () => {
+    const showErrorSpy = vi.spyOn(toastHelper, "showError");
+    vi.spyOn(httpService, "post").mockRejectedValue({
+      response: {
+        status: 403,
+        data: {
+          error: {
+            code: "vip_required",
+            message: "Trường phái chỉ tay Phương Đông và Ấn Độ (Vedic) chỉ dành cho thành viên VIP.",
+          },
+        },
+      },
+    });
+
+    renderScan();
+
+    const file = new File(["dummy"], "palm.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByTestId("file-input"), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByTestId("ai-consent-checkbox"));
+    fireEvent.click(screen.getByTestId("submit-reading-button"));
+
+    await waitFor(() => {
+      expect(showErrorSpy).toHaveBeenCalledWith(
+        "Trường phái này chỉ dành cho tài khoản VIP. Bạn vui lòng nâng cấp VIP trên ứng dụng Android hoặc chọn trường phái Phương Tây."
+      );
+      expect(screen.getByTestId("network-error-banner")).toHaveTextContent(
+        "Trường phái này chỉ dành cho tài khoản VIP. Bạn vui lòng nâng cấp VIP trên ứng dụng Android hoặc chọn trường phái Phương Tây."
+      );
+    });
   });
 
   it("should manage 'Bói toàn bộ' toggling correctly", () => {
@@ -110,7 +155,7 @@ describe("Scan Page (/scan)", () => {
     expect(toggleAllBtn).toHaveTextContent("[ ] Bói toàn bộ");
 
     // Manually toggle section
-    const sectionBtn = screen.getByTestId("topic-section-nguHanh");
+    const sectionBtn = screen.getByTestId("topic-section-handShape");
     fireEvent.click(sectionBtn); // uncheck
     expect(sectionBtn).toHaveTextContent("[ ]");
   });

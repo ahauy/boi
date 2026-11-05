@@ -20,7 +20,7 @@ export interface CanShowAdsContext {
 }
 
 const extra = (Constants.expoConfig?.extra ?? {}) as { applovinSdkKey?: string };
-const webRoot = (process.env.EXPO_PUBLIC_WEB_URL ?? 'https://palmsight.app').replace(/\/+$/, '');
+const webRoot = (process.env.EXPO_PUBLIC_WEB_URL ?? 'https://palm-sight-theta.vercel.app').replace(/\/+$/, '');
 
 export const ADS_CONFIG = {
   // APPLOVIN_SDK_KEY has no EXPO_PUBLIC_ prefix, so it reaches JS only through app config `extra`.
@@ -48,6 +48,7 @@ export const ADS_CONFIG = {
   urls: {
     privacy: `${webRoot}/privacy`,
     terms: `${webRoot}/terms`,
+    dataDeletion: `${webRoot}/data-deletion`,
   },
 } as const;
 

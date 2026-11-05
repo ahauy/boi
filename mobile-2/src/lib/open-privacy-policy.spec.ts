@@ -13,6 +13,7 @@ vi.mock('expo-web-browser', () => ({ openBrowserAsync: (...args: unknown[]) => o
 
 import { ADS_CONFIG } from '../ads/ads-config';
 import { isExternalActivityActive, resetExternalActivity } from './external-activity';
+import { openTerms } from './open-terms';
 import { openPrivacyPolicy } from './open-privacy-policy';
 import { SCREEN_LANGUAGES, SCREEN_STRINGS } from '../i18n/screen-strings';
 
@@ -66,5 +67,31 @@ describe('hàng Chính sách riêng tư ở màn Profile', () => {
       expect(row).toHaveLength(9);
       row.forEach((text) => expect(text.trim()).not.toBe(''));
     }
+  });
+});
+
+describe('hàng Điều khoản ở màn Profile', () => {
+  beforeEach(() => {
+    openBrowserAsync.mockReset();
+    resetExternalActivity();
+  });
+
+  it('có mặt trong Profile, đủ khoá i18n 9 ngôn ngữ và đánh dấu không chen interstitial', () => {
+    for (const key of ['profile.terms', 'profile.termsBody', 'profile.termsA11y', 'profile.termsFailed']) {
+      expect(profileSource).toContain(key);
+      expect(SCREEN_STRINGS[key]).toHaveLength(SCREEN_LANGUAGES.length);
+    }
+    const handler = profileSource.match(/async function handleOpenTerms\(\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
+    expect(handler).toContain('markNoInterstitialTap()');
+    expect(handler).toContain('openTerms()');
+    expect(handler).toContain('setTermsFailed(true)');
+  });
+
+  it('mở đúng ADS_CONFIG.urls.terms, lỗi thì trả false', async () => {
+    openBrowserAsync.mockResolvedValue({ type: 'opened' });
+    await expect(openTerms()).resolves.toBe(true);
+    expect(openBrowserAsync).toHaveBeenCalledWith(ADS_CONFIG.urls.terms);
+    openBrowserAsync.mockRejectedValue(new Error('x'));
+    await expect(openTerms()).resolves.toBe(false);
   });
 });

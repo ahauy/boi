@@ -69,6 +69,43 @@ describe("CloudinaryService", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
+  describe("deleteImage", () => {
+    it("coi id rỗng và id local: là đã xoá (không gọi mạng)", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const service = new CloudinaryService(new ConfigService({}));
+      await expect(service.deleteImage(null)).resolves.toBe(true);
+      await expect(service.deleteImage("")).resolves.toBe(true);
+      await expect(service.deleteImage("local:reading_1")).resolves.toBe(true);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("trả false khi id thật nhưng thiếu cấu hình Cloudinary", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const service = new CloudinaryService(
+        new ConfigService({ NODE_ENV: "production" })
+      );
+      await expect(service.deleteImage("palmsight/reading_1")).resolves.toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("'not found' của Cloudinary (HTTP 200) vẫn là thành công; lỗi HTTP hoặc mạng là false", async () => {
+      const service = new CloudinaryService(
+        new ConfigService({
+          CLOUDINARY_CLOUD_NAME: "demo-cloud",
+          CLOUDINARY_API_KEY: "123456789",
+          CLOUDINARY_API_SECRET: "my-secret",
+        })
+      );
+      const spy = vi.spyOn(globalThis, "fetch");
+      spy.mockResolvedValueOnce({ ok: true, json: async () => ({ result: "not found" }) } as Response);
+      await expect(service.deleteImage("palmsight/x")).resolves.toBe(true);
+      spy.mockResolvedValueOnce({ ok: false, status: 500 } as Response);
+      await expect(service.deleteImage("palmsight/x")).resolves.toBe(false);
+      spy.mockRejectedValueOnce(new Error("network"));
+      await expect(service.deleteImage("palmsight/x")).resolves.toBe(false);
+    });
+  });
+
   describe("production không lưu ảnh vào MongoDB", () => {
     const sample = Buffer.from("palm-image-content");
     const prodConfig = (extra: Record<string, string> = {}) =>

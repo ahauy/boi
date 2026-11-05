@@ -79,6 +79,14 @@ function endSession(): void {
   for (const listener of [...expiredListeners]) listener();
 }
 
+/**
+ * Kết thúc phiên cục bộ sau khi server đã xoá tài khoản: bỏ token trong bộ nhớ và SecureStore,
+ * rồi báo cho AuthProvider mở phiên khách mới (thiết bị cũ không được nhận lại quà khởi đầu).
+ */
+export function endLocalSession(): void {
+  endSession();
+}
+
 export function onSessionExpired(listener: () => void): () => void {
   expiredListeners.add(listener);
   return () => expiredListeners.delete(listener);

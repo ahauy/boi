@@ -9,6 +9,7 @@ import { ReadingsModule } from "../readings/readings.module";
 import { UsersController } from "./users.controller";
 import { UsersService } from "./users.service";
 import { AvatarService } from "./avatar.service";
+import { AccountDeletionService } from "./account-deletion.service";
 import { UserRateLimitGuard } from "../auth/guards/user-rate-limit.guard";
 
 @Module({
@@ -24,6 +25,6 @@ import { UserRateLimitGuard } from "../auth/guards/user-rate-limit.guard";
     ]),
   ],
   controllers: [UsersController],
-  providers: [UsersService, AvatarService, UserRateLimitGuard],
+  providers: [UsersService, AvatarService, AccountDeletionService, UserRateLimitGuard],
 })
 export class UsersModule {}

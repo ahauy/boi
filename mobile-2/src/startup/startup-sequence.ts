@@ -15,7 +15,6 @@ import { tryOpenPaywallOnLaunch } from '../premium/paywall-triggers';
  *   1. Wait for ads consent (<= 30 s) -> start Adjust with consent result -> preload interstitial (+ one MREC).
  *   2. Billing connect + products (<= 15 s).
  *   3. Launch paywall (non-VIP, billing on).
- *   4. Ask notification permission (after the paywall closes).
  */
 
 export interface StartupContext {
@@ -24,12 +23,10 @@ export interface StartupContext {
 }
 
 export type PaywallLaunchHandler = () => Promise<void> | void;
-export type NotificationPermissionHandler = () => Promise<void> | void;
 
 let startupSequenceCompleted = false;
 let startupPaywallStepDone = false;
 let paywallHandler: PaywallLaunchHandler | null = null;
-let notificationHandler: NotificationPermissionHandler | null = null;
 
 function isDev(): boolean {
   return typeof __DEV__ !== 'undefined' && Boolean(__DEV__);
@@ -39,13 +36,6 @@ export function registerPaywallLauncher(handler: PaywallLaunchHandler): () => vo
   paywallHandler = handler;
   return () => {
     if (paywallHandler === handler) paywallHandler = null;
-  };
-}
-
-export function registerNotificationAsker(handler: NotificationPermissionHandler): () => void {
-  notificationHandler = handler;
-  return () => {
-    if (notificationHandler === handler) notificationHandler = null;
   };
 }
 
@@ -119,16 +109,6 @@ export async function runStartupSequence(ctx: StartupContext): Promise<void> {
   } finally {
     startupPaywallStepDone = true;
     setStartupStep3Done(true);
-  }
-
-  // Step 4: Ask notification permission (after paywall closes or if skipped)
-  if (notificationHandler) {
-    try {
-      if (isDev()) console.log('[StartupSequence] Step 4: Requesting notification permission...');
-      await notificationHandler();
-    } catch (err) {
-      if (isDev()) console.warn('[StartupSequence] Step 4 note:', err);
-    }
   }
 
   if (isDev()) console.log('[StartupSequence] Finished successfully');

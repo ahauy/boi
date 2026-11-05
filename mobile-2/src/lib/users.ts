@@ -44,6 +44,11 @@ export function uploadAvatar(image: ImagePart): Promise<ProfileUser> {
   return upload<ProfileUser>('/me/avatar', form, { timeoutMs: AVATAR_UPLOAD_TIMEOUT_MS });
 }
 
+/** Xoá tài khoản đang đăng nhập (DELETE /me). Server trả 204; ảnh lỗi thì 502 IMAGE_DELETE_FAILED. */
+export function deleteAccount(): Promise<void> {
+  return del<void>('/me');
+}
+
 export function removeAvatar(): Promise<ProfileUser> {
   return del<ProfileUser>('/me/avatar');
 }

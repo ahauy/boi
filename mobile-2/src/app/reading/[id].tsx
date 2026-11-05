@@ -27,7 +27,7 @@ import SaveShareGate from '../../earn/save-share-gate';
 import { Banner, Button, Card, Chip, IconButton, SectionLabel } from '../../components/ui';
 import { ApiError } from '../../lib/api';
 import { runExternalActivity } from '../../lib/external-activity';
-import { errorMessageOf } from '../../lib/forms';
+import { errorCodeOf, errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
 import { formatDateTime, handLabel, topicLabels, topicsLabel } from '../../lib/format';
 import { deleteReading, fetchReading } from '../../lib/readings';
@@ -161,7 +161,9 @@ export default function ReadingDetailScreen() {
       router.replace('/history');
     } catch (error) {
       haptic.warning();
-      setFailure(errorMessageOf(error, t('reading.deleteFailed')));
+      setFailure(
+        errorCodeOf(error) === 'IMAGE_DELETE_FAILED' ? t('reading.deleteImageFailed') : errorMessageOf(error, t('reading.deleteFailed')),
+      );
     } finally {
       setDeleting(false);
     }

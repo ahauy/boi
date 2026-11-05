@@ -30,6 +30,8 @@ describe('profileErrorKey', () => {
     ['AVATAR_INVALID_TYPE', 'editProfile.err.invalidType'],
     ['AVATAR_UPLOAD_FAILED', 'editProfile.err.uploadFailed'],
     ['AVATAR_UNAVAILABLE', 'editProfile.err.unavailable'],
+    ['AVATAR_UPDATE_FAILED', 'editProfile.err.updateFailed'],
+    ['AVATAR_DELETE_FAILED', 'editProfile.err.updateFailed'],
     ['RATE_LIMITED', 'editProfile.err.rateLimited'],
     ['VALIDATION_ERROR', 'editProfile.err.validation'],
     ['NETWORK_ERROR', 'editProfile.err.network'],

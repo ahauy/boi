@@ -383,13 +383,17 @@ describe('PATCH /me, POST/DELETE /me/avatar', () => {
       expect(publicIdInDbWhenOldDeleted).toBe(doc.avatarPublicId);
     });
 
-    it('lỗi xoá ảnh cũ không làm hỏng request, ảnh mới vẫn được lưu', async () => {
+    it('lỗi xoá ảnh cũ: 502 AVATAR_UPDATE_FAILED, rollback giữ avatar cũ và không bỏ mồ côi ảnh', async () => {
       const oldId = 'palmsight/avatars/' + 'b'.repeat(32);
-      const { id, token } = await seedUser({ avatarUrl: 'https://res.cloudinary.com/x.jpg', avatarPublicId: oldId });
+      const oldUrl = 'https://res.cloudinary.com/x.jpg';
+      const { id, token } = await seedUser({ avatarUrl: oldUrl, avatarPublicId: oldId });
       (cloudinary.deleteImage as any).mockRejectedValue(new Error('cloudinary down'));
       const res = await postAvatar(token, { data: await jpeg(), name: 'new.jpg', type: 'image/jpeg' });
-      expect(res.status).toBe(200);
-      expect((await getUserDoc(id))!.avatarPublicId).not.toBe(oldId);
+      expect(res.status).toBe(502);
+      expect(((await res.json()) as any).error.code).toBe('AVATAR_UPDATE_FAILED');
+      const doc = (await getUserDoc(id))!;
+      expect(doc.avatarPublicId).toBe(oldId);
+      expect(doc.avatarUrl).toBe(oldUrl);
     });
 
     it('lỗi upload: 502 AVATAR_UPLOAD_FAILED, giữ nguyên avatar cũ và không xoá ảnh cũ', async () => {
@@ -497,7 +501,7 @@ describe('PATCH /me, POST/DELETE /me/avatar', () => {
       return { isConfigured: () => true, deleteImage: del } as unknown as CloudinaryService & { deleteImage: typeof del };
     };
 
-    it('xoá avatar trên Cloudinary sau commit và đặt avatarUrl/avatarPublicId về null', async () => {
+    it('xoá avatar trên Cloudinary rồi mới ghi DB và đặt avatarUrl/avatarPublicId về null', async () => {
       const publicId = 'palmsight/avatars/' + '1'.repeat(32);
       const { id } = await seedUser({ avatarUrl: `https://res.cloudinary.com/t/${publicId}.jpg`, avatarPublicId: publicId });
       const cld = fakeCloudinary();
@@ -510,17 +514,19 @@ describe('PATCH /me, POST/DELETE /me/avatar', () => {
       expect(doc.deletedAt).toBeInstanceOf(Date);
     });
 
-    it('lỗi Cloudinary không làm hỏng việc xoá tài khoản', async () => {
+    it('lỗi Cloudinary: tài khoản CHƯA bị xoá (ảnh xoá trước), báo ảnh còn sót', async () => {
       const publicId = 'palmsight/avatars/' + '2'.repeat(32);
       const { id } = await seedUser({ avatarUrl: 'https://res.cloudinary.com/t/x.jpg', avatarPublicId: publicId });
       const cld = fakeCloudinary(async () => {
         throw new Error('cloudinary down');
       });
       const result = await deleteUserAccount(testApp.connection, id, undefined, IDENTITY_SECRET, cld);
-      expect(result.ok).toBe(true);
+      expect(result.ok).toBe(false);
+      expect(result.deleted).toBe(false);
+      expect(result.unremovedImages).toContain(publicId);
       const doc = (await getUserDoc(id))!;
-      expect(doc.deletedAt).toBeInstanceOf(Date);
-      expect(doc.avatarPublicId).toBeNull();
+      expect(doc.deletedAt).toBeNull();
+      expect(doc.avatarPublicId).toBe(publicId);
     });
 
     it('avatar Google: avatarUrl bị null khi xoá tài khoản nhưng không gọi xoá Cloudinary', async () => {

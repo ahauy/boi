@@ -15,7 +15,8 @@
     "db:check": "tsx scripts/db-check.ts",
     "generate:secrets": "tsx scripts/generate-secrets.ts",
     "users:delete": "tsx scripts/users-delete.ts",
-    "credits:reconcile": "tsx scripts/credits-reconcile.ts"
+    "credits:reconcile": "tsx scripts/credits-reconcile.ts",
+    "readings:purge-expired": "tsx scripts/purge-expired-guest-readings.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.7",

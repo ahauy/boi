@@ -243,7 +243,8 @@ export class CloudinaryService {
 
     const { cloudName, apiKey, apiSecret } = this.getConfig();
     if (!cloudName || !apiKey || !apiSecret) {
-      return true;
+      // Id thật mà thiếu cấu hình: không xoá được, không được báo thành công.
+      return false;
     }
 
     const timestamp = Math.floor(Date.now() / 1000);

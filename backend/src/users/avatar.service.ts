@@ -73,9 +73,23 @@ export class AvatarService {
       throw fail(HttpStatus.UNAUTHORIZED, 'UNAUTHENTICATED', 'Tài khoản không còn tồn tại.');
     }
 
-    // Chỉ xoá ảnh cũ SAU khi ảnh mới đã lưu; lỗi xoá chỉ để lại ảnh mồ côi, không làm hỏng request
+    // Xoá ảnh cũ sau khi lưu; nếu xoá thất bại, rollback lại avatar cũ và xoá ảnh mới để không tạo ảnh mồ côi
     if (previous.avatarPublicId && previous.avatarPublicId !== uploaded.publicId) {
-      await this.safeDelete(previous.avatarPublicId);
+      let deleted = false;
+      try {
+        deleted = await this.cloudinary.deleteImage(previous.avatarPublicId);
+      } catch {
+        deleted = false;
+      }
+      if (!deleted) {
+        this.logger.warn(`Không xoá được ảnh đại diện cũ ${previous.avatarPublicId}, hoàn tác cập nhật avatar.`);
+        await this.userModel.updateOne(
+          { _id: user._id, avatarPublicId: uploaded.publicId },
+          { $set: { avatarUrl: previous.avatarUrl, avatarPublicId: previous.avatarPublicId } },
+        );
+        await this.safeDelete(uploaded.publicId);
+        throw fail(HttpStatus.BAD_GATEWAY, 'AVATAR_UPDATE_FAILED', 'Không gỡ được ảnh đại diện cũ trên Cloudinary, vui lòng thử lại.');
+      }
     }
 
     const fresh = await this.userModel.findById(user._id);
