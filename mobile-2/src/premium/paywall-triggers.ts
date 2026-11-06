@@ -5,7 +5,7 @@ import { ECONOMY_DEFAULTS } from '@palmsight/shared';
 import { adsStore } from '../ads/ads-store';
 import { isExternalActivityActive } from '../lib/external-activity';
 import { isBillingConfigured } from '../billing/billing-config';
-import { billingStore } from '../billing/billing-store';
+import { billingStore, hasBillingProducts } from '../billing/billing-store';
 import { setPaywallDeclineCount } from '../ads/interstitial-policy';
 
 /**
@@ -226,7 +226,7 @@ export function canAutoOpenPaywall(options?: {
 export function openPaywall(
   source: PaywallOpenSource = 'manual',
 ): Promise<void> {
-  if (!isBillingConfigured() || !billingStore.getState().billingEnabled) {
+  if (!isBillingConfigured()) {
     return Promise.resolve();
   }
 
@@ -280,6 +280,16 @@ export function closePaywallAfterSuccess(): void {
  */
 export function declinePaywall(): void {
   if (!state.isOpen) return;
+
+  // Paywall giá mẫu (Play chưa trả gói): chỉ đóng, không tính là từ chối bán thật.
+  if (!hasBillingProducts()) {
+    state = { ...state, isOpen: false, source: null };
+    const sampleResolvers = [...closeWaitResolvers];
+    closeWaitResolvers = [];
+    notify();
+    for (const resolve of sampleResolvers) resolve();
+    return;
+  }
 
   const nextDeclines = state.isVip ? 0 : state.declineCount + 1;
   state = {

@@ -7,6 +7,7 @@ import { HandOrientation } from '@palmsight/shared';
 import { PALM_LINES, PALM_OUTLINE_PATH } from './mystic/palmGeometry';
 import Text from './AppText';
 import { colors, radius, spacing, text as type } from '../theme';
+import { t } from '../i18n';
 import { handLabel } from '../lib/format';
 
 interface HandChoiceProps {
@@ -55,7 +56,7 @@ export default function HandChoice({ side, selected, onPress }: HandChoiceProps)
           </Svg>
         </View>
         <Text style={[type.bodyBold, { color: selected ? colors.goldLight : colors.ink }]}>{handLabel(side)}</Text>
-        <Text style={[type.code, { color: selected ? colors.gold : colors.stone }]}>{selected ? 'ĐÃ CHỌN' : 'CHẠM ĐỂ CHỌN'}</Text>
+        <Text style={[type.code, { color: selected ? colors.gold : colors.stone }]}>{t(selected ? 'hand.selected' : 'hand.tapToSelect')}</Text>
       </LinearGradient>
     </Pressable>
   );

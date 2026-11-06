@@ -68,6 +68,24 @@ describe("US-SCAN-001: ReadingSchool, HandSide & createReadingRequestSchema", ()
   });
 
   describe("createReadingRequestSchema Validation", () => {
+    it("defaults language to Vietnamese for app builds that do not send it", async () => {
+      const result = await createReadingRequestSchema.validate({
+        school: ReadingSchool.WESTERN,
+        hand: HandSide.LEFT,
+        aiConsent: "true",
+      });
+      expect(result.language).toBe("vi");
+    });
+
+    it("accepts a supported language and rejects anything else", async () => {
+      const base = { school: ReadingSchool.WESTERN, hand: HandSide.LEFT, aiConsent: "true" };
+      const result = await createReadingRequestSchema.validate({ ...base, language: "ja" });
+      expect(result.language).toBe("ja");
+      await expect(
+        createReadingRequestSchema.validate({ ...base, language: "xx" })
+      ).rejects.toThrow("Ngôn ngữ không hợp lệ");
+    });
+
     it('validates valid reading request with string aiConsent="true"', async () => {
       const valid = {
         school: ReadingSchool.WESTERN,

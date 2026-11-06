@@ -16,13 +16,14 @@ import { Banner, Button, Checkbox, LoadingOverlay, SectionLabel } from '../../co
 import { setCoreActionProgressVisible } from '../../ads/interstitial-policy';
 import { triggerAfterCoreAction } from '../../ads/interstitial-triggers';
 import NotEnoughSheet from '../../earn/not-enough-sheet';
+import { hasBillingProducts } from '../../billing/billing-store';
 import { triggerPaywall } from '../../premium/paywall-triggers';
 import { ApiError } from '../../lib/api';
 import { runExternalActivity } from '../../lib/external-activity';
 import { sleepUntilActive } from '../../lib/appActive';
 import { errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
-import { handLabel, topicsLabel } from '../../lib/format';
+import { handLabel, schoolName, topicsLabel } from '../../lib/format';
 import { createReading, fetchReading } from '../../lib/readings';
 import { newIdempotencyKey } from '../../lib/uuid';
 import { useAuth } from '../../state/auth';
@@ -105,7 +106,10 @@ export default function ScanStudioScreen() {
     if (gemBalance < CORE_READING_COST_GEM) {
       haptic.warning();
       setNotEnoughOpen(true);
-      void triggerPaywall('out_of_currency');
+      // Chỉ tự bật paywall khi có gói thật; không tự bật giá mẫu.
+      if (hasBillingProducts() && !user?.vip?.active) {
+        void triggerPaywall('out_of_currency');
+      }
       return;
     }
 
@@ -274,7 +278,7 @@ export default function ScanStudioScreen() {
               end={{ x: 1, y: 1 }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: colors.glassBorder, borderRadius: radius.xl, padding: spacing.md }}>
               <View style={{ gap: 3, flex: 1 }}>
-                <Text style={[type.bodyBold, { color: colors.ink }]}>{draft.schoolConfig.name}</Text>
+                <Text style={[type.bodyBold, { color: colors.ink }]}>{schoolName(draft.school)}</Text>
                 <Text style={[type.caption, { color: colors.mute }]}>{`${handLabel(draft.hand)} · ${topicsLabel(draft.selected, draft.school)}`}</Text>
               </View>
               <View style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.goldWash, alignItems: 'center', justifyContent: 'center' }}>
@@ -307,7 +311,7 @@ export default function ScanStudioScreen() {
                 </Pressable>
               </View>
               <View style={{ position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg, gap: 4 }}>
-                <Text style={[type.eyebrow, { color: colors.goldLight, fontSize: 10 }]}>{`${handLabel(draft.hand).toUpperCase()} · ${draft.schoolConfig.name.toUpperCase()}`}</Text>
+                <Text style={[type.eyebrow, { color: colors.goldLight, fontSize: 10 }]}>{`${handLabel(draft.hand).toUpperCase()} · ${schoolName(draft.school).toUpperCase()}`}</Text>
                 <Text style={[type.headingMd, { color: colors.ink }]}>{t('scan.ready')}</Text>
                 <Text style={[type.caption, { color: colors.body }]} numberOfLines={2}>{topicsLabel(draft.selected, draft.school)}</Text>
               </View>

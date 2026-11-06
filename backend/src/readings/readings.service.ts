@@ -285,6 +285,7 @@ export class ReadingsService {
           school: validatedInput.school as ReadingSchool,
           topics: normalizedTopics,
           hand: validatedInput.hand as HandOrientation,
+          language: validatedInput.language,
         }
       );
       const latencyMs = Date.now() - start;

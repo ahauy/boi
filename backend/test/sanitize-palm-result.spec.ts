@@ -118,4 +118,52 @@ describe("sanitizePalmResult", () => {
     const uniqueValues = new Set(values);
     expect(uniqueValues.size).toBe(6);
   });
+
+  it("fills gaps in English instead of Vietnamese for other languages", () => {
+    const sanitized = sanitizePalmResult(
+      { isPalm: true, sections: [], aspects: {} },
+      {
+        school: ReadingSchool.WESTERN,
+        hand: HandOrientation.LEFT,
+        topics: ["love"],
+        language: "ja",
+      }
+    );
+
+    const text = [
+      sanitized.summary,
+      sanitized.advice,
+      sanitized.disclaimer,
+      sanitized.aspects?.love,
+    ].join(" ");
+    expect(text).toMatch(/^[\x00-\x7F]+$/);
+  });
+
+  it("keeps Vietnamese fallbacks when no language is sent", () => {
+    const sanitized = sanitizePalmResult(
+      { isPalm: true, sections: [], aspects: {} },
+      {
+        school: ReadingSchool.WESTERN,
+        hand: HandOrientation.LEFT,
+        topics: ["love"],
+      }
+    );
+
+    expect(sanitized.summary).toContain("Tổng quan bàn tay");
+    expect(sanitized.aspects?.love).toContain("Trong quan hệ tình cảm");
+  });
+
+  it("gives a rejected photo a reason in the reading language", () => {
+    const sanitized = sanitizePalmResult(
+      { isPalm: false },
+      {
+        school: ReadingSchool.WESTERN,
+        hand: HandOrientation.LEFT,
+        topics: ["love"],
+        language: "en",
+      }
+    );
+
+    expect(sanitized.rejectReason).toContain("could not be seen");
+  });
 });

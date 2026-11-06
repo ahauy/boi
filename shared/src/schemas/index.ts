@@ -4,6 +4,9 @@ import {
   REFERRAL_CODE_REGEX,
   USERNAME_REGEX,
   normalizeReadingTopics,
+  DEFAULT_READING_LANGUAGE,
+  READING_LANGUAGES,
+  type ReadingLanguage,
 } from "../constants";
 import { PalmLineDto, PalmLineName } from "../types/reading.dto";
 
@@ -243,6 +246,11 @@ export const palmResultSchema = yup.object({
 
 export const createReadingRequestSchema = yup
   .object({
+    // Bản app cũ không gửi trường này nên phải giữ mặc định tiếng Việt.
+    language: yup
+      .mixed<ReadingLanguage>()
+      .oneOf(Object.keys(READING_LANGUAGES) as ReadingLanguage[], "Ngôn ngữ không hợp lệ")
+      .default(DEFAULT_READING_LANGUAGE),
     school: yup
       .mixed<ReadingSchool>()
       .oneOf(Object.values(ReadingSchool), "Trường phái bói không hợp lệ")

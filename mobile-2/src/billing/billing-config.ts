@@ -8,7 +8,7 @@ import Constants from 'expo-constants';
  * - `EXPO_PUBLIC_SUB_YEARLY_ID` (`yearlyid`)
  * - `EXPO_PUBLIC_SUB_MONTHLY_ID` (optional; empty = hidden)
  *
- * If either weekly or yearly ID is missing, billing and paywall are disabled (§1.2).
+ * Thiếu ID gói tuần hoặc năm thì tắt billing (§1.2). Đã đủ ID mà Play chưa trả gói thì paywall thủ công vẫn mở với giá mẫu, không bán được.
  */
 
 /** Package của app trên Google Play, dùng để mở đúng trang gói đăng ký. */

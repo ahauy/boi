@@ -3,6 +3,9 @@ import {
   HandOrientation,
   READING_SCHOOLS,
   LIFE_ASPECTS,
+  READING_LANGUAGES,
+  DEFAULT_READING_LANGUAGE,
+  ReadingLanguage,
 } from "@palmsight/shared";
 import { COMMON_SYSTEM_PROMPT } from "./common";
 import { WESTERN_PROMPT } from "./western";
@@ -27,7 +30,10 @@ export function buildUserPrompt(params: {
   school: ReadingSchool;
   hand: HandOrientation;
   topics: string[];
+  language?: ReadingLanguage;
 }): string {
+  const outputLanguage =
+    READING_LANGUAGES[params.language ?? DEFAULT_READING_LANGUAGE];
     const topicsText = params.topics.join(", ");
 
   const requestedSections = (
@@ -58,7 +64,7 @@ export function buildUserPrompt(params: {
     // BẮT BUỘC CHỈ phân tích đúng các mục: ${requestedSections.map((s) => s.key).join(", ")}
     {
       "key": string, // một trong: ${requestedSections.map((s) => `"${s.key}"`).join(", ")}
-      "title": string, // tên tiêu đề tiếng Việt của mục
+      "title": string, // tên tiêu đề của mục, viết bằng ngôn ngữ đầu ra
       "observation": string, // mô tả khách quan các đặc điểm nhìn thấy trên bàn tay (tối đa 800 ký tự)
       "meaning": string // diễn giải ý nghĩa theo trường phái, nêu cả điểm cần lưu ý nếu có dấu hiệu tương ứng (tối đa 800 ký tự)
     }
@@ -84,7 +90,7 @@ ${requestedAspects
 ${sectionsSchemaPart}
 ${aspectsSchemaPart}
   "advice": string, // 2-4 lời khuyên thực tế, cụ thể, bám vào các điểm cần lưu ý đã nêu (tối đa 800 ký tự)
-  "disclaimer": "Kết quả mang tính giải trí, không thay thế tư vấn chuyên môn."
+  "disclaimer": string // nội dung "Kết quả mang tính giải trí, không thay thế tư vấn chuyên môn.", viết bằng ngôn ngữ đầu ra
 }`;
 
   const targetHandVi = params.hand === HandOrientation.LEFT ? "TRÁI" : "PHẢI";
@@ -103,7 +109,10 @@ Hướng dẫn chi tiết:
 - ${aspectsInstruction}
 
 Schema JSON bắt buộc:
-${schemaDescription}`;
+${schemaDescription}
+
+NGÔN NGỮ ĐẦU RA (BẮT BUỘC, ưu tiên cao hơn mọi chỉ dẫn khác về ngôn ngữ): ${outputLanguage}.
+Viết TOÀN BỘ giá trị chuỗi (rejectReason, summary, title, observation, meaning, từng giá trị trong aspects, advice, disclaimer) bằng ${outputLanguage}. Hướng dẫn và ví dụ ở trên viết bằng tiếng Việt chỉ để mô tả yêu cầu; các cụm từ mẫu trong ngoặc kép như "Không quan sát rõ" cũng phải viết bằng ${outputLanguage}. Giữ nguyên tên key JSON, key của sections và aspects, và các giá trị enum.`;
 }
 
 export { COMMON_SYSTEM_PROMPT, WESTERN_PROMPT, EASTERN_PROMPT, VEDIC_PROMPT };

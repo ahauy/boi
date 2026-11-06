@@ -13,6 +13,7 @@ import ReadingCard from '../../components/ReadingCard';
 import ReadingSetupSheet from '../../components/ReadingSetupSheet';
 import { Banner, Button, SectionLabel, TextLink } from '../../components/ui';
 import NotEnoughSheet from '../../earn/not-enough-sheet';
+import { hasBillingProducts } from '../../billing/billing-store';
 import { triggerPaywall } from '../../premium/paywall-triggers';
 import { useAuth } from '../../state/auth';
 import { t, useI18n } from '../../i18n';
@@ -62,7 +63,10 @@ export default function HomeScreen() {
     haptic.tap();
     if (gemBalance < CORE_READING_COST_GEM) {
       setNotEnoughOpen(true);
-      void triggerPaywall('out_of_currency');
+      // Chỉ tự bật paywall khi có gói thật; không tự bật giá mẫu.
+      if (hasBillingProducts() && !user?.vip?.active) {
+        void triggerPaywall('out_of_currency');
+      }
       return;
     }
     setSheetOpen(true);

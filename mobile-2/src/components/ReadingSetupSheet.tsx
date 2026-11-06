@@ -12,12 +12,11 @@ import { Banner, Button, Chip, RadioCard, SectionLabel } from './ui';
 import { colors, radius, spacing, text as type } from '../theme';
 import { t, useI18n } from '../i18n';
 import { haptic } from '../lib/haptics';
-import { handLabel } from '../lib/format';
+import { handLabel, schoolDescription, schoolHandHint, schoolName, topicLabel } from '../lib/format';
 import { useAuth } from '../state/auth';
 import { useReadingDraft } from '../state/readingDraft';
 import { useReduceMotion } from '../lib/motion';
 import { useAnimatedValue } from '../lib/useAnimatedValue';
-import { billingStore } from '../billing';
 import { triggerPaywall } from '../premium/paywall-triggers';
 
 const STEPS = [
@@ -43,7 +42,6 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
   const draft = useReadingDraft();
   const reduceMotion = useReduceMotion();
   const [step, setStep] = useState(0);
-  const [vipUnavailable, setVipUnavailable] = useState(false);
 
   const isVip = Boolean((user as any)?.isVip || user?.vip?.active);
   const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
@@ -97,7 +95,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
   }
 
   const canContinue = step !== 1 || draft.selected.length > 0;
-  const summary = t('setup.summary', { school: draft.schoolConfig.name, hand: handLabel(draft.hand), selected: draft.selected.length, total: draft.allTopics.length });
+  const summary = t('setup.summary', { school: schoolName(draft.school), hand: handLabel(draft.hand), selected: draft.selected.length, total: draft.allTopics.length });
   return (
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={close} onShow={() => setStep(0)} accessibilityViewIsModal>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
@@ -173,20 +171,15 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                     return (
                       <RadioCard
                         key={config.id}
-                        label={config.name}
-                        description={config.description}
+                        label={schoolName(config.id)}
+                        description={schoolDescription(config.id)}
                         glyph={SCHOOL_GLYPHS[config.id]}
                         badge={isLocked ? 'VIP' : undefined}
                         selected={config.id === draft.school}
                         onPress={() => {
                           if (isLocked) {
                             haptic.warning();
-                            if (billingStore.getState().billingEnabled) {
-                              setVipUnavailable(false);
-                              void triggerPaywall('locked_feature');
-                            } else {
-                              setVipUnavailable(true);
-                            }
+                            void triggerPaywall('locked_feature');
                             return;
                           }
                           haptic.select();
@@ -203,13 +196,13 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                   <Chip label={t('setup.all')} selected={draft.selected.length === draft.allTopics.length} onPress={() => { haptic.select(); draft.toggleAll(); }} style={{ alignSelf: 'flex-start' }} />
                   <TopicGroup
                     label={t('setup.linesSigns')}
-                    items={draft.schoolConfig.sections.map((section) => ({ key: section.key, label: section.label }))}
+                    items={draft.schoolConfig.sections.map((section) => ({ key: section.key, label: topicLabel(section.key, draft.school) }))}
                     selected={draft.selected}
                     onToggle={draft.toggleTopic}
                   />
                   <TopicGroup
                     label={t('reading.lifeAspects')}
-                    items={LIFE_ASPECTS.map((aspect) => ({ key: aspect.key, label: aspect.label }))}
+                    items={LIFE_ASPECTS.map((aspect) => ({ key: aspect.key, label: topicLabel(aspect.key, draft.school) }))}
                     selected={draft.selected}
                     onToggle={draft.toggleTopic}
                   />
@@ -231,7 +224,7 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                       />
                     ))}
                   </View>
-                  {draft.schoolConfig.handHint ? <Text style={[type.caption, { color: colors.stone }]}>{draft.schoolConfig.handHint}</Text> : null}
+                  {schoolHandHint(draft.school) ? <Text style={[type.caption, { color: colors.stone }]}>{schoolHandHint(draft.school)}</Text> : null}
 
                   <View style={{ borderWidth: 1, borderColor: colors.hairline, borderRadius: radius.xl, backgroundColor: colors.goldWash, padding: spacing.md, gap: 6, flexDirection: 'row', alignItems: 'center' }}>
                     <MaterialCommunityIcons name="star-four-points" size={16} color={colors.gold} />
@@ -240,8 +233,6 @@ export default function ReadingSetupSheet({ visible, onClose, onStartScan }: Rea
                       <Text style={[type.caption, { color: colors.mute }]}>{summary}</Text>
                     </View>
                   </View>
-
-                  {vipUnavailable ? <Banner variant="warning" title={t('setup.vipUnavailable')} /> : null}
 
                   {user && gemBalance < CORE_READING_COST_GEM ? (
                     <Banner

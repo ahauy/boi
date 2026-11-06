@@ -20,6 +20,8 @@ import {
   getBillingConfig,
   purchaseNoticeKey,
   purchaseSubscription,
+  reloadProductsIfMissing,
+  resolveDisplayProducts,
   restoreNoticeKey,
   restorePurchases,
   setCurrentBillingRef,
@@ -107,20 +109,44 @@ export function PaywallModal({
     billing.isRestoring,
   ]);
 
-  const yearlyProduct = billing.products[config.yearlyId];
-  const weeklyProduct = billing.products[config.weeklyId];
+  const { products: displayProducts, isMock, unavailable } = useMemo(
+    () => resolveDisplayProducts(billing.products),
+    [billing.products],
+  );
+  const yearlyProduct = displayProducts[config.yearlyId];
+  const weeklyProduct = displayProducts[config.weeklyId];
   const monthlyProduct = config.monthlyId
-    ? billing.products[config.monthlyId]
+    ? displayProducts[config.monthlyId]
     : undefined;
 
-  const selectedProduct = billing.products[selectedPlanId];
+  // Chỉ có một phần gói thật: tự chọn gói đầu tiên có thật thay vì để nút tắt không rõ lý do.
+  const effectivePlanId = displayProducts[selectedPlanId]
+    ? selectedPlanId
+    : (config.yearlyId in displayProducts
+        ? config.yearlyId
+        : (Object.keys(displayProducts)[0] ?? selectedPlanId));
+  const selectedProduct = displayProducts[effectivePlanId];
+  const [reloadingProducts, setReloadingProducts] = useState(false);
+  useEffect(() => {
+    if (!paywallState.isOpen || !(isMock || unavailable)) return;
+    let cancelled = false;
+    setReloadingProducts(true); // eslint-disable-line react-hooks/set-state-in-effect -- đang nạp gói thật khi paywall mở
+    void reloadProductsIfMissing().finally(() => {
+      if (!cancelled) setReloadingProducts(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [paywallState.isOpen, isMock, unavailable]);
+
   const isBusy = billing.isPurchasing || billing.isRestoring;
   const canContinue =
-    Boolean(billingRef) && !isBusy && Boolean(selectedProduct);
+    Boolean(billingRef) && !isBusy && !isMock && Boolean(selectedProduct);
 
   const canUpgradeToYearly =
     isVip &&
     vipProductId !== config.yearlyId &&
+    !isMock &&
     Boolean(yearlyProduct) &&
     Boolean(billingRef);
 
@@ -133,7 +159,7 @@ export function PaywallModal({
     if (!canContinue || !billingRef || !selectedProduct) return;
     setStatusBanner(null);
 
-    const res = await purchaseSubscription(selectedPlanId, {
+    const res = await purchaseSubscription(effectivePlanId, {
       billingRef,
       useTrialOffer: selectedProduct.hasFreeTrial,
     });
@@ -154,7 +180,7 @@ export function PaywallModal({
     canContinue,
     billingRef,
     selectedProduct,
-    selectedPlanId,
+    effectivePlanId,
     onVerified,
     t,
   ]);
@@ -333,15 +359,16 @@ export function PaywallModal({
             /* Plan Cards (§6.1) */
             <View style={styles.plansContainer}>
               {/* Yearly Plan (pre-selected, matches 365-day streak) */}
+              {yearlyProduct ? (
               <Pressable
                 accessibilityRole="radio"
                 accessibilityState={{
-                  selected: selectedPlanId === config.yearlyId,
+                  selected: effectivePlanId === config.yearlyId,
                 }}
                 onPress={() => setSelectedPlanId(config.yearlyId)}
                 style={[
                   styles.planCard,
-                  selectedPlanId === config.yearlyId && styles.planCardSelected,
+                  effectivePlanId === config.yearlyId && styles.planCardSelected,
                 ]}
               >
                 <View style={styles.planHeaderRow}>
@@ -372,17 +399,19 @@ export function PaywallModal({
                   </Text>
                 ) : null}
               </Pressable>
+              ) : null}
 
               {/* Weekly Plan (Trial line as card title when eligible, then "then {price}/week" in very small type, §6.1) */}
+              {weeklyProduct ? (
               <Pressable
                 accessibilityRole="radio"
                 accessibilityState={{
-                  selected: selectedPlanId === config.weeklyId,
+                  selected: effectivePlanId === config.weeklyId,
                 }}
                 onPress={() => setSelectedPlanId(config.weeklyId)}
                 style={[
                   styles.planCard,
-                  selectedPlanId === config.weeklyId && styles.planCardSelected,
+                  effectivePlanId === config.weeklyId && styles.planCardSelected,
                 ]}
               >
                 <View style={styles.planHeaderRow}>
@@ -396,24 +425,25 @@ export function PaywallModal({
                 </View>
                 {weeklyProduct ? (
                   <Text style={styles.weeklyTinyPrice}>
-                    {t('paywall.plan.weeklyThen', {
+                    {t(weeklyProduct.hasFreeTrial ? 'paywall.plan.weeklyThen' : 'paywall.plan.weeklyPrice', {
                       price: weeklyProduct.localizedPrice,
                     })}
                   </Text>
                 ) : null}
               </Pressable>
+              ) : null}
 
               {/* Monthly Plan (Optional, hidden when ID is empty, §6.1) */}
               {config.monthlyId && monthlyProduct ? (
                 <Pressable
                   accessibilityRole="radio"
                   accessibilityState={{
-                    selected: selectedPlanId === config.monthlyId,
+                    selected: effectivePlanId === config.monthlyId,
                   }}
                   onPress={() => setSelectedPlanId(config.monthlyId)}
                   style={[
                     styles.planCard,
-                    selectedPlanId === config.monthlyId &&
+                    effectivePlanId === config.monthlyId &&
                       styles.planCardSelected,
                   ]}
                 >
@@ -430,7 +460,15 @@ export function PaywallModal({
                 </Pressable>
               ) : null}
 
+              {isMock && !reloadingProducts ? (
+                <Text style={styles.previewNotice}>{t('paywall.previewNotice')}</Text>
+              ) : null}
+              {unavailable && !reloadingProducts ? (
+                <Text style={styles.previewNotice}>{t('paywall.unavailableNotice')}</Text>
+              ) : null}
+
               {/* Continue CTA (disabled until billingRef is known and while purchase/restore runs, §6.2) */}
+              {unavailable ? null : (
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ disabled: !canContinue }}
@@ -449,6 +487,7 @@ export function PaywallModal({
                   </Text>
                 )}
               </Pressable>
+              )}
             </View>
           )}
 
@@ -487,7 +526,9 @@ export function PaywallModal({
               </Pressable>
             </View>
 
-            <Text style={styles.legalCopy}>{t('paywall.footer.legal')}</Text>
+            {unavailable ? null : (
+              <Text style={styles.legalCopy}>{t('paywall.footer.legal')}</Text>
+            )}
           </View>
         </ScrollView>
       </View>
@@ -536,6 +577,13 @@ export function VipDailyGiftBanner() {
 }
 
 const styles = StyleSheet.create({
+  previewNotice: {
+    color: colors.goldLight,
+    fontFamily: font.body,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
   root: {
     flex: 1,
     backgroundColor: colors.canvas,

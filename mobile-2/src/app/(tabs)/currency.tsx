@@ -15,7 +15,6 @@ import { CORE_READING_COST_GEM, ECONOMY_DEFAULTS } from '@palmsight/shared';
 import type { CurrencyEarnResponseDto } from '@palmsight/shared';
 import { markNoInterstitialTap } from '../../ads/interstitial-policy';
 import { triggerPaywall } from '../../premium/paywall-triggers';
-import { useBillingStore } from '../../billing';
 import { useAuth } from '../../state/auth';
 import { t, useI18n } from '../../i18n';
 import { colors, font, radius, shadow, spacing, text as type } from '../../theme';
@@ -30,7 +29,6 @@ export default function CurrencyScreen() {
   const params = useLocalSearchParams<{ segment?: Segment }>();
 
   const isVip = Boolean(user?.vip?.active);
-  const { billingEnabled } = useBillingStore();
   const gemBalance = user?.creditBalance ?? 0;
 
   const [earnState, setEarnState] = useState<CurrencyEarnResponseDto | null>(null);
@@ -130,7 +128,7 @@ export default function CurrencyScreen() {
             </View>
           </View>
         </Card>
-      ) : billingEnabled ? (
+      ) : (
         <LinearGradient
           colors={['rgba(124,108,246,0.3)', 'rgba(28,38,76,0.85)', 'rgba(8,13,30,0.96)']}
           start={{ x: 0, y: 0 }}
@@ -156,7 +154,7 @@ export default function CurrencyScreen() {
             icon={<MaterialCommunityIcons name="crown" size={18} color={colors.onGold} />}
           />
         </LinearGradient>
-      ) : null}
+      )}
 
       {/* 3. Segmented control (§7.4) */}
       <View style={styles.segmentedControl} accessibilityRole="tablist">

@@ -11,11 +11,8 @@ import {
   CORE_READING_COST_GEM,
   ImageQuality,
   LIFE_ASPECTS,
-  LIFE_ASPECTS_MAP,
   LifeAspect,
-  READING_SCHOOLS,
   ReadingStatus,
-  getTopicLabel,
   type ReadingDto,
 } from '@palmsight/shared';
 
@@ -30,7 +27,7 @@ import { runExternalActivity } from '../../lib/external-activity';
 import { errorCodeOf, errorMessageOf } from '../../lib/forms';
 import { haptic } from '../../lib/haptics';
 import { useAppActive } from '../../lib/motion';
-import { formatDateTime, handLabel, topicLabels, topicsLabel } from '../../lib/format';
+import { formatDateTime, handLabel, schoolName as schoolNameOf, topicLabel, topicLabels, topicsLabel } from '../../lib/format';
 import { deleteReading, fetchReading } from '../../lib/readings';
 import { useAuth } from '../../state/auth';
 import { t, useI18n } from '../../i18n';
@@ -331,7 +328,7 @@ function ReadingBody({
   const result = reading.result;
   const annotated = reading.annotatedImageUrl;
   const imageUrl = (usingAnnotated ? annotated ?? reading.imageUrl : reading.imageUrl) ?? annotated ?? null;
-  const schoolName = READING_SCHOOLS[reading.school]?.name ?? reading.school;
+  const schoolName = schoolNameOf(reading.school);
   const heroHeight = Math.min(Math.round(width * 1.02), height < 720 ? 280 : 430);
 
   if (reading.status === ReadingStatus.PROCESSING) {
@@ -379,7 +376,7 @@ function ReadingBody({
   const aspects: { key: string; label: string; content: string }[] = [];
   for (const aspect of LIFE_ASPECTS) {
     const content = result?.aspects?.[aspect.key as LifeAspect];
-    if (content) aspects.push({ key: aspect.key, label: aspect.label, content });
+    if (content) aspects.push({ key: aspect.key, label: topicLabel(aspect.key, reading.school), content });
   }
 
   const sections = result?.sections ?? [];
@@ -498,7 +495,7 @@ function ReadingBody({
                 <SectionLabel>{t('reading.asked')}</SectionLabel>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
                   {reading.topics.map((topic) => (
-                    <Chip key={topic} label={getTopicLabel(topic, reading.school)} />
+                    <Chip key={topic} label={topicLabel(topic, reading.school)} />
                   ))}
                 </View>
               </Card>
@@ -525,7 +522,7 @@ function ReadingBody({
               <Card key={section.key || section.title || index} style={{ gap: spacing.md }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
                   <Text style={[type.monoStrong, { color: colors.gold }]}>{`0${index + 1}`}</Text>
-                  <Text style={[type.headingMd, { color: colors.ink, flex: 1 }]}>{section.title}</Text>
+                  <Text style={[type.headingMd, { color: colors.ink, flex: 1 }]}>{sectionTitle(section, reading.school)}</Text>
                   <Text style={{ fontFamily: font.display, fontSize: 18, color: colors.gold }}>✦</Text>
                 </View>
                 <View style={{ borderLeftWidth: 2, borderLeftColor: colors.hairlineStrong, paddingLeft: spacing.md, gap: spacing.md }}>
@@ -582,7 +579,7 @@ function ReadingBody({
             )}
             <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: colors.glassBorder, padding: spacing.md, backgroundColor: colors.glassFill }}>
               <Text style={[type.caption, { color: colors.stone }]}>
-                {result?.disclaimer ?? t('reading.disclaimer')}
+                {t('reading.disclaimer')}
               </Text>
             </View>
             {onDelete ? (
@@ -630,10 +627,16 @@ function ReadingSkeleton() {
   );
 }
 
+/** Tiêu đề theo key để quẻ đã lưu vẫn theo ngôn ngữ app; key lạ giữ tiêu đề AI đã trả về. */
+function sectionTitle(section: { key: string; title: string }, school: ReadingDto['school']): string {
+  const label = topicLabel(section.key, school);
+  return label === section.key ? section.title : label;
+}
+
 function buildShareText(reading: ReadingDto): string {
   const result = reading.result;
   const lines: string[] = [
-    `PALMSIGHT - ${READING_SCHOOLS[reading.school]?.name ?? reading.school}`,
+    `PALMSIGHT - ${schoolNameOf(reading.school)}`,
     `${handLabel(reading.hand)} · ${formatDateTime(reading.createdAt)}`,
     t('reading.shareTopics', { topics: topicLabels(reading.topics, reading.school).join(', ') }),
   ];
@@ -641,19 +644,19 @@ function buildShareText(reading: ReadingDto): string {
   if (result?.summary) lines.push('', t('reading.shareSummary'), result.summary);
 
   for (const section of result?.sections ?? []) {
-    lines.push('', `[${section.title}]`, t('reading.shareObservation'), section.observation, t('reading.shareMeaning'), section.meaning);
+    lines.push('', `[${sectionTitle(section, reading.school)}]`, t('reading.shareObservation'), section.observation, t('reading.shareMeaning'), section.meaning);
   }
 
   const aspects = Object.entries(result?.aspects ?? {});
   if (aspects.length > 0) {
     lines.push('', t('reading.shareAspects'));
     for (const [key, content] of aspects) {
-      lines.push(`${LIFE_ASPECTS_MAP[key as LifeAspect]?.label ?? key}: ${content}`);
+      lines.push(`${topicLabel(key, reading.school)}: ${content}`);
     }
   }
 
   if (result?.advice) lines.push('', t('reading.shareAdvice'), result.advice);
-  if (result?.disclaimer) lines.push('', result.disclaimer);
+  if (result?.disclaimer) lines.push('', t('reading.disclaimer'));
 
   return lines.join('\n');
 }
