@@ -8,7 +8,6 @@ import { Button } from '../components/ui';
 import { AdRewardKind, ECONOMY_DEFAULTS } from '@palmsight/shared';
 import { watch } from '../ads/rewarded';
 import { registerOpenSheet, triggerPaywall } from '../premium/paywall-triggers';
-import { useBillingStore } from '../billing';
 import { useAuth } from '../state/auth';
 import { useI18n } from '../i18n';
 import { colors, radius, shadow, spacing, text as type } from '../theme';
@@ -32,7 +31,6 @@ export function NotEnoughSheet({
   onEarned,
 }: NotEnoughSheetProps) {
   const { user } = useAuth();
-  const { billingEnabled } = useBillingStore();
   const { t } = useI18n();
   const [adLoading, setAdLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +46,7 @@ export function NotEnoughSheet({
   if (!visible) return null;
 
   const bonusAmount = ECONOMY_DEFAULTS.BONUS_AD_AMOUNT;
-  const showGetVip = !user?.vip?.active && billingEnabled;
+  const showGetVip = !user?.vip?.active;
 
   function isGuardActive(): boolean {
     return Date.now() - openedAtRef.current < DOUBLE_TAP_GUARD_MS;

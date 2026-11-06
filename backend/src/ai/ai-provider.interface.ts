@@ -1,9 +1,15 @@
-import { ReadingSchool, HandOrientation, PalmResult } from "@palmsight/shared";
+import {
+  ReadingSchool,
+  HandOrientation,
+  PalmResult,
+  ReadingLanguage,
+} from "@palmsight/shared";
 
 export interface AiReadingOptions {
   school: ReadingSchool;
   topics: string[];
   hand: HandOrientation;
+  language?: ReadingLanguage;
 }
 
 export interface AiProvider {

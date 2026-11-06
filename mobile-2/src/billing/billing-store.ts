@@ -57,6 +57,11 @@ function notify(): void {
   }
 }
 
+/** Có gói thật từ Play hay chưa. Dùng cho mọi chỗ quyết định có mở paywall bán thật. */
+export function hasBillingProducts(): boolean {
+  return Object.keys(billingStore.getState().products).length > 0;
+}
+
 export const billingStore = {
   getState(): BillingStoreState {
     return state;

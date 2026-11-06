@@ -18,10 +18,10 @@ import { markNoInterstitialTap } from '../../ads/interstitial-policy';
 import { useAdsStore } from '../../ads/ads-store';
 import { triggerPaywall } from '../../premium/paywall-triggers';
 import {
-  billingStore,
   getBillingConfig,
   openSubscriptionManagement,
   useBillingStore,
+  hasBillingProducts,
 } from '../../billing';
 import { SUPPORTED_LANGUAGES, SupportedLanguage, t, useI18n } from '../../i18n';
 import { REFERRAL_AMOUNTS, displayNameOf } from '../../lib/format';
@@ -58,8 +58,6 @@ export default function ProfileScreen() {
   const gemBalance = (user as any)?.credits ?? user?.creditBalance ?? 0;
   const vipProductId = user?.vip?.productId ?? null;
   const yearlyId = getBillingConfig().yearlyId;
-  // Chỉ có nút khi bấm được: gói VIP đang hoạt động, hoặc billing đã bật để mở paywall
-  const showVipCard = isVip || billingEnabled;
   const canUpgradeToYearly =
     isVip && billingEnabled && vipProductId !== yearlyId && Boolean(products[yearlyId]);
   // §5.6: chỉ người dùng vùng GDPR mới có form đổi lựa chọn quyền riêng tư quảng cáo
@@ -248,7 +246,6 @@ export default function ProfileScreen() {
         </LinearGradient>
 
         {/* VIP Status or Upgrade Banner */}
-        {showVipCard ? (
         <LinearGradient
           colors={
             isVip
@@ -287,7 +284,6 @@ export default function ProfileScreen() {
           ) : null}
           {isVip && manageVipFailed ? <Banner variant="error" title={t('profile.manageVipFailed')} /> : null}
         </LinearGradient>
-        ) : null}
 
         {/* Resources & Connections */}
         <View style={{ gap: spacing.sm }}>
@@ -301,7 +297,7 @@ export default function ProfileScreen() {
                 haptic.select();
                 if (user?.vip?.active) {
                   router.push({ pathname: '/(tabs)/currency', params: { segment: 'wheel' } });
-                } else if (billingStore.getState().billingEnabled) {
+                } else if (hasBillingProducts()) {
                   void triggerPaywall('settings_currency_row');
                 } else {
                   router.push('/(tabs)/currency');

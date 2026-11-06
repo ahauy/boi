@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { File } from 'expo-file-system';
 import { ReadingStatus, type HandOrientation, type ReadingDto, type ReadingListResponseDto, type ReadingSchool } from '@palmsight/shared';
 import { del, get, upload } from './api';
+import { getLanguage } from '../i18n';
 
 /**
  * Ảnh đã chụp/chọn trên máy. `uri` là đường dẫn native, không phải nội dung ảnh.
@@ -45,6 +46,7 @@ export function createReading({ school, hand, topics, aiConsent, image, idempote
   form.append('school', school);
   form.append('hand', hand);
   form.append('aiConsent', String(aiConsent));
+  form.append('language', getLanguage());
   if (topics.length > 0) form.append('topics', topics.join(','));
   form.append('image', toUploadPart(image));
 

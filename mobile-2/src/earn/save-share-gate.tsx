@@ -9,7 +9,6 @@ import { Button } from '../components/ui';
 import { isRewardedReady, rewardedAvailable } from '../ads/ads-service';
 import { watchForAction } from '../ads/rewarded';
 import { registerOpenSheet, triggerPaywall } from '../premium/paywall-triggers';
-import { useBillingStore } from '../billing';
 import { useAuth } from '../state/auth';
 import { useI18n } from '../i18n';
 import { colors, radius, shadow, spacing, text as type } from '../theme';
@@ -25,7 +24,6 @@ export interface SaveShareGateProps {
 
 export function SaveShareGate({ visible, onClose, onProceed }: SaveShareGateProps) {
   const { user } = useAuth();
-  const { billingEnabled } = useBillingStore();
   const { t } = useI18n();
   const isVip = Boolean(user?.vip?.active);
 
@@ -126,7 +124,11 @@ export function SaveShareGate({ visible, onClose, onProceed }: SaveShareGateProp
 
   function handleGetVip() {
     haptic.select();
-    handleClose();
+    // Giữ gate mở để còn thao tác lưu/chia sẻ sau khi đóng paywall, nhưng dừng chờ:
+    // đếm ngược về 0 không được chạy onProceed, và quảng cáo nạp muộn không được đè paywall.
+    attemptActiveRef.current = false;
+    setWaitingAd(false);
+    setAdBusy(false);
     void triggerPaywall('no_ad_wait_sheet');
   }
 
@@ -151,15 +153,13 @@ export function SaveShareGate({ visible, onClose, onProceed }: SaveShareGateProp
                 <Text style={[type.headingSm, { color: colors.ink, textAlign: 'center' }]}>
                   {t('earn.actionGate.waitTitle', { seconds: secondsLeft })}
                 </Text>
-                {billingEnabled ? (
-                  <Button
-                    label={t('earn.notEnough.getVip')}
-                    variant="outline"
-                    onPress={handleGetVip}
-                    noInterstitial
-                    icon={<MaterialCommunityIcons name="crown-outline" size={16} color={colors.goldLight} />}
-                  />
-                ) : null}
+                <Button
+                  label={t('earn.notEnough.getVip')}
+                  variant="outline"
+                  onPress={handleGetVip}
+                  noInterstitial
+                  icon={<MaterialCommunityIcons name="crown-outline" size={16} color={colors.goldLight} />}
+                />
               </View>
             ) : (
               <>

@@ -25,7 +25,9 @@ import {
   initializeBilling,
   purchaseNoticeKey,
   purchaseSubscription,
+  reloadProductsIfMissing,
   restoreNoticeKey,
+  restorePurchases,
   retryProductsOnForeground,
 } from './index';
 import {
@@ -33,6 +35,7 @@ import {
   closePaywallAfterSuccess,
   declinePaywall,
   handlePaywallForegroundReturn,
+  onPaywallDeclined,
   openPaywall,
   paywallStore,
   registerOpenSheet,
@@ -395,6 +398,106 @@ describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers
       expect(billingStore.getState().billingEnabled).toBe(true);
     });
 
+    it('initializeBilling single-flight: gọi đồng thời chỉ kết nối, nạp và reconcile một lần', async () => {
+      const initConnection = vi.fn(async () => true);
+      const getAvailablePurchases = vi.fn(async () => []);
+      fakeIap({ initConnection, getAvailablePurchases });
+
+      const [a, b] = await Promise.all([initializeBilling(), initializeBilling()]);
+
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+      expect(initConnection).toHaveBeenCalledTimes(1);
+      expect(getAvailablePurchases).toHaveBeenCalledTimes(1);
+
+      // Xong rồi thì lần sau chạy lại bình thường.
+      await initializeBilling();
+      expect(initConnection).toHaveBeenCalledTimes(2);
+    });
+
+    it('reloadProductsIfMissing không treo cả phiên khi SDK treo (timeout 15 giây)', async () => {
+      vi.useFakeTimers();
+      try {
+        fakeIap({ initConnection: vi.fn(() => new Promise<boolean>(() => undefined)) });
+        const reload = reloadProductsIfMissing();
+        await vi.advanceTimersByTimeAsync(15_000);
+        await expect(reload).resolves.toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('initializeBilling lỗi sau khi đã có gói thật thì không hạ billingEnabled', async () => {
+      billingStore.setProducts(yearlyProducts());
+      billingStore.setState({ billingEnabled: true });
+      fakeIap({ initConnection: vi.fn(async () => { throw new Error('boom'); }) });
+
+      await expect(initializeBilling()).resolves.toBe(false);
+
+      expect(billingStore.getState().billingEnabled).toBe(true);
+    });
+
+    it('restore: gói về muộn thì bật billing lại thay vì kẹt false cả phiên', async () => {
+      const fetchProducts = vi.fn(async () => [] as unknown[]);
+      fakeIap({ fetchProducts, getAvailablePurchases: vi.fn(async () => []) });
+      await initializeBilling();
+      expect(billingStore.getState().billingEnabled).toBe(false);
+
+      fetchProducts.mockResolvedValue([
+        subscriptionProduct('yearlyid', [
+          {
+            offerTokenAndroid: 'offer-yearly-base',
+            pricingPhasesAndroid: { pricingPhaseList: [phase('99000000', '$99.00', 'P1Y')] },
+          },
+        ]),
+      ]);
+      await restorePurchases();
+
+      expect(billingStore.getState().billingEnabled).toBe(true);
+    }, 10_000);
+
+    it('restore: Play không trả gói thì báo lỗi (restoreFailed), không báo "không có gì để khôi phục"', async () => {
+      const getAvailablePurchases = vi.fn(async () => []);
+      fakeIap({ fetchProducts: vi.fn(async () => []), getAvailablePurchases });
+      await initializeBilling();
+      getAvailablePurchases.mockClear();
+
+      const result = await restorePurchases();
+
+      expect(result).toMatchObject({ ok: false, error: 'Products unavailable' });
+      expect(restoreNoticeKey(result)).toBe('paywall.restoreFailed');
+      expect(getAvailablePurchases).not.toHaveBeenCalled();
+    }, 10_000);
+
+    it('đóng paywall giá mẫu (chưa có gói thật) không tính là từ chối và không gọi callback', async () => {
+      const declined = vi.fn();
+      const off = onPaywallDeclined(declined);
+      const closed = openPaywall('manual');
+      expect(paywallStore.getState().isOpen).toBe(true);
+
+      declinePaywall();
+      await closed;
+
+      expect(paywallStore.getState().isOpen).toBe(false);
+      expect(paywallStore.getState().declineCount).toBe(0);
+      expect(paywallStore.getState().isAdsUser).toBe(false);
+      expect(declined).not.toHaveBeenCalled();
+      off();
+    });
+
+    it('đóng paywall có gói thật vẫn tính là từ chối', async () => {
+      const declined = vi.fn();
+      const off = onPaywallDeclined(declined);
+      billingStore.setProducts(yearlyProducts());
+      void openPaywall('manual');
+
+      declinePaywall();
+
+      expect(paywallStore.getState().declineCount).toBe(1);
+      expect(declined).toHaveBeenCalledTimes(1);
+      off();
+    });
+
     it.each([
       [{ ok: false, error: 'Verification failed' }, 'paywall.purchaseFailed'],
       [{ ok: false, canceled: true, error: 'cancelled' }, null],
@@ -532,6 +635,7 @@ describe('Phase 7 & i18n: Multi-Language i18n, Mobile Billing & Paywall Triggers
     });
 
     it('marks device as ads user after 3 paywall declines and clears decline count when VIP becomes active', () => {
+      billingStore.setProducts(yearlyProducts()); // chỉ gói thật mới tính là từ chối
       syncPaywallVipState({ vipKnown: true, isVip: false });
       setCurrentPaywallRoute('/(tabs)');
 

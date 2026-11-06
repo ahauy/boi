@@ -20,6 +20,23 @@ export interface LifeAspectConfig {
   label: string;
 }
 
+/** Ngôn ngữ AI viết kết quả; tên tiếng Anh dùng trong prompt. Trùng danh sách ngôn ngữ của app. */
+export const READING_LANGUAGES = {
+  en: "English",
+  vi: "Vietnamese",
+  id: "Indonesian",
+  hi: "Hindi",
+  zh: "Simplified Chinese",
+  ru: "Russian",
+  ja: "Japanese",
+  pt: "Portuguese",
+  es: "Spanish",
+} as const;
+
+export type ReadingLanguage = keyof typeof READING_LANGUAGES;
+
+export const DEFAULT_READING_LANGUAGE: ReadingLanguage = "vi";
+
 export const READING_SCHOOLS: Record<ReadingSchool, ReadingSchoolConfig> = {
   [ReadingSchool.WESTERN]: {
     id: ReadingSchool.WESTERN,

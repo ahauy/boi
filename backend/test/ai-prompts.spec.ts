@@ -77,5 +77,45 @@ describe("US-AI-001: AI Prompts Quality & Completeness", () => {
     );
     expect(prompt).toContain('"aspects": {},');
   });
+
+  it("asks the AI to write in the requested language as the final instruction", () => {
+    const prompt = buildUserPrompt({
+      school: ReadingSchool.WESTERN,
+      hand: HandOrientation.LEFT,
+      topics: ["love"],
+      language: "ja",
+    });
+
+    expect(prompt).toContain("NGÔN NGỮ ĐẦU RA");
+    expect(prompt.slice(prompt.indexOf("NGÔN NGỮ ĐẦU RA"))).toContain("Japanese");
+    expect(prompt.indexOf("NGÔN NGỮ ĐẦU RA")).toBeGreaterThan(
+      prompt.indexOf("Schema JSON bắt buộc")
+    );
+  });
+
+  it("defaults to Vietnamese for app builds that send no language", () => {
+    const prompt = buildUserPrompt({
+      school: ReadingSchool.WESTERN,
+      hand: HandOrientation.LEFT,
+      topics: ["love"],
+    });
+
+    expect(prompt).toContain("Vietnamese");
+  });
+
+  it("no longer pins the output to Vietnamese anywhere else", () => {
+    const prompt = buildUserPrompt({
+      school: ReadingSchool.WESTERN,
+      hand: HandOrientation.LEFT,
+      topics: ["heartLine", "love"],
+      language: "en",
+    });
+
+    expect(COMMON_SYSTEM_PROMPT).not.toContain("viết bằng tiếng Việt");
+    expect(prompt).not.toContain("tiêu đề tiếng Việt");
+    expect(prompt).not.toContain(
+      '"disclaimer": "Kết quả mang tính giải trí'
+    );
+  });
 });
 

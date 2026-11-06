@@ -8,7 +8,6 @@ import Text from '../components/AppText';
 import { Button } from '../components/ui';
 import { restoreCheckin } from './earn-api';
 import { registerOpenSheet, triggerPaywall } from '../premium/paywall-triggers';
-import { useBillingStore } from '../billing';
 import { useAuth } from '../state/auth';
 import { useI18n } from '../i18n';
 import { colors, radius, shadow, spacing, text as type } from '../theme';
@@ -35,7 +34,6 @@ export function StreakRestoreModal({
   onGetVip,
 }: StreakRestoreModalProps) {
   const { user, setCreditBalance } = useAuth();
-  const { billingEnabled } = useBillingStore();
   const { t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +118,7 @@ export function StreakRestoreModal({
                   loading={loading}
                   noInterstitial
                 />
-              ) : billingEnabled ? (
+              ) : (
                 <Button
                   label={t('earn.restore.getVipBtn')}
                   onPress={handleGetVip}
@@ -128,7 +126,7 @@ export function StreakRestoreModal({
                   noInterstitial
                   icon={<MaterialCommunityIcons name="crown" size={18} color={colors.onGold} />}
                 />
-              ) : null}
+              )}
 
               <Button
                 label={t('earn.restore.startAgainBtn')}

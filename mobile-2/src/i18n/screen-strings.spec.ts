@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { LIFE_ASPECTS, READING_LANGUAGES, READING_SCHOOL_LIST } from '@palmsight/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { SCREEN_LANGUAGES, SCREEN_STRINGS } from './screen-strings';
 import { SUPPORTED_LANGUAGES, TRANSLATIONS } from './translations';
@@ -28,6 +29,23 @@ describe('screen strings (Playbook §9)', () => {
       expect(text.trim()).not.toBe('');
       expect(placeholders(text)).toEqual(placeholders(row[0]));
     }
+  });
+
+  it('names every school and topic, because those keys are built at runtime', () => {
+    const keys = READING_SCHOOL_LIST.flatMap((school) => [
+      `school.${school.id}.name`,
+      `school.${school.id}.description`,
+      `school.${school.id}.short`,
+      ...(school.handHint ? [`school.${school.id}.handHint`] : []),
+      ...school.sections.map((section) => `topic.${section.key}`),
+    ]);
+    keys.push(...LIFE_ASPECTS.map((aspect) => `topic.${aspect.key}`));
+
+    expect(keys.filter((key) => !SCREEN_STRINGS[key])).toEqual([]);
+  });
+
+  it('uses the same language list as the AI output', () => {
+    expect([...SCREEN_LANGUAGES].sort()).toEqual(Object.keys(READING_LANGUAGES).sort());
   });
 
   it('never promises unlimited use or no ads', () => {

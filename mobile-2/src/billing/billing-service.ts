@@ -65,7 +65,15 @@ let iapModuleOverride: IapSdk | null = null;
 let purchaseUpdateSubscription: { remove: () => void } | null = null;
 let purchaseErrorSubscription: { remove: () => void } | null = null;
 let appStateSubscriptionInstalled = false;
-let retryingProducts = false;
+let retryingSince = 0;
+let initPromise: Promise<boolean> | null = null;
+/** Một lần nạp gói treo quá lâu thì không được chặn các lần sau cả phiên. */
+const PRODUCT_RELOAD_TIMEOUT_MS = 15_000;
+const RETRY_STALE_MS = 30_000;
+
+function retryInFlight(): boolean {
+  return retryingSince > 0 && Date.now() - retryingSince < RETRY_STALE_MS;
+}
 let currentBillingRef: string | null = null;
 const verifiedListeners = new Set<VerifiedVipListener>();
 const pendingPurchaseResolvers = new Map<
@@ -491,7 +499,7 @@ export async function reconcilePurchases(): Promise<BillingVerifyResponseDto | n
   return latestVipResponse;
 }
 
-/** Prices only come from Play (§6.1): with none to show, the paywall stays closed. */
+/** Giá thật chỉ đến từ Play. billingEnabled=false nghĩa là chưa có gói thật: paywall không tự mở, màn thủ công hiện giá mẫu. */
 function enableBillingIfProductsLoaded(): boolean {
   const hasProducts = Object.keys(billingStore.getState().products).length > 0;
   billingStore.setState({ billingEnabled: hasProducts });
@@ -501,14 +509,39 @@ function enableBillingIfProductsLoaded(): boolean {
 /** A launch on a bad network must not cost the whole session: try again when the app returns. */
 export async function retryProductsOnForeground(): Promise<void> {
   const { connected, products } = billingStore.getState();
-  if (retryingProducts || !connected || Object.keys(products).length > 0) return;
+  if (initPromise || retryInFlight() || !connected || Object.keys(products).length > 0) return;
 
-  retryingProducts = true;
+  retryingSince = Date.now();
   try {
     await fetchBillingProductsWithRetry();
     if (enableBillingIfProductsLoaded()) await reconcilePurchases();
   } finally {
-    retryingProducts = false;
+    retryingSince = 0;
+  }
+}
+
+/**
+ * Paywall mở khi chưa có gói thật: nạp lại, kết nối lại nếu lần initConnection trước lỗi.
+ * Thứ tự giữ như initializeBilling: kết nối, nạp gói, gắn listener, reconcile.
+ */
+export async function reloadProductsIfMissing(): Promise<void> {
+  if (!isBillingConfigured()) return;
+  if (Object.keys(billingStore.getState().products).length > 0) return;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, PRODUCT_RELOAD_TIMEOUT_MS);
+  });
+  try {
+    if (initPromise) {
+      await Promise.race([initPromise.then(() => undefined, () => undefined), timeout]);
+    } else if (billingStore.getState().connected) {
+      await Promise.race([retryProductsOnForeground(), timeout]);
+    } else if (!retryInFlight()) {
+      await Promise.race([initializeBilling().then(() => undefined), timeout]);
+    }
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -539,7 +572,17 @@ function ensureForegroundReconcileListener(): void {
  * Playbook §6.5 Ordered Initialization:
  * Connect -> fetch products (retry after 1 s and 3 s) -> THEN attach purchase listener -> reconcile on launch.
  */
-export async function initializeBilling(): Promise<boolean> {
+export function initializeBilling(): Promise<boolean> {
+  // Single-flight: khởi động và paywall cùng gọi thì chỉ chạy một lần (tránh verify trùng token).
+  if (initPromise) return initPromise;
+  const run = runInitializeBilling().finally(() => {
+    if (initPromise === run) initPromise = null;
+  });
+  initPromise = run;
+  return run;
+}
+
+async function runInitializeBilling(): Promise<boolean> {
   if (!isBillingConfigured()) {
     return false;
   }
@@ -572,7 +615,11 @@ export async function initializeBilling(): Promise<boolean> {
     return enableBillingIfProductsLoaded();
   } catch (err) {
     if (isDev()) console.warn('[BillingService] initConnection failed:', err);
-    billingStore.setState({ connected: false, billingEnabled: false });
+    // Đã có gói thật thì giữ billingEnabled, tránh lệch với các màn quyết định theo products.
+    billingStore.setState({
+      connected: false,
+      billingEnabled: Object.keys(billingStore.getState().products).length > 0,
+    });
     return false;
   }
 }
@@ -659,6 +706,11 @@ export async function restorePurchases(): Promise<PurchaseResult> {
   try {
     if (Object.keys(billingStore.getState().products).length === 0) {
       await fetchBillingProductsWithRetry();
+      if (billingStore.getState().connected) enableBillingIfProductsLoaded();
+    }
+    // Không biết giá thì không xác minh được: báo lỗi chứ đừng báo "không có gì để khôi phục".
+    if (Object.keys(billingStore.getState().products).length === 0) {
+      return { ok: false, error: 'Products unavailable' };
     }
     const vipResponse = await reconcilePurchases();
     if (vipResponse && vipResponse.vip.active) {
@@ -732,6 +784,11 @@ export async function purchaseSubscription(
     if (!product) {
       const loaded = await fetchBillingProductsWithRetry();
       product = loaded[productId];
+    }
+
+    // Giá mẫu của paywall (mock-products) không nằm trong store: không có gói thật thì không bán.
+    if (!product) {
+      return { ok: false, error: 'Product unavailable' };
     }
 
     const useTrial = Boolean(options?.useTrialOffer && product?.trialOfferToken);
@@ -810,5 +867,7 @@ export function resetBillingServiceForTesting(): void {
   purchaseErrorSubscription = null;
   pendingPurchaseResolvers.clear();
   currentBillingRef = null;
+  retryingSince = 0;
+  initPromise = null;
   billingStore.reset();
 }

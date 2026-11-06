@@ -127,7 +127,8 @@ describe('Profile copy and debug-only rows', () => {
       'profile.adPrivacyFailed',
       'profile.manageVipFailed',
       'profile.vipUpgradeYearly',
-      'setup.vipUnavailable',
+      'paywall.previewNotice',
+      'paywall.unavailableNotice',
     ]) {
       expect(SCREEN_STRINGS[key], key).toHaveLength(SCREEN_LANGUAGES.length);
     }

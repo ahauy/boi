@@ -1,8 +1,9 @@
-import { t } from '../i18n';
+import { SCREEN_STRINGS, t } from '../i18n';
 import {
   CREDIT_AMOUNTS,
   CreditTransactionType,
   HandOrientation,
+  READING_SCHOOLS,
   ReadingSchool,
   getAllSchoolTopics,
   getTopicLabel,
@@ -18,24 +19,40 @@ export function formatDateTime(value: string | null | undefined): string {
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export const SCHOOL_SHORT_LABEL: Record<ReadingSchool, string> = {
-  [ReadingSchool.WESTERN]: 'TÂY',
-  [ReadingSchool.EASTERN]: 'ĐÔNG',
-  [ReadingSchool.VEDIC]: 'ẤN',
-};
+export function schoolName(school: ReadingSchool): string {
+  return SCREEN_STRINGS[`school.${school}.name`] ? t(`school.${school}.name`) : (READING_SCHOOLS[school]?.name ?? school);
+}
+
+export function schoolDescription(school: ReadingSchool): string {
+  return t(`school.${school}.description`);
+}
+
+export function schoolShortLabel(school: ReadingSchool): string {
+  return t(`school.${school}.short`);
+}
+
+/** Chỉ trường phái có `handHint` trong `shared` mới có gợi ý chọn tay. */
+export function schoolHandHint(school: ReadingSchool): string | null {
+  return READING_SCHOOLS[school]?.handHint ? t(`school.${school}.handHint`) : null;
+}
 
 export function handLabel(hand: HandOrientation): string {
-  return hand === HandOrientation.LEFT ? 'Tay trái' : 'Tay phải';
+  return t(hand === HandOrientation.LEFT ? 'hand.left' : 'hand.right');
 }
 
 export function topicsLabel(topics: string[] | null | undefined, school: ReadingSchool): string {
   const count = topics?.length ?? 0;
-  if (count === 0 || count >= getAllSchoolTopics(school).length) return 'Toàn bộ';
-  return `${count} mục`;
+  if (count === 0 || count >= getAllSchoolTopics(school).length) return t('topics.all');
+  return t('topics.count', { count });
+}
+
+/** Key lạ (ví dụ quẻ cũ) rơi về nhãn trong `shared`, rồi tới chính key đó. */
+export function topicLabel(key: string, school: ReadingSchool): string {
+  return SCREEN_STRINGS[`topic.${key}`] ? t(`topic.${key}`) : getTopicLabel(key, school);
 }
 
 export function topicLabels(topics: string[] | null | undefined, school: ReadingSchool): string[] {
-  return (topics ?? []).map((key) => getTopicLabel(key, school));
+  return (topics ?? []).map((key) => topicLabel(key, school));
 }
 
 export function transactionLabel(type: CreditTransactionType, note?: string): string {

@@ -4,14 +4,14 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { triggerOpenHistoryResult } from '../ads/interstitial-triggers';
-import { READING_SCHOOLS, ReadingStatus, type ReadingListItemDto } from '@palmsight/shared';
+import { ReadingStatus, type ReadingListItemDto } from '@palmsight/shared';
 
 import Text from './AppText';
 import { StatusPill } from './ui';
 import { colors, font, radius, spacing, text as type } from '../theme';
-import { t } from '../i18n';
+import { t, useI18n } from '../i18n';
 import { haptic } from '../lib/haptics';
-import { formatDateTime, handLabel, SCHOOL_SHORT_LABEL, topicsLabel } from '../lib/format';
+import { formatDateTime, handLabel, schoolName, schoolShortLabel, topicsLabel } from '../lib/format';
 
 const STATUS_LABEL: Record<ReadingStatus, string> = {
   [ReadingStatus.DONE]: 'status.done',
@@ -21,13 +21,15 @@ const STATUS_LABEL: Record<ReadingStatus, string> = {
 };
 
 function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; compact?: boolean }) {
+  // React.memo không biết ngôn ngữ đổi nếu thẻ không tự đăng ký.
+  useI18n();
   const thumbnail = item.annotatedImageUrl ?? item.imageUrl;
   const createdDate = formatDateTime(item.createdAt).split(' ')[0];
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={t('card.a11y', { school: READING_SCHOOLS[item.school]?.name ?? item.school, date: formatDateTime(item.createdAt), status: t(STATUS_LABEL[item.status]) })}
+      accessibilityLabel={t('card.a11y', { school: schoolName(item.school), date: formatDateTime(item.createdAt), status: t(STATUS_LABEL[item.status]) })}
       android_ripple={{ color: 'rgba(231,199,119,0.1)', foreground: true }}
       onPress={() => {
         haptic.select();
@@ -72,7 +74,7 @@ function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; comp
           ) : (
             <View style={{ alignItems: 'center', gap: 3 }}>
               <Text style={{ fontFamily: font.display, fontSize: 26, color: colors.gold }}>✦</Text>
-              <Text style={[type.code, { color: colors.goldLight, fontSize: 10 }]}>{SCHOOL_SHORT_LABEL[item.school]}</Text>
+              <Text style={[type.code, { color: colors.goldLight, fontSize: 10 }]}>{schoolShortLabel(item.school)}</Text>
             </View>
           )}
           <LinearGradient
@@ -85,7 +87,7 @@ function ReadingCard({ item, compact = false }: { item: ReadingListItemDto; comp
         <View style={{ flex: 1, gap: 3, paddingVertical: 2 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
             <Text numberOfLines={1} style={[type.captionStrong, { color: colors.goldLight, letterSpacing: 0.7, flexShrink: 1 }]}>
-              {READING_SCHOOLS[item.school]?.name ?? item.school}
+              {schoolName(item.school)}
             </Text>
             <Text numberOfLines={1} style={[type.code, { color: colors.stone, fontSize: 10.5 }]}>{createdDate}</Text>
           </View>
