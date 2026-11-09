@@ -71,6 +71,12 @@
         "EXPO_PUBLIC_ADS_MOCK": "false",
         "EXPO_PUBLIC_WEB_URL": "https://boi-two-delta.vercel.app"
       }
+    },
+    "production-apk": {
+      "extends": "production",
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
