@@ -1,0 +1,11 @@
+# Ghim đúng bộ phiên bản đã chạy thử khớp với kết quả của bản thử nghiệm (tests/test_parity.py).
+# mediapipe 0.10.14 cần numpy < 2 và tự kéo opencv-contrib-python, protobuf < 5.
+numpy==1.26.4
+mediapipe==0.10.14
+opencv-contrib-python==4.11.0.86
+protobuf==4.25.9
+onnxruntime==1.19.2
+scikit-image==0.24.0
+scipy==1.13.1
+fastapi==0.115.6
+uvicorn==0.32.1

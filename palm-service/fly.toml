@@ -1,0 +1,37 @@
+# Fly.io cho palm-service. Deploy từ thư mục palm-service/:
+#   fly deploy
+# Token đặt bằng: fly secrets set PALM_SERVICE_TOKEN=<cùng giá trị với Render>
+app = "palmsight-palm-lines"
+primary_region = "sin"   # cùng khu vực với backend trên Render (Singapore)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Không có request thì máy tự dừng để tiết kiệm; request đầu sau khi dừng chậm thêm vài giây.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  # Mỗi máy xử lý lần lượt từng ảnh (khoảng 0,7 giây); quá ngưỡng thì Fly mở thêm máy nếu có.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 4
+    hard_limit = 8
+
+  [[http_service.checks]]
+    grace_period = "60s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

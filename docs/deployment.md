@@ -11,6 +11,7 @@ Giới hạn của các gói miễn phí thay đổi theo thời gian; kiểm tr
 | Database | MongoDB Atlas | Cần replica set (transaction). `backend/.env` đang dùng chung database thật; tách database dev trước khi ra mắt |
 | Ảnh | Cloudinary | Chỉ lưu ảnh của lần xem thành công và ảnh đại diện |
 | AI | Gemini (chính), Groq (dự phòng) | Giới hạn theo gói API |
+| Vẽ đường chỉ tay | `palm-service/` (Docker), [ĐIỀN: nơi host] | Cần 1 GB RAM (đỉnh đo được khoảng 460 MB). Model tải từ R2 lúc build, kiểm SHA-256. Tắt được bằng cách để trống `PALM_SERVICE_URL`. Xem [palm-service/README.md](../palm-service/README.md) |
 | Trang chính sách | Vercel, project mới với Root Directory `legal/`, Framework Preset Other | Hiện chạy ở `https://boi-two-delta.vercel.app`; `legal/vercel.json` bật `cleanUrls` và rewrite `/r/:code` sang `/referral`. Không phục vụ API |
 | Xác minh VIP | Google Play Developer API (service account) và Pub/Sub RTDN | Webhook `POST /api/v1/billing/rtdn?token=<RTDN_PUSH_TOKEN>` |
 
@@ -27,6 +28,7 @@ Danh sách đầy đủ và chú thích: `backend/.env.example`; khai báo cho R
 | Bí mật | `JWT_ACCESS_SECRET`, `JWT_ACCESS_TTL_SECONDS`, `REFRESH_TOKEN_TTL_DAYS`, `IDENTITY_HASH_SECRET` (bắt buộc ở production; đổi sẽ làm mất khả năng khớp mã băm cũ) |
 | AI | `AI_PROVIDER`, `AI_MODEL`, `GEMINI_API_KEY`, `AI_FALLBACK_PROVIDER`, `AI_FALLBACK_MODEL`, `AI_BASE_URL`, `GROQ_API_KEY`, `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` |
 | Ảnh | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `CLOUDINARY_FOLDER`, `CLOUDINARY_AVATAR_FOLDER` |
+| Vẽ đường chỉ tay | `PALM_SERVICE_URL`, `PALM_SERVICE_TOKEN` (cùng giá trị với biến của palm-service), `PALM_SERVICE_TIMEOUT_MS` |
 | Kinh tế | `STARTER_GRANT`, `PRICE_PER_ACTION`, `REFERRAL_DAILY_CAP`, `REFERRAL_NETWORK_DAILY_CAP`, `REWARDED_ADS_ENABLED`, `MIN_AD_WATCH_SECONDS`, … (mặc định nằm trong `shared`) |
 | VIP | `GOOGLE_PLAY_PACKAGE_NAME`, `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `RTDN_PUSH_TOKEN`, `SUB_WEEKLY_ID`, `SUB_MONTHLY_ID`, `SUB_YEARLY_ID`, `ENFORCE_VIP_SCHOOLS` |
 

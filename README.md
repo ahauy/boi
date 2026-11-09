@@ -22,7 +22,7 @@
 | App | Expo / React Native (Android), expo-router, AppLovin MAX, Adjust, Firebase, react-native-iap |
 | Backend | NestJS 11 (Node 22), Mongoose, MongoDB 7 |
 | Dùng chung | `shared/`: DTO, enum, hằng số kinh tế, schema Yup |
-| AI | Google Gemini (chính), Groq (dự phòng) |
+| AI | Google Gemini (chính), Groq (dự phòng); vẽ đường chỉ tay bằng `palm-service` (MediaPipe + ONNX) |
 | Ảnh | `sharp` xoá EXIF trong bộ nhớ, lưu ảnh của lần xem thành công trên Cloudinary |
 | Trang chính sách | HTML tĩnh trong `legal/`, phát hành trên Vercel |
 | Deploy backend | Render (`render.yaml`, service `boi-qvgy`), MongoDB Atlas |
@@ -64,6 +64,7 @@ palmsight/
 ├─ backend/    # NestJS API, scripts vận hành (users:delete, db:check, credits:reconcile)
 ├─ mobile-2/   # app Android (Expo)
 ├─ shared/     # @palmsight/shared
+├─ palm-service/ # Python: MediaPipe + model ONNX vẽ đường chỉ tay (không thuộc pnpm workspace)
 ├─ legal/      # trang chính sách tĩnh cho Vercel
 ├─ docs/       # tài liệu
 ├─ render.yaml · docker-compose.yml · Dockerfile
