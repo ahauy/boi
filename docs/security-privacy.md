@@ -21,6 +21,7 @@ Tài liệu kỹ thuật cho nhóm làm việc. Văn bản công khai nằm ở 
 
 - Ảnh được xử lý trong bộ nhớ (`multer memoryStorage` + `sharp`): đổi HEIC sang JPEG, xoay theo EXIF, xoá toàn bộ EXIF kể cả GPS, thu nhỏ cạnh dài 1280 px, JPEG chất lượng 85. Không ghi ra đĩa máy chủ.
 - Ảnh gửi cho Gemini hoặc Groq ở dạng base64. [XÁC NHẬN: điều khoản huấn luyện mô hình theo gói API đang dùng.]
+- Cùng ảnh đó (đã xoá EXIF) được gửi tới `palm-service` để vẽ đường chỉ tay, có token dùng chung (`PALM_SERVICE_TOKEN`). Dịch vụ xử lý trong bộ nhớ, không ghi ảnh ra đĩa hay vào log. Nhà cung cấp host dịch vụ này là một bên xử lý ảnh mới, cần thêm vào trang chính sách.
 - Chỉ ảnh của lần xem thành công (AI xác nhận là lòng bàn tay) được tải lên Cloudinary. Ảnh bị từ chối hoặc lỗi không được lưu. Ảnh trên Cloudinary hiện là URL công khai khó đoán; chưa chuyển sang chế độ truy cập có chữ ký (cần chủ app quyết).
 - Ở production, nếu Cloudinary lỗi, lần xem vẫn hoàn tất nhưng không có ảnh. Ở dev, ảnh rơi về base64 trong DB.
 - Xoá lần xem hoặc tài khoản: xoá ảnh trên Cloudinary trước, lỗi thì dừng và báo để thử lại. Một lần xem còn đang `PROCESSING` khi tài khoản bị xoá sẽ không ghi kết quả hay ảnh vào bản ghi đã xoá, và ảnh vừa tải lên bị dọn.

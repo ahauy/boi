@@ -33,14 +33,25 @@ export class ImageProcessorService {
       });
     }
 
-    if (file.size > MAX_IMAGE_SIZE || file.buffer.length > MAX_IMAGE_SIZE) {
+    return this.validateAndProcessBuffer(
+      file.buffer,
+      Math.max(file.size || 0, file.buffer.length)
+    );
+  }
+
+  /** Như validateAndProcess nhưng nhận thẳng Buffer (ví dụ ảnh đã vẽ do palm-service trả về). */
+  async validateAndProcessBuffer(
+    buffer: Buffer,
+    declaredSize: number = buffer.length
+  ): Promise<ProcessedImageResult> {
+    if (declaredSize > MAX_IMAGE_SIZE || buffer.length > MAX_IMAGE_SIZE) {
       throw new HttpException(
         {
           code: "IMAGE_TOO_LARGE",
           message: "Dung lượng ảnh vượt quá giới hạn 8MB.",
           details: {
             maxSize: MAX_IMAGE_SIZE,
-            actualSize: file.size || file.buffer.length,
+            actualSize: declaredSize || buffer.length,
           },
         },
         HttpStatus.PAYLOAD_TOO_LARGE
@@ -50,7 +61,7 @@ export class ImageProcessorService {
     // Inspect real format from image buffer (magic bytes inspection by sharp)
     let metadata: Metadata;
     try {
-      metadata = await sharp(file.buffer).metadata();
+      metadata = await sharp(buffer).metadata();
     } catch {
       throw new HttpException(
         {
@@ -78,7 +89,7 @@ export class ImageProcessorService {
     // 2. Resize longest dimension to max 1280px
     // 3. Strip all EXIF / metadata
     // 4. Compress to JPEG quality 85
-    const processedBuffer = await sharp(file.buffer)
+    const processedBuffer = await sharp(buffer)
       .rotate()
       .resize({
         width: 1280,

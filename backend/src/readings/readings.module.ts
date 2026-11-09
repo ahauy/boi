@@ -5,6 +5,7 @@ import { User, UserSchema } from "../schemas/user.schema";
 import { AuthModule } from "../auth/auth.module";
 import { CreditsModule } from "../credits/credits.module";
 import { AiModule } from "../ai/ai.module";
+import { PalmLinesModule } from "../palm-lines/palm-lines.module";
 import { ImageProcessorService } from "./image-processor.service";
 import { CloudinaryService } from "./cloudinary.service";
 import { ReadingsService } from "./readings.service";
@@ -16,6 +17,7 @@ import { UserRateLimitGuard } from "../auth/guards/user-rate-limit.guard";
     AuthModule,
     CreditsModule,
     AiModule,
+    PalmLinesModule,
     MongooseModule.forFeature([
       { name: Reading.name, schema: ReadingSchema },
       { name: User.name, schema: UserSchema },

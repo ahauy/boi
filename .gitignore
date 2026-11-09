@@ -27,6 +27,17 @@ pnpm-debug.log*
 # Nhat ky quyet dinh duoc phai commit, khong phai log chay cua cong cu
 !rewarded-ads-roadmap.log
 
+# Model AI: không commit, palm-service tải lúc build (xem palm-service/README.md)
+*.onnx
+*.pt
+
+# Python (palm-service)
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+palm-service/parity_out/
+
 # Local data
 docker-data/
 *.sqlite

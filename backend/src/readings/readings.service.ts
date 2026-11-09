@@ -32,6 +32,10 @@ import { ImageProcessorService } from "./image-processor.service";
 import { CloudinaryService } from "./cloudinary.service";
 import { AiService } from "../ai/ai.service";
 import {
+  PalmLinesAnalysis,
+  PalmLinesService,
+} from "../palm-lines/palm-lines.service";
+import {
   STUCK_TIMEOUT_MS,
   resolveObjectId,
   assertValidIdempotencyKey,
@@ -58,7 +62,8 @@ export class ReadingsService {
     private readonly imageProcessorService: ImageProcessorService,
     private readonly aiService: AiService,
     @Optional() cloudinaryService?: CloudinaryService,
-    @Optional() private readonly configService?: ConfigService
+    @Optional() private readonly configService?: ConfigService,
+    @Optional() private readonly palmLinesService?: PalmLinesService
   ) {
     this.cloudinary = cloudinaryService ?? new CloudinaryService();
   }
@@ -83,10 +88,14 @@ export class ReadingsService {
     return raw !== false && raw !== "false";
   }
 
+  /**
+   * `annotated` là ảnh đã vẽ đường chỉ tay: Buffer do palm-service trả về, hoặc file client gửi.
+   * Ảnh đã vẽ lỗi thì bỏ qua, không làm hỏng lần xem.
+   */
   private async uploadReadingAssets(
     readingId: Types.ObjectId,
     mainBuffer: Buffer,
-    annotatedFile?: Express.Multer.File
+    annotated?: Express.Multer.File | Buffer | null
   ): Promise<{
     imageUrl: string | null;
     imagePublicId: string | null;
@@ -98,10 +107,11 @@ export class ReadingsService {
     });
 
     let annotatedUploaded: { url: string; publicId: string } | null = null;
-    if (annotatedFile) {
+    if (annotated) {
       try {
-        const processedAnnotated =
-          await this.imageProcessorService.validateAndProcess(annotatedFile);
+        const processedAnnotated = Buffer.isBuffer(annotated)
+          ? await this.imageProcessorService.validateAndProcessBuffer(annotated)
+          : await this.imageProcessorService.validateAndProcess(annotated);
         annotatedUploaded = await this.cloudinary.uploadImage(
           processedAnnotated.buffer,
           {
@@ -277,6 +287,15 @@ export class ReadingsService {
       await session.endSession();
     }
 
+    // Vẽ đường chỉ tay chạy song song với AI, trên cùng ảnh AI đọc. Promise này không bao giờ
+    // reject (PalmLinesService tự nuốt lỗi, `.catch` chỉ để chắc chắn), nên lỗi palm-service không
+    // thể rơi vào nhánh hoàn GEM phía dưới. Nhánh AI lỗi hay từ chối ảnh thì bỏ kết quả này.
+    const palmAnalysis: Promise<PalmLinesAnalysis | null> = this.palmLinesService
+      ? this.palmLinesService
+          .analyze(processedImage.buffer)
+          .catch(() => null)
+      : Promise.resolve(null);
+
     const start = Date.now();
     try {
       const { result, provider, model } = await this.aiService.readPalm(
@@ -335,10 +354,16 @@ export class ReadingsService {
         throw this.readingDeletedError();
       }
 
+      // Kết quả do server vẽ được ưu tiên hơn đường và ảnh client tự gửi.
+      const palm = await palmAnalysis;
+      if (palm?.lines.length) {
+        palmLines = palm.lines;
+      }
+
       const uploadedAssets = await this.uploadReadingAssets(
         readingId,
         processedImage.buffer,
-        annotatedFile
+        palm?.annotatedImage ?? annotatedFile
       );
 
       // `deletedAt: null` chặn ghi kết quả/ảnh vào bản ghi vừa bị xoá giữa chừng.

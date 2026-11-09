@@ -38,6 +38,13 @@ services:
         value: https://api.groq.com/openai/v1
       - key: GROQ_API_KEY
         sync: false
+      # palm-service (vẽ đường chỉ tay). Để trống PALM_SERVICE_URL là tắt.
+      - key: PALM_SERVICE_URL
+        sync: false
+      - key: PALM_SERVICE_TOKEN
+        sync: false
+      - key: PALM_SERVICE_TIMEOUT_MS
+        value: 20000
       - key: AI_TIMEOUT_MS
         value: 40000
       - key: AI_MAX_TOKENS

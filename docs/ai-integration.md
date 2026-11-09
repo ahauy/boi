@@ -1,13 +1,23 @@
 # ai-integration — Tích hợp AI (luận giải bằng LLM)
 
-PalmSight dùng **một** mô hình AI ở backend: Google Gemini (chính) và Groq (dự phòng) đọc ảnh lòng bàn tay và viết bài luận giải theo trường phái và các mục người dùng chọn.
-
-> **Vẽ đường chỉ tay bằng ONNX không còn trong repo.** Pipeline cũ (MediaPipe Hands, OpenCV/Canvas, `palm_lines.onnx`) chạy trong bản web đã bỏ. App Android không tạo `palmLines` hay ảnh vẽ; `POST /readings` vẫn nhận `annotatedImage` tuỳ chọn và `readings` vẫn có trường `palmLines`, `annotatedImageUrl` cho dữ liệu cũ. Các mô tả về ONNX trong tài liệu cũ (ADR, backlog) chỉ là lịch sử; thư mục `docs/adr/` không có trong repo.
+PalmSight dùng hai thành phần AI ở backend: Google Gemini (chính) và Groq (dự phòng) đọc ảnh lòng bàn tay và viết bài luận giải; dịch vụ `palm-service` (MediaPipe + model ONNX tự train) vẽ đường chỉ tay.
 
 | Thành phần | Vai trò |
 | --- | --- |
 | Google Gemini API — chính | Model vision đọc ảnh và viết bài luận giải (`AI_MODEL`) |
 | Groq — dự phòng | Fallback khi Gemini hết quota hoặc lỗi (`AI_FALLBACK_*`, API tương thích OpenAI) |
+| `palm-service` (Python) — tuỳ chọn | Cắt, xoay thẳng lòng bàn tay, tìm và đặt tên 3 đường chính, trả `palmLines` và ảnh đã vẽ (`PALM_SERVICE_*`) |
+
+## Vẽ đường chỉ tay (palm-service)
+
+Chi tiết dịch vụ, API và cách đổi model: [palm-service/README.md](../palm-service/README.md).
+
+- `ReadingsService.createReading` gọi `PalmLinesService.analyze` **song song** với Gemini, trên cùng ảnh đã qua `sharp` mà Gemini đọc.
+- `PalmLinesService` không bao giờ ném lỗi: thiếu `PALM_SERVICE_URL`/`PALM_SERVICE_TOKEN` (tắt), quá `PALM_SERVICE_TIMEOUT_MS` (mặc định 20 000), lỗi mạng hay dữ liệu lạ đều trả `null`. Lần xem vẫn `DONE` bằng kết quả AI, không hoàn GEM, chỉ thiếu ảnh đã vẽ.
+- Chỉ dùng kết quả khi AI xác nhận `isPalm: true`. Ảnh đã vẽ đi qua `sharp` lần nữa rồi lên Cloudinary với public id `reading_<id>_lines` (`annotatedImageUrl`), nên xoá lần xem và xoá tài khoản dọn được như ảnh vẽ cũ.
+- Kết quả của server được ưu tiên hơn `palmLines`/`annotatedImage` client tự gửi. `palmLines` từ dịch vụ vẫn đi qua `parsePalmLinesInput`.
+- Toạ độ `points` chuẩn hoá theo **ảnh đã cắt 512×512** (`annotatedImageUrl`), không theo `imageUrl`.
+- Chưa đưa `palmLines` vào prompt của Gemini (sẽ phải chờ palm-service xong mới gọi AI) và chưa dùng nhãn trái/phải của MediaPipe để từ chối ảnh: nhãn của MediaPipe bản legacy ngược với tay thật trên ảnh camera sau.
 
 ---
 
@@ -38,7 +48,7 @@ CLOUDINARY_FOLDER=palmsight/readings
 **Tiền xử lý ảnh & Lưu trữ**:
 - Chuyển HEIC → JPEG, xoay theo EXIF rồi **xoá toàn bộ EXIF (có GPS)** bằng `sharp` trong bộ nhớ, resize cạnh dài tối đa 1280 px, JPEG quality 85.
 - Gửi ảnh dạng base64 data URL cho Gemini/Groq để nhận bài luận giải `PalmResult`.
-- Khi `result.isPalm === true`, upload ảnh lòng bàn tay (đã xóa EXIF) lên **Cloudinary** (và ảnh vẽ nếu client gửi `annotatedImage`), lưu `imageUrl`, `imagePublicId`, kết quả vào document `readings`. Ảnh bị từ chối hoặc lỗi không được lưu; ở production, Cloudinary lỗi thì lần xem hoàn tất nhưng không có ảnh.
+- Khi `result.isPalm === true`, upload ảnh lòng bàn tay (đã xóa EXIF) lên **Cloudinary** (và ảnh đã vẽ của palm-service, hoặc `annotatedImage` client gửi), lưu `imageUrl`, `imagePublicId`, kết quả vào document `readings`. Ảnh bị từ chối hoặc lỗi không được lưu; ở production, Cloudinary lỗi thì lần xem hoàn tất nhưng không có ảnh.
 
 ## Trường phái bói
 
@@ -179,12 +189,12 @@ Backend đảm bảo kết quả luận giải từ AI được kiểm tra qua `
 | `summary` | string | ≤ 300 ký tự |
 | mọi chuỗi khác | string | ≤ 800 ký tự |
 
-**Cấu trúc một phần tử trong `palmLines` (trường tuỳ chọn, dữ liệu cũ từ bản web; app Android hiện không tạo)**:
+**Cấu trúc một phần tử trong `palmLines` (trường tuỳ chọn, do palm-service tạo; dữ liệu cũ từ bản web cũng có dạng này)**:
 
 | Trường | Kiểu | Mô tả |
 | --- | --- | --- |
 | `name` | `"life"` \| `"head"` \| `"heart"` \| `"other"` | Tên đường chỉ tay được phân loại theo giải phẫu |
-| `points` | `[number, number][]` | Mảng tọa độ `[x, y]` (chuẩn hóa `0..1` hoặc trên khung `512×512`) dọc theo đường chỉ tay để vẽ polyline |
+| `points` | `[number, number][]` | Mảng tọa độ `[x, y]` chuẩn hoá `0..1` theo ảnh đã cắt (`annotatedImageUrl`), dọc theo nhánh dài nhất của đường, tối đa 128 điểm |
 | `lengthRel` | `number` | Độ dài tương đối so với chiều dài lòng bàn tay (`fr.h`) |
 | `curvature` | `number` | Độ cong (`>= 1.0`, `1.0` là thẳng) |
 | `branches` | `number` | Số nhánh tạo nên đường chỉ tay |
