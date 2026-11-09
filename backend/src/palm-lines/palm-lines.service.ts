@@ -11,6 +11,29 @@ export interface PalmLinesAnalysis {
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const MAX_ANNOTATED_BYTES = 8 * 1024 * 1024;
+/** Proxy của Fly trả 502/503 hoặc ngắt kết nối khi máy đang bật dở: đợi một chút rồi gửi lại. */
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+const MAX_ATTEMPTS = 2;
+const RETRY_DELAY_MS = 1_500;
+
+class RetryableError extends Error {
+  override name = "RetryableError";
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 /**
  * Gọi dịch vụ palm-service (Python: MediaPipe + model ONNX) để vẽ đường chỉ tay.
@@ -49,19 +72,36 @@ export class PalmLinesService {
     if (!this.isEnabled() || !image?.length) return null;
 
     const started = Date.now();
+    // Một mốc hết giờ chung cho mọi lần thử, để tổng thời gian chờ không vượt PALM_SERVICE_TIMEOUT_MS.
+    const deadline = AbortSignal.timeout(this.timeoutMs());
     try {
-      const response = await fetch(`${this.baseUrl()}/v1/analyze`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.get("PALM_SERVICE_TOKEN")}`,
-          "Content-Type": "image/jpeg",
-        },
-        body: new Uint8Array(image),
-        signal: AbortSignal.timeout(this.timeoutMs()),
-      });
+      let response: Response | null = null;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          response = await fetch(`${this.baseUrl()}/v1/analyze`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${this.get("PALM_SERVICE_TOKEN")}`,
+              "Content-Type": "image/jpeg",
+            },
+            body: new Uint8Array(image),
+            signal: deadline,
+          });
+          if (!RETRYABLE_STATUS.has(response.status)) break;
+          throw new RetryableError(`HTTP ${response.status}`);
+        } catch (error) {
+          // Hết giờ thì dừng luôn. Lỗi mạng (fetch ném TypeError) hoặc 502/503/504 thì thử lại một lần.
+          const retryable = error instanceof RetryableError || error instanceof TypeError;
+          if (!retryable || deadline.aborted || attempt >= MAX_ATTEMPTS) throw error;
+          this.logger.warn(
+            `palm-service chưa sẵn sàng (${(error as Error).message}), thử lại lần ${attempt + 1}`
+          );
+          await sleep(RETRY_DELAY_MS, deadline);
+        }
+      }
 
-      if (!response.ok) {
-        this.logger.warn(`palm-service trả về ${response.status}`);
+      if (!response?.ok) {
+        this.logger.warn(`palm-service trả về ${response?.status}`);
         return null;
       }
 

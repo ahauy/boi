@@ -42,6 +42,7 @@ palm-service/parity_out/
 docker-data/
 *.sqlite
 uploads/
+image.png
 
 # Editor / OS
 .vscode/*

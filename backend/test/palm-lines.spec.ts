@@ -120,6 +120,46 @@ describe("PalmLinesService", () => {
     expect(await new PalmLinesService(enabled).analyze(image)).toBeNull();
   });
 
+  it("retries once when Fly's proxy answers 503 or drops the connection while the machine boots", async () => {
+    const slow = configWith({
+      PALM_SERVICE_URL: "https://palm.example.test",
+      PALM_SERVICE_TOKEN: "secret-token",
+      PALM_SERVICE_TIMEOUT_MS: "10000",
+    });
+    const ok = () => jsonResponse({ ok: true, lines: serviceLines, annotatedImage: null });
+
+    const after503 = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({}, 503))
+      .mockResolvedValueOnce(ok());
+    expect((await new PalmLinesService(slow).analyze(image))?.lines).toHaveLength(2);
+    expect(after503).toHaveBeenCalledTimes(2);
+    vi.restoreAllMocks();
+
+    const afterDrop = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(ok());
+    expect((await new PalmLinesService(slow).analyze(image))?.lines).toHaveLength(2);
+    expect(afterDrop).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry an ordinary HTTP error and gives up after the second 503", async () => {
+    const once500 = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({}, 500));
+    expect(await new PalmLinesService(enabled).analyze(image)).toBeNull();
+    expect(once500).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+
+    const slow = configWith({
+      PALM_SERVICE_URL: "https://palm.example.test",
+      PALM_SERVICE_TOKEN: "secret-token",
+      PALM_SERVICE_TIMEOUT_MS: "10000",
+    });
+    const always503 = vi.spyOn(globalThis, "fetch").mockImplementation(async () => jsonResponse({}, 503));
+    expect(await new PalmLinesService(slow).analyze(image)).toBeNull();
+    expect(always503).toHaveBeenCalledTimes(2);
+  });
+
   it("returns null when the body is not JSON", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>", { status: 200 }));
     expect(await new PalmLinesService(enabled).analyze(image)).toBeNull();

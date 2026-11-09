@@ -35,7 +35,7 @@ Kết quả thành công:
 
 - `points` là `[x, y]` chuẩn hoá 0-1 **theo ảnh đã cắt `annotatedImage`**, không theo ảnh gốc. Mỗi đường lấy nhánh dài nhất, tối đa 128 điểm.
 - `annotatedImage` chỉ vẽ 3 đường chính bằng màu (life xanh lá, head xanh dương, heart đỏ), không in tên đường vì app có 9 ngôn ngữ. Là `null` khi không tìm được đường chính nào.
-- Ảnh không dùng được trả HTTP 200 với `{"ok": false, "reason": ...}`. Mã lý do: `invalid_image`, `no_hand`, `low_confidence`, `back_of_hand`, `hand_too_small`.
+- Ảnh không dùng được trả HTTP 200 với `{"ok": false, "reason": ...}`. Mã lý do: `invalid_image`, `no_hand`, `back_of_hand`, `hand_too_small`. Khi MediaPipe không chắc đây là tay trái hay phải (điểm dưới 0,7), ảnh vẫn được vẽ nhưng bỏ qua bước kiểm tra mu bàn tay.
 - `hand.label` là nhãn thô của MediaPipe bản legacy. Bản này coi ảnh là ảnh selfie đã lật gương, nên với ảnh camera sau nhãn **ngược** với tay thật: `righthand.jpg` (tay phải) cho `Left`. Chỉ dùng để ghi log; đừng dùng nó để từ chối lần xem khi chưa kiểm chứng trên ảnh camera trước.
 
 Ảnh chỉ nằm trong bộ nhớ, không ghi ra đĩa và không ghi vào log.

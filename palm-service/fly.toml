@@ -13,8 +13,11 @@ primary_region = "sin"   # cùng khu vực với backend trên Render (Singapore
 [http_service]
   internal_port = 8000
   force_https = true
-  # Không có request thì máy tự dừng để tiết kiệm; request đầu sau khi dừng chậm thêm vài giây.
-  auto_stop_machines = "stop"
+  # Không có request thì máy tạm ngưng (suspend): giữ nguyên bộ nhớ, model vẫn nạp sẵn,
+  # nên request đầu tiên chỉ mất thêm dưới một giây để máy chạy tiếp.
+  # Không dùng "stop": khi máy dừng hẳn, khởi động lại mất khoảng 14 giây và proxy của Fly
+  # bỏ cuộc sau khoảng 8 giây, làm hỏng lượt quét đầu tiên.
+  auto_stop_machines = "suspend"
   auto_start_machines = true
   min_machines_running = 0
 
