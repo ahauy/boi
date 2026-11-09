@@ -3,7 +3,7 @@ Cắt và xoay thẳng lòng bàn tay bằng MediaPipe Hands.
 
 Lấy từ palm_lines.py (v2) của bản thử nghiệm: detect_hand, facing_info, crop_palm_ex và các
 hằng số đi kèm. Phép tính giữ nguyên để model nhận đúng kiểu ảnh lúc train. Khác bản gốc:
-  - lý do bỏ qua là mã ngắn (no_hand, low_confidence, ...) thay cho câu tiếng Việt;
+  - lý do bỏ qua là mã ngắn (no_hand, back_of_hand, ...) thay cho câu tiếng Việt;
   - trả thêm nhãn và độ tin cậy của MediaPipe để ghi log;
   - MediaPipe Hands tạo lần đầu khi dùng, không tạo lúc import.
 """
@@ -17,7 +17,8 @@ PALM_IDX = [0, 1, 2, 5, 9, 13, 17]  # cổ tay, gốc ngón cái, gốc 4 ngón 
 
 # Giữ nguyên giá trị đã hiệu chỉnh bằng `palm_lines.py --check` trên ảnh thật.
 PALM_RULE_FLIP = False
-# Độ tin cậy tối thiểu khi MediaPipe đoán tay trái/phải; thấp hơn thì bỏ qua cho chắc
+# Độ tin cậy tối thiểu khi MediaPipe đoán tay trái/phải. Dưới mức này thì không dùng nhãn
+# để kiểm tra mặt tay (xem crop_palm_ex), nhưng ảnh vẫn được cắt và vẽ.
 HAND_SCORE_MIN = 0.7
 
 _hands = None
@@ -71,7 +72,7 @@ def crop_palm_ex(bgr):
     """
     Trả về (kết quả, lý do, thông tin nhận diện):
       - kết quả: (ảnh lòng bàn tay 512x512, mask vùng lòng bàn tay, geom) hoặc None
-      - lý do: None khi thành công, ngược lại là mã: no_hand | low_confidence | back_of_hand | hand_too_small
+      - lý do: None khi thành công, ngược lại là mã: no_hand | back_of_hand | hand_too_small
       - thông tin nhận diện: {"label", "score"} của MediaPipe, hoặc None khi không thấy tay
     """
     found = detect_hand(bgr)
@@ -79,11 +80,15 @@ def crop_palm_ex(bgr):
         return None, "no_hand", None
     pts, label, score = found
     detection = {"label": label, "score": round(score, 3)}
-    if score < HAND_SCORE_MIN:
-        return None, "low_confidence", detection
-    palm_side, _ = facing_info(pts, label)
-    if not palm_side:
-        return None, "back_of_hand", detection
+    # `score` là độ chắc chắn của nhãn trái/phải, không phải của việc tìm thấy bàn tay.
+    # Việc cắt ảnh chỉ cần 21 điểm mốc. Nhãn chỉ dùng để phân biệt lòng bàn tay với mu bàn tay,
+    # nên khi nhãn không chắc thì bỏ qua bước đó thay vì bỏ cả ảnh. Backend chỉ dùng kết quả
+    # sau khi AI đã xác nhận ảnh là lòng bàn tay.
+    # (Trước đây ảnh bị loại với lý do low_confidence, dù tay rõ ràng nhưng điểm trái/phải chỉ đạt 0,65.)
+    if score >= HAND_SCORE_MIN:
+        palm_side, _ = facing_info(pts, label)
+        if not palm_side:
+            return None, "back_of_hand", detection
 
     wrist, mid_mcp = pts[0], pts[9]
     palm_len = float(np.linalg.norm(mid_mcp - wrist))

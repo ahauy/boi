@@ -28,8 +28,14 @@ RUN python scripts/fetch_model.py "$MODEL_URL" "$MODEL_SHA256" /models/palm_line
 
 COPY app/ app/
 
-RUN useradd --system --uid 1001 --no-create-home palm
+RUN useradd --system --uid 1001 --no-create-home palm \
+    && mkdir -p /srv/.mplconfig && chown palm /srv/.mplconfig
 USER palm
+
+# mediapipe import matplotlib. User palm không có thư mục home nên phải chỉ chỗ ghi cache font,
+# và tạo sẵn cache ngay lúc build để lúc chạy khỏi mất vài giây dựng lại.
+ENV MPLCONFIGDIR=/srv/.mplconfig
+RUN python -c "import matplotlib.font_manager"
 
 ENV MODEL_PATH=/models/palm_lines.onnx \
     PORT=8000
